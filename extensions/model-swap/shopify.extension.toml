@@ -1,0 +1,12 @@
+
+api_version = "2024-10"
+[[extensions]]
+name = "t:name"
+handle = "model-swap"
+type = "ui_extension"
+uid = "a69fc963-b6d2-bd2c-c8f9-83a4b10d78e9bfabc5b0"
+
+# Block on product page 
+[[extensions.targeting]]
+module = "./src/ProductDetailsConfigurationExtension.tsx"
+target = "admin.product-details.block.render"
