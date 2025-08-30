@@ -2,7 +2,7 @@
 
 client_id = "a37f0ea132844ccc3c8e104205da4c41"
 name = "dreamshot-model-swap"
-application_url = "https://yrs-streaming-belts-zoning.trycloudflare.com"
+application_url = "https://cu-truly-pope-supports.trycloudflare.com"
 embedded = true
 handle = "dreamshot-model-swap"
 
@@ -26,7 +26,7 @@ api_version = "2025-07"
 scopes = "write_products"
 
 [auth]
-redirect_urls = ["https://yrs-streaming-belts-zoning.trycloudflare.com/auth/callback", "https://yrs-streaming-belts-zoning.trycloudflare.com/auth/shopify/callback", "https://yrs-streaming-belts-zoning.trycloudflare.com/api/auth/callback"]
+redirect_urls = ["https://cu-truly-pope-supports.trycloudflare.com/auth/callback", "https://cu-truly-pope-supports.trycloudflare.com/auth/shopify/callback", "https://cu-truly-pope-supports.trycloudflare.com/api/auth/callback"]
 
 [pos]
 embedded = false
