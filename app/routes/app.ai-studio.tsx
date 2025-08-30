@@ -15,6 +15,7 @@ import {
 } from "@shopify/polaris";
 import { TitleBar, useAppBridge } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
+import db from "../db.server";
 import {
   AIProviderFactory,
   initializeAIProviders,
@@ -81,6 +82,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const prompt = String(formData.get("prompt") || "");
   const productId = String(formData.get("productId") || "");
   const intent = String(formData.get("intent") || "generate");
+  const { session } = await authenticate.admin(request);
 
   // Validate only for generation
   if (intent === "generate" && (!sourceImageUrl || !prompt)) {
@@ -121,6 +123,17 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         { status: 400 },
       );
     }
+    // Log publish event
+    try {
+      await (db as any).metricEvent.create({
+        data: {
+          shop: session.shop,
+          type: "PUBLISHED",
+          productId,
+          imageUrl,
+        },
+      });
+    } catch {}
     return json({ ok: true as const, published: true });
   }
 
@@ -176,6 +189,17 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         { status: 400 },
       );
     }
+    // Log draft saved event
+    try {
+      await (db as any).metricEvent.create({
+        data: {
+          shop: session.shop,
+          type: "DRAFT_SAVED",
+          productId,
+          imageUrl,
+        },
+      });
+    } catch {}
     return json({ ok: true as const, draftSaved: true });
   }
 
@@ -224,6 +248,17 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         { status: 400 },
       );
     }
+    // Log draft deleted event
+    try {
+      await (db as any).metricEvent.create({
+        data: {
+          shop: session.shop,
+          type: "DRAFT_DELETED",
+          productId,
+          imageUrl,
+        },
+      });
+    } catch {}
     return json({ ok: true as const, deleted: true });
   }
 
@@ -238,6 +273,17 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       productId,
       modelType: "swap",
     });
+    // Log generated image event
+    try {
+      await (db as any).metricEvent.create({
+        data: {
+          shop: session.shop,
+          type: "GENERATED",
+          productId,
+          imageUrl: (result as any)?.imageUrl || null,
+        },
+      });
+    } catch {}
     return json({
       ok: true as const,
       result: { ...result, originalSource: r2Url },

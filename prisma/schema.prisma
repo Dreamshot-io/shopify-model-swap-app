@@ -30,3 +30,19 @@ model Session {
   collaborator  Boolean?  @default(false)
   emailVerified Boolean?  @default(false)
 }
+
+enum EventType {
+  GENERATED
+  DRAFT_SAVED
+  DRAFT_DELETED
+  PUBLISHED
+}
+
+model MetricEvent {
+  id         String    @id @default(cuid())
+  shop       String
+  type       EventType
+  productId  String?
+  imageUrl   String?
+  createdAt  DateTime  @default(now())
+}
