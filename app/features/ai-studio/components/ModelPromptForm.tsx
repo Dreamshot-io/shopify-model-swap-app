@@ -4,13 +4,9 @@ import { useState } from "react";
 export function ModelPromptForm({
   disabled,
   onGenerate,
-  onQuickDemo,
-  onTestProvider,
 }: {
   disabled: boolean;
   onGenerate: (prompt: string) => void;
-  onQuickDemo: () => void;
-  onTestProvider: (prompt: string) => Promise<void> | void;
 }) {
   const [modelPrompt, setModelPrompt] = useState("");
 
@@ -36,13 +32,6 @@ export function ModelPromptForm({
           disabled={disabled || !modelPrompt.trim()}
         >
           🎭 Generate AI Images
-        </Button>
-        <Button onClick={onQuickDemo}>🧪 Quick Demo</Button>
-        <Button
-          onClick={() => onTestProvider(modelPrompt)}
-          disabled={disabled || !modelPrompt.trim()}
-        >
-          🤖 Test AI Provider
         </Button>
       </InlineStack>
     </>

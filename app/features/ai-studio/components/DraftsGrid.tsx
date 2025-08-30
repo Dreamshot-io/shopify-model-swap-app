@@ -5,10 +5,12 @@ export function DraftsGrid({
   drafts,
   onPublish,
   onPreview,
+  onRemove,
 }: {
   drafts: DraftItem[];
   onPublish: (url: string) => void;
   onPreview: (url: string, baseUrl?: string | null) => void;
+  onRemove?: (url: string) => void;
 }) {
   if (!drafts?.length) return null;
   return (
@@ -48,6 +50,16 @@ export function DraftsGrid({
                     <Button onClick={() => onPreview(url, base)} fullWidth>
                       🔍 Preview
                     </Button>
+                    {onRemove && (
+                      <Button
+                        tone="critical"
+                        variant="plain"
+                        onClick={() => onRemove(url)}
+                        fullWidth
+                      >
+                        🗑 Remove
+                      </Button>
+                    )}
                   </BlockStack>
                 </BlockStack>
               </Card>

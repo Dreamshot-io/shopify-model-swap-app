@@ -11,6 +11,7 @@ import {
   BlockStack,
   Banner,
   Grid,
+  Modal,
 } from "@shopify/polaris";
 import { TitleBar, useAppBridge } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
@@ -125,6 +126,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   if (intent === "saveDraft") {
     const imageUrl = String(formData.get("imageUrl") || "");
+    const sourceUrl = String(formData.get("sourceUrl") || "");
     const { admin } = await authenticate.admin(request);
     // Read existing metafield
     const query = `#graphql
@@ -138,13 +140,23 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const qRes = await admin.graphql(query, { variables: { id: productId } });
     const qJson = await qRes.json();
     const current = qJson?.data?.product?.metafield?.value;
-    let drafts: string[] = [];
+    let drafts: Array<
+      string | { imageUrl: string; sourceUrl?: string | null }
+    > = [];
     try {
       drafts = current ? JSON.parse(current) : [];
     } catch {
       drafts = [];
     }
-    drafts.push(imageUrl);
+    // Prevent duplicates
+    const exists = drafts.some((d: any) =>
+      typeof d === "string" ? d === imageUrl : d?.imageUrl === imageUrl,
+    );
+    if (exists) {
+      return json({ ok: true as const, draftSaved: false, duplicate: true });
+    }
+    // Store as an object so we can preserve the original image for comparison
+    drafts.push({ imageUrl, sourceUrl: sourceUrl || null });
 
     const setMutation = `#graphql
       mutation SetDrafts($ownerId: ID!, $value: String!) {
@@ -165,6 +177,54 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       );
     }
     return json({ ok: true as const, draftSaved: true });
+  }
+
+  if (intent === "deleteDraft") {
+    const imageUrl = String(formData.get("imageUrl") || "");
+    const { admin } = await authenticate.admin(request);
+    const query = `#graphql
+      query GetDrafts($id: ID!) {
+        product(id: $id) {
+          id
+          metafield(namespace: "dreamshot", key: "ai_drafts") { id value }
+        }
+      }
+    `;
+    const qRes = await admin.graphql(query, { variables: { id: productId } });
+    const qJson = await qRes.json();
+    const current = qJson?.data?.product?.metafield?.value;
+    let drafts: Array<
+      string | { imageUrl: string; sourceUrl?: string | null }
+    > = [];
+    try {
+      drafts = current ? JSON.parse(current) : [];
+    } catch {
+      drafts = [];
+    }
+
+    const filtered = drafts.filter((d: any) =>
+      typeof d === "string" ? d !== imageUrl : d?.imageUrl !== imageUrl,
+    );
+
+    const setMutation = `#graphql
+      mutation SetDrafts($ownerId: ID!, $value: String!) {
+        metafieldsSet(metafields: [{ ownerId: $ownerId, namespace: "dreamshot", key: "ai_drafts", type: "json", value: $value }]) {
+          userErrors { field message }
+        }
+      }
+    `;
+    const sRes = await admin.graphql(setMutation, {
+      variables: { ownerId: productId, value: JSON.stringify(filtered) },
+    });
+    const sJson = await sRes.json();
+    const uErr = sJson?.data?.metafieldsSet?.userErrors;
+    if (uErr && uErr.length) {
+      return json(
+        { ok: false as const, error: uErr[0].message },
+        { status: 400 },
+      );
+    }
+    return json({ ok: true as const, deleted: true });
   }
 
   // intent === "generate"
@@ -212,8 +272,9 @@ export default function AIStudio() {
   const [previewBase, setPreviewBase] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<DraftItem[]>([]);
   const [pendingAction, setPendingAction] = useState<
-    null | "generate" | "publish" | "saveDraft"
+    null | "generate" | "publish" | "saveDraft" | "deleteDraft"
   >(null);
+  const [draftToDelete, setDraftToDelete] = useState<string | null>(null);
 
   const productId = searchParams.get("productId");
   const selectedImageFromUrl = searchParams.get("selectedImage");
@@ -301,7 +362,11 @@ export default function AIStudio() {
       shopify.toast.show("Published to product");
       setPendingAction(null);
     } else if (data?.ok && pendingAction === "saveDraft") {
-      shopify.toast.show("Draft saved");
+      if ((data as any).duplicate) {
+        shopify.toast.show("Draft already saved", { isError: false });
+      } else if ((data as any).draftSaved) {
+        shopify.toast.show("Draft saved");
+      }
       const img =
         (fetcher.formData?.get &&
           (fetcher.formData.get("imageUrl") as string)) ||
@@ -312,6 +377,21 @@ export default function AIStudio() {
           ...prev,
         ]);
       }
+      setPendingAction(null);
+    } else if (data?.ok && pendingAction === "deleteDraft") {
+      const img =
+        (fetcher.formData?.get &&
+          (fetcher.formData.get("imageUrl") as string)) ||
+        null;
+      if (img) {
+        setDrafts((prev) =>
+          prev.filter((d) =>
+            typeof d === "string" ? d !== img : d.imageUrl !== img,
+          ),
+        );
+      }
+      shopify.toast.show("Draft removed");
+      setDraftToDelete(null);
       setPendingAction(null);
     } else if (data && !data.ok) {
       shopify.toast.show(String(data.error), { isError: true });
@@ -378,6 +458,38 @@ export default function AIStudio() {
                 onClose={() => setPreviewImage(null)}
               />
             )}
+            {/* Delete confirmation modal */}
+            {draftToDelete && (
+              <Modal
+                open
+                onClose={() => setDraftToDelete(null)}
+                title="Remove draft?"
+                primaryAction={{
+                  content: "Delete",
+                  destructive: true,
+                  onAction: () => {
+                    const fd = new FormData();
+                    fd.set("intent", "deleteDraft");
+                    fd.set("imageUrl", draftToDelete);
+                    fd.set("productId", product?.id || "");
+                    setPendingAction("deleteDraft");
+                    fetcher.submit(fd, { method: "post" });
+                  },
+                }}
+                secondaryActions={[
+                  {
+                    content: "Cancel",
+                    onAction: () => setDraftToDelete(null),
+                  },
+                ]}
+              >
+                <BlockStack gap="200">
+                  <Text as="p">
+                    This will permanently remove the draft image.
+                  </Text>
+                </BlockStack>
+              </Modal>
+            )}
             <Card>
               <BlockStack gap="500">
                 <Layout>
@@ -392,62 +504,6 @@ export default function AIStudio() {
                     <ModelPromptForm
                       disabled={!selectedImage || isGenerating}
                       onGenerate={handleGenerate}
-                      onQuickDemo={() => {
-                        setGeneratedImages([
-                          {
-                            id: "demo_1",
-                            imageUrl:
-                              "https://via.placeholder.com/400x400/4ECDC4/white?text=Demo+Result+1",
-                            confidence: 0.94,
-                            metadata: { demo: true },
-                          },
-                          {
-                            id: "demo_2",
-                            imageUrl:
-                              "https://via.placeholder.com/400x400/45B7D1/white?text=Demo+Result+2",
-                            confidence: 0.89,
-                            metadata: { demo: true },
-                          },
-                        ]);
-                        setShowQuickDemo(true);
-                      }}
-                      onTestProvider={async (prompt) => {
-                        if (!selectedImage || !prompt.trim()) {
-                          shopify.toast.show(
-                            "Please select an image and enter a model description",
-                            { isError: true },
-                          );
-                          return;
-                        }
-                        setIsGenerating(true);
-                        try {
-                          await new Promise((resolve) =>
-                            setTimeout(resolve, 2000),
-                          );
-                          const result: GeneratedImage = {
-                            id: `fal_${Date.now()}`,
-                            imageUrl:
-                              "https://via.placeholder.com/400x400/FF6B6B/white?text=FAL.AI+Result",
-                            confidence: 0.88,
-                            metadata: {
-                              provider: "fal.ai",
-                              operation: "model_swap",
-                              prompt,
-                              originalImage: selectedImage,
-                            },
-                          };
-                          setGeneratedImages((prev) => [...prev, result]);
-                          shopify.toast.show(
-                            "AI Provider simulation completed! 🎉",
-                          );
-                        } catch (error) {
-                          shopify.toast.show("AI Provider failed", {
-                            isError: true,
-                          });
-                        } finally {
-                          setIsGenerating(false);
-                        }
-                      }}
                     />
                   </Layout.Section>
                 </Layout>
@@ -461,6 +517,7 @@ export default function AIStudio() {
                 const fd = new FormData();
                 fd.set("intent", "saveDraft");
                 fd.set("imageUrl", img.imageUrl);
+                fd.set("sourceUrl", selectedImage || "");
                 fd.set("productId", product?.id || "");
                 setPendingAction("saveDraft");
                 fetcher.submit(fd, { method: "post" });
@@ -480,6 +537,9 @@ export default function AIStudio() {
               onPreview={(url, base) => {
                 setPreviewImage(url);
                 setPreviewBase(base || null);
+              }}
+              onRemove={(url) => {
+                setDraftToDelete(url);
               }}
             />
           </BlockStack>
