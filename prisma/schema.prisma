@@ -13,6 +13,28 @@ datasource db {
   url      = "file:dev.sqlite"
 }
 
+// Enums must be defined before models that use them
+enum EventType {
+  GENERATED
+  DRAFT_SAVED
+  DRAFT_DELETED
+  PUBLISHED
+}
+
+enum ABTestStatus {
+  DRAFT
+  RUNNING
+  PAUSED
+  COMPLETED
+  ARCHIVED
+}
+
+enum ABTestEventType {
+  IMPRESSION
+  ADD_TO_CART
+  PURCHASE
+}
+
 model Session {
   id            String    @id
   shop          String
@@ -31,13 +53,6 @@ model Session {
   emailVerified Boolean?  @default(false)
 }
 
-enum EventType {
-  GENERATED
-  DRAFT_SAVED
-  DRAFT_DELETED
-  PUBLISHED
-}
-
 model MetricEvent {
   id         String    @id @default(cuid())
   shop       String
@@ -45,4 +60,39 @@ model MetricEvent {
   productId  String?
   imageUrl   String?
   createdAt  DateTime  @default(now())
+}
+
+model ABTest {
+  id            String        @id @default(cuid())
+  shop          String
+  productId     String
+  name          String
+  status        ABTestStatus  @default(DRAFT)
+  trafficSplit  Int           @default(50)
+  startDate     DateTime?
+  endDate       DateTime?
+  variants      ABTestVariant[]
+  events        ABTestEvent[]
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+}
+
+model ABTestVariant {
+  id        String   @id @default(cuid())
+  testId    String
+  variant   String   // "A" or "B"
+  imageUrls String   // JSON array stored as string
+  test      ABTest   @relation(fields: [testId], references: [id])
+}
+
+model ABTestEvent {
+  id         String          @id @default(cuid())
+  testId     String
+  sessionId  String
+  variant    String          // "A" or "B"
+  eventType  ABTestEventType
+  productId  String
+  revenue    Decimal?
+  createdAt  DateTime        @default(now())
+  test       ABTest          @relation(fields: [testId], references: [id])
 }

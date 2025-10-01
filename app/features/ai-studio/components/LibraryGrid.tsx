@@ -1,35 +1,35 @@
 import { Button, Card, Grid, Text, BlockStack } from "@shopify/polaris";
-import type { DraftItem } from "../types";
+import type { LibraryItem } from "../types";
 
-export function DraftsGrid({
-  drafts,
+export function LibraryGrid({
+  libraryItems,
   onPublish,
   onPreview,
   onRemove,
 }: {
-  drafts: DraftItem[];
+  libraryItems: LibraryItem[];
   onPublish: (url: string) => void;
   onPreview: (url: string, baseUrl?: string | null) => void;
   onRemove?: (url: string) => void;
 }) {
-  if (!drafts?.length) return null;
+  if (!libraryItems?.length) return null;
   return (
     <Card>
       <BlockStack gap="400">
         <Text as="h3" variant="headingMd">
-          Drafts ({drafts.length})
+          Library ({libraryItems.length})
         </Text>
         <Grid columns={{ xs: 1, sm: 2, md: 3, lg: 4 }}>
-          {drafts.map((d) => {
-            const url = typeof d === "string" ? (d as string) : d.imageUrl;
-            const base = typeof d === "string" ? null : d.sourceUrl || null;
+          {libraryItems.map((item) => {
+            const url = typeof item === "string" ? (item as string) : item.imageUrl;
+            const base = typeof item === "string" ? null : item.sourceUrl || null;
             return (
               <Card key={url}>
                 <BlockStack gap="300">
                   <div>
                     <img
                       src={url}
-                      alt="Draft image"
+                      alt="Library image"
                       style={{
                         width: "100%",
                         height: "auto",
@@ -45,7 +45,7 @@ export function DraftsGrid({
                       variant="primary"
                       fullWidth
                     >
-                      🚀 Publish Draft to Product
+                      🚀 Publish to Product
                     </Button>
                     <Button onClick={() => onPreview(url, base)} fullWidth>
                       🔍 Preview

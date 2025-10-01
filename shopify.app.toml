@@ -2,7 +2,7 @@
 
 client_id = "a37f0ea132844ccc3c8e104205da4c41"
 name = "dreamshot-model-swap"
-application_url = "https://water-loud-entry-original.trycloudflare.com"
+application_url = "https://heard-huge-fears-chairman.trycloudflare.com"
 embedded = true
 handle = "dreamshot-model-swap"
 
@@ -30,7 +30,7 @@ api_version = "2025-07"
 scopes = "write_products"
 
 [auth]
-redirect_urls = ["https://water-loud-entry-original.trycloudflare.com/auth/callback", "https://water-loud-entry-original.trycloudflare.com/auth/shopify/callback", "https://water-loud-entry-original.trycloudflare.com/api/auth/callback"]
+redirect_urls = ["https://heard-huge-fears-chairman.trycloudflare.com/auth/callback", "https://heard-huge-fears-chairman.trycloudflare.com/auth/shopify/callback", "https://heard-huge-fears-chairman.trycloudflare.com/api/auth/callback"]
 
 [pos]
 embedded = false

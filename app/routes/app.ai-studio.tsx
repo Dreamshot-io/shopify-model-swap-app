@@ -2,39 +2,39 @@ import { useEffect, useState } from "react";
 import type { LoaderFunctionArgs, ActionFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import { useLoaderData, useSearchParams, useFetcher } from "@remix-run/react";
-import {
-  Page,
-  Layout,
-  Text,
-  Card,
-  Button,
-  BlockStack,
-  Banner,
-  Grid,
-  Modal,
-} from "@shopify/polaris";
+import { Page, Text, Card, BlockStack, Banner, Modal } from "@shopify/polaris";
 import { TitleBar, useAppBridge } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
 import {
-  AIProviderFactory,
-  initializeAIProviders,
-} from "../services/ai-providers";
+  generateAIImage,
+  checkAIProviderHealth,
+} from "../services/ai-providers.server";
 import { ImagePreviewModal } from "../features/ai-studio/components/ImagePreviewModal";
 import { ImageSelector } from "../features/ai-studio/components/ImageSelector";
 import { ModelPromptForm } from "../features/ai-studio/components/ModelPromptForm";
 import { GeneratedImagesGrid } from "../features/ai-studio/components/GeneratedImagesGrid";
-import { DraftsGrid } from "../features/ai-studio/components/DraftsGrid";
-import type { DraftItem, GeneratedImage } from "../features/ai-studio/types";
+import { LibraryGrid } from "../features/ai-studio/components/LibraryGrid";
+import type {
+  LibraryItem,
+  GeneratedImage,
+  SelectedImage,
+  BatchProcessingState,
+  GenerateImageResponse,
+  PublishImageResponse,
+  LibraryActionResponse,
+  ActionErrorResponse,
+} from "../features/ai-studio/types";
+import { ABTestManager } from "../features/ab-testing/components/ABTestManager";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const { admin } = await authenticate.admin(request);
+  const { admin, session } = await authenticate.admin(request);
 
   const url = new URL(request.url);
   const productId = url.searchParams.get("productId");
 
   if (!productId) {
-    return { product: null };
+    return { product: null, abTests: [], activeTest: null };
   }
 
   // Fetch product data
@@ -47,7 +47,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         descriptionHtml
         handle
         status
-        metafield(namespace: "dreamshot", key: "ai_drafts") { value }
+        metafield(namespace: "dreamshot", key: "ai_library") { value }
         media(first: 20) {
           nodes {
             id
@@ -71,31 +71,56 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   const responseJson = await response.json();
 
+  // Fetch A/B tests for this product
+  const abTests = await db.aBTest.findMany({
+    where: {
+      shop: session.shop,
+      productId: productId,
+    },
+    include: {
+      variants: true,
+      events: true,
+    },
+    orderBy: { createdAt: "desc" },
+  });
+
+  // Find active test (RUNNING or DRAFT)
+  const activeTest =
+    abTests.find(
+      (test) => test.status === "RUNNING" || test.status === "DRAFT",
+    ) || null;
+
   return {
     product: responseJson.data?.product || null,
+    abTests,
+    activeTest,
   };
 };
 
-export const action = async ({ request }: ActionFunctionArgs) => {
-  const formData = await request.formData();
-  const sourceImageUrl = String(formData.get("sourceImageUrl") || "");
-  const prompt = String(formData.get("prompt") || "");
-  const productId = String(formData.get("productId") || "");
-  const intent = String(formData.get("intent") || "generate");
-  const { session } = await authenticate.admin(request);
+export const action = async ({
+  request,
+}: ActionFunctionArgs): Promise<Response> => {
+  try {
+    const formData = await request.formData();
+    const sourceImageUrl = String(formData.get("sourceImageUrl") || "");
+    const prompt = String(formData.get("prompt") || "");
+    const productId = String(formData.get("productId") || "");
+    const intent = String(formData.get("intent") || "generate");
+    const { session } = await authenticate.admin(request);
 
-  // Validate only for generation
-  if (intent === "generate" && (!sourceImageUrl || !prompt)) {
-    return json(
-      { ok: false as const, error: "Missing sourceImageUrl or prompt" },
-      { status: 400 },
-    );
-  }
+    // Validate only for generation
+    if (intent === "generate" && (!sourceImageUrl || !prompt)) {
+      const errorResponse: ActionErrorResponse = {
+        ok: false,
+        error: "Missing sourceImageUrl or prompt",
+      };
+      return json(errorResponse, { status: 400 });
+    }
 
-  if (intent === "publish") {
-    const imageUrl = String(formData.get("imageUrl") || "");
-    const { admin } = await authenticate.admin(request);
-    const mutation = `
+    if (intent === "publish") {
+      const imageUrl = String(formData.get("imageUrl") || "");
+      const { admin } = await authenticate.admin(request);
+      const mutation = `
       mutation ProductCreateMedia($productId: ID!, $media: [CreateMediaInput!]!) {
         productCreateMedia(productId: $productId, media: $media) {
           media { id }
@@ -103,243 +128,316 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         }
       }
     `;
-    const resp = await admin.graphql(mutation, {
-      variables: {
-        productId,
-        media: [
-          {
-            originalSource: imageUrl,
-            mediaContentType: "IMAGE",
-            alt: "AI generated image",
+      const resp = await admin.graphql(mutation, {
+        variables: {
+          productId,
+          media: [
+            {
+              originalSource: imageUrl,
+              mediaContentType: "IMAGE",
+              alt: "AI generated image",
+            },
+          ],
+        },
+      });
+      const jsonRes = await resp.json();
+      const errors = jsonRes?.data?.productCreateMedia?.mediaUserErrors;
+      if (errors && errors.length) {
+        const errorResponse: ActionErrorResponse = {
+          ok: false,
+          error: errors[0].message,
+          debug: errors,
+        };
+        return json(errorResponse, { status: 400 });
+      }
+      // Log publish event
+      try {
+        await (db as any).metricEvent.create({
+          data: {
+            shop: session.shop,
+            type: "PUBLISHED",
+            productId,
+            imageUrl,
           },
-        ],
-      },
-    });
-    const jsonRes = await resp.json();
-    const errors = jsonRes?.data?.productCreateMedia?.mediaUserErrors;
-    if (errors && errors.length) {
-      return json(
-        { ok: false as const, error: errors[0].message, debug: errors },
-        { status: 400 },
-      );
+        });
+      } catch {}
+      const successResponse: PublishImageResponse = {
+        ok: true,
+        published: true,
+      };
+      return json(successResponse);
     }
-    // Log publish event
-    try {
-      await (db as any).metricEvent.create({
-        data: {
-          shop: session.shop,
-          type: "PUBLISHED",
-          productId,
-          imageUrl,
-        },
-      });
-    } catch {}
-    return json({ ok: true as const, published: true });
-  }
 
-  if (intent === "saveDraft") {
-    const imageUrl = String(formData.get("imageUrl") || "");
-    const sourceUrl = String(formData.get("sourceUrl") || "");
-    const { admin } = await authenticate.admin(request);
-    // Read existing metafield
-    const query = `#graphql
-      query GetDrafts($id: ID!) {
+    if (intent === "saveToLibrary") {
+      const imageUrl = String(formData.get("imageUrl") || "");
+      const sourceUrl = String(formData.get("sourceUrl") || "");
+      const { admin } = await authenticate.admin(request);
+      // Read existing metafield
+      const query = `#graphql
+      query GetLibrary($id: ID!) {
         product(id: $id) {
           id
-          metafield(namespace: "dreamshot", key: "ai_drafts") { id value }
+          metafield(namespace: "dreamshot", key: "ai_library") { id value }
         }
       }
     `;
-    const qRes = await admin.graphql(query, { variables: { id: productId } });
-    const qJson = await qRes.json();
-    const current = qJson?.data?.product?.metafield?.value;
-    let drafts: Array<
-      string | { imageUrl: string; sourceUrl?: string | null }
-    > = [];
-    try {
-      drafts = current ? JSON.parse(current) : [];
-    } catch {
-      drafts = [];
-    }
-    // Prevent duplicates
-    const exists = drafts.some((d: any) =>
-      typeof d === "string" ? d === imageUrl : d?.imageUrl === imageUrl,
-    );
-    if (exists) {
-      return json({ ok: true as const, draftSaved: false, duplicate: true });
-    }
-    // Store as an object so we can preserve the original image for comparison
-    drafts.push({ imageUrl, sourceUrl: sourceUrl || null });
+      const qRes = await admin.graphql(query, { variables: { id: productId } });
+      const qJson = await qRes.json();
+      const current = qJson?.data?.product?.metafield?.value;
+      let libraryItems: Array<
+        string | { imageUrl: string; sourceUrl?: string | null }
+      > = [];
+      try {
+        libraryItems = current ? JSON.parse(current) : [];
+      } catch {
+        libraryItems = [];
+      }
+      // Prevent duplicates
+      const exists = libraryItems.some((item: any) =>
+        typeof item === "string"
+          ? item === imageUrl
+          : item?.imageUrl === imageUrl,
+      );
+      if (exists) {
+        const duplicateResponse: LibraryActionResponse = {
+          ok: true,
+          savedToLibrary: false,
+          duplicate: true,
+        };
+        return json(duplicateResponse);
+      }
+      // Store as an object so we can preserve the original image for comparison
+      libraryItems.push({ imageUrl, sourceUrl: sourceUrl || null });
 
-    const setMutation = `#graphql
-      mutation SetDrafts($ownerId: ID!, $value: String!) {
-        metafieldsSet(metafields: [{ ownerId: $ownerId, namespace: "dreamshot", key: "ai_drafts", type: "json", value: $value }]) {
+      const setMutation = `#graphql
+      mutation SetLibrary($ownerId: ID!, $value: String!) {
+        metafieldsSet(metafields: [{ ownerId: $ownerId, namespace: "dreamshot", key: "ai_library", type: "json", value: $value }]) {
           userErrors { field message }
         }
       }
     `;
-    const sRes = await admin.graphql(setMutation, {
-      variables: { ownerId: productId, value: JSON.stringify(drafts) },
-    });
-    const sJson = await sRes.json();
-    const uErr = sJson?.data?.metafieldsSet?.userErrors;
-    if (uErr && uErr.length) {
-      return json(
-        { ok: false as const, error: uErr[0].message },
-        { status: 400 },
-      );
-    }
-    // Log draft saved event
-    try {
-      await (db as any).metricEvent.create({
-        data: {
-          shop: session.shop,
-          type: "DRAFT_SAVED",
-          productId,
-          imageUrl,
-        },
+      const sRes = await admin.graphql(setMutation, {
+        variables: { ownerId: productId, value: JSON.stringify(libraryItems) },
       });
-    } catch {}
-    return json({ ok: true as const, draftSaved: true });
-  }
+      const sJson = await sRes.json();
+      const uErr = sJson?.data?.metafieldsSet?.userErrors;
+      if (uErr && uErr.length) {
+        const errorResponse: ActionErrorResponse = {
+          ok: false,
+          error: uErr[0].message,
+        };
+        return json(errorResponse, { status: 400 });
+      }
+      // Log library saved event
+      try {
+        await (db as any).metricEvent.create({
+          data: {
+            shop: session.shop,
+            type: "LIBRARY_SAVED",
+            productId,
+            imageUrl,
+          },
+        });
+      } catch {}
+      const successResponse: LibraryActionResponse = {
+        ok: true,
+        savedToLibrary: true,
+      };
+      return json(successResponse);
+    }
 
-  if (intent === "deleteDraft") {
-    const imageUrl = String(formData.get("imageUrl") || "");
-    const { admin } = await authenticate.admin(request);
-    const query = `#graphql
-      query GetDrafts($id: ID!) {
+    if (intent === "deleteFromLibrary") {
+      const imageUrl = String(formData.get("imageUrl") || "");
+      const { admin } = await authenticate.admin(request);
+      const query = `#graphql
+      query GetLibrary($id: ID!) {
         product(id: $id) {
           id
-          metafield(namespace: "dreamshot", key: "ai_drafts") { id value }
+          metafield(namespace: "dreamshot", key: "ai_library") { id value }
         }
       }
     `;
-    const qRes = await admin.graphql(query, { variables: { id: productId } });
-    const qJson = await qRes.json();
-    const current = qJson?.data?.product?.metafield?.value;
-    let drafts: Array<
-      string | { imageUrl: string; sourceUrl?: string | null }
-    > = [];
-    try {
-      drafts = current ? JSON.parse(current) : [];
-    } catch {
-      drafts = [];
-    }
+      const qRes = await admin.graphql(query, { variables: { id: productId } });
+      const qJson = await qRes.json();
+      const current = qJson?.data?.product?.metafield?.value;
+      let libraryItems: Array<
+        string | { imageUrl: string; sourceUrl?: string | null }
+      > = [];
+      try {
+        libraryItems = current ? JSON.parse(current) : [];
+      } catch {
+        libraryItems = [];
+      }
 
-    const filtered = drafts.filter((d: any) =>
-      typeof d === "string" ? d !== imageUrl : d?.imageUrl !== imageUrl,
-    );
+      const filtered = libraryItems.filter((item: any) =>
+        typeof item === "string"
+          ? item !== imageUrl
+          : item?.imageUrl !== imageUrl,
+      );
 
-    const setMutation = `#graphql
-      mutation SetDrafts($ownerId: ID!, $value: String!) {
-        metafieldsSet(metafields: [{ ownerId: $ownerId, namespace: "dreamshot", key: "ai_drafts", type: "json", value: $value }]) {
+      const setMutation = `#graphql
+      mutation SetLibrary($ownerId: ID!, $value: String!) {
+        metafieldsSet(metafields: [{ ownerId: $ownerId, namespace: "dreamshot", key: "ai_library", type: "json", value: $value }]) {
           userErrors { field message }
         }
       }
     `;
-    const sRes = await admin.graphql(setMutation, {
-      variables: { ownerId: productId, value: JSON.stringify(filtered) },
-    });
-    const sJson = await sRes.json();
-    const uErr = sJson?.data?.metafieldsSet?.userErrors;
-    if (uErr && uErr.length) {
-      return json(
-        { ok: false as const, error: uErr[0].message },
-        { status: 400 },
-      );
+      const sRes = await admin.graphql(setMutation, {
+        variables: { ownerId: productId, value: JSON.stringify(filtered) },
+      });
+      const sJson = await sRes.json();
+      const uErr = sJson?.data?.metafieldsSet?.userErrors;
+      if (uErr && uErr.length) {
+        const errorResponse: ActionErrorResponse = {
+          ok: false,
+          error: uErr[0].message,
+        };
+        return json(errorResponse, { status: 400 });
+      }
+      // Log library item deleted event
+      try {
+        await (db as any).metricEvent.create({
+          data: {
+            shop: session.shop,
+            type: "LIBRARY_DELETED",
+            productId,
+            imageUrl,
+          },
+        });
+      } catch {}
+      const successResponse: LibraryActionResponse = {
+        ok: true,
+        deletedFromLibrary: true,
+      };
+      return json(successResponse);
     }
-    // Log draft deleted event
-    try {
-      await (db as any).metricEvent.create({
-        data: {
-          shop: session.shop,
-          type: "DRAFT_DELETED",
-          productId,
-          imageUrl,
-        },
-      });
-    } catch {}
-    return json({ ok: true as const, deleted: true });
-  }
 
-  // intent === "generate"
-  const r2Url = sourceImageUrl; // use public Shopify CDN
-  initializeAIProviders();
-  const aiProvider = AIProviderFactory.getProvider("fal.ai");
-  try {
-    const result = await aiProvider.swapModel({
-      sourceImageUrl: r2Url,
-      prompt,
-      productId,
-      modelType: "swap",
-    });
-    // Log generated image event
+    // Health check for AI providers
+    const healthCheck = checkAIProviderHealth();
+    if (!healthCheck.healthy) {
+      const errorResponse: ActionErrorResponse = {
+        ok: false,
+        error: `AI service unavailable: ${healthCheck.error}`,
+      };
+      return json(errorResponse, { status: 503 });
+    }
+
+    // intent === "generate"
+    const r2Url = sourceImageUrl; // use public Shopify CDN
+
     try {
-      await (db as any).metricEvent.create({
-        data: {
-          shop: session.shop,
-          type: "GENERATED",
-          productId,
-          imageUrl: (result as any)?.imageUrl || null,
-        },
+      const result = await generateAIImage({
+        sourceImageUrl: r2Url,
+        prompt,
+        productId,
+        modelType: "swap",
       });
-    } catch {}
-    return json({
-      ok: true as const,
-      result: { ...result, originalSource: r2Url },
-      debug: { r2Url, prompt },
-    });
-  } catch (error: any) {
-    // eslint-disable-next-line no-console
-    console.error(`[action] fal.ai error`, error);
-    return json(
-      {
-        ok: false as const,
-        error: error?.message || "Fal.ai error",
+
+      // Log generated image event
+      try {
+        await (db as any).metricEvent.create({
+          data: {
+            shop: session.shop,
+            type: "GENERATED",
+            productId,
+            imageUrl: result.imageUrl,
+          },
+        });
+      } catch (loggingError) {
+        console.warn("Failed to log metric event:", loggingError);
+        // Continue execution - logging failure shouldn't break the flow
+      }
+
+      const successResponse: GenerateImageResponse = {
+        ok: true,
+        result: { ...result, originalSource: r2Url },
         debug: { r2Url, prompt },
-      },
-      { status: 500 },
-    );
+      };
+      return json(successResponse);
+    } catch (error: any) {
+      console.error(`[action] AI generation error:`, {
+        error: error.message,
+        stack: error.stack,
+        sourceImageUrl: r2Url,
+        prompt,
+        productId,
+      });
+
+      const errorResponse: ActionErrorResponse = {
+        ok: false,
+        error: error?.message || "AI image generation failed",
+        debug: { r2Url, prompt, errorType: error.constructor.name },
+      };
+      return json(errorResponse, { status: 500 });
+    }
+  } catch (globalError: any) {
+    console.error("[action] Unexpected error:", globalError);
+
+    // Ensure we always return JSON, never HTML
+    const errorResponse: ActionErrorResponse = {
+      ok: false,
+      error: "An unexpected error occurred. Please try again.",
+      debug:
+        process.env.NODE_ENV === "development"
+          ? {
+              message: globalError.message,
+              stack: globalError.stack,
+            }
+          : undefined,
+    };
+    return json(errorResponse, { status: 500 });
   }
 };
 
 export default function AIStudio() {
-  const { product } = useLoaderData<typeof loader>();
+  const { product, abTests, activeTest } = useLoaderData<typeof loader>();
   const [searchParams] = useSearchParams();
   const shopify = useAppBridge();
   const fetcher = useFetcher<typeof action>();
 
   // State management
-  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [selectedImages, setSelectedImages] = useState<SelectedImage[]>([]);
   const [generatedImages, setGeneratedImages] = useState<GeneratedImage[]>([]);
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [showQuickDemo, setShowQuickDemo] = useState(false);
+  const [batchProcessingState, setBatchProcessingState] =
+    useState<BatchProcessingState>({
+      isProcessing: false,
+      currentIndex: 0,
+      totalImages: 0,
+      completedImages: [],
+      failedImages: [],
+    });
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [previewBase, setPreviewBase] = useState<string | null>(null);
-  const [drafts, setDrafts] = useState<DraftItem[]>([]);
+  const [libraryItems, setLibraryItems] = useState<LibraryItem[]>([]);
   const [pendingAction, setPendingAction] = useState<
-    null | "generate" | "publish" | "saveDraft" | "deleteDraft"
+    null | "generate" | "publish" | "saveToLibrary" | "deleteFromLibrary"
   >(null);
-  const [draftToDelete, setDraftToDelete] = useState<string | null>(null);
+  const [libraryItemToDelete, setLibraryItemToDelete] = useState<string | null>(
+    null,
+  );
 
-  const productId = searchParams.get("productId");
+  // const productId = searchParams.get("productId");
   const selectedImageFromUrl = searchParams.get("selectedImage");
 
-  // Initialize AI providers
-  useEffect(() => {
-    try {
-      initializeAIProviders();
-      console.log("✅ AI providers initialized successfully");
-    } catch (error) {
-      console.error("❌ Failed to initialize AI providers:", error);
-    }
-  }, []);
+  // AI providers are initialized server-side only
+  // No client-side initialization needed
 
   useEffect(() => {
-    if (selectedImageFromUrl) {
-      setSelectedImage(selectedImageFromUrl);
+    if (selectedImageFromUrl && product?.media?.nodes) {
+      const matchingNode = product.media.nodes.find(
+        (node: any) => node.image?.url === selectedImageFromUrl,
+      );
+      if (matchingNode) {
+        setSelectedImages([
+          {
+            id: matchingNode.id,
+            url: selectedImageFromUrl,
+            altText: matchingNode.image?.altText,
+          },
+        ]);
+      }
     }
-  }, [selectedImageFromUrl]);
+  }, [selectedImageFromUrl, product]);
 
   useEffect(() => {
     try {
@@ -349,102 +447,228 @@ export default function AIStudio() {
         const normalized = arr.map((item: any) =>
           typeof item === "string" ? { imageUrl: item } : item,
         );
-        setDrafts(normalized);
+        setLibraryItems(normalized);
       }
     } catch {}
   }, [product]);
 
-  // Handle model swap generation (server-side via action)
+  // Handle image selection
+  const handleImageSelect = (image: SelectedImage) => {
+    setSelectedImages((prev) => {
+      const isAlreadySelected = prev.some((img) => img.url === image.url);
+      if (isAlreadySelected) {
+        // Remove from selection
+        return prev.filter((img) => img.url !== image.url);
+      } else {
+        // Add to selection
+        return [...prev, image];
+      }
+    });
+  };
+
+  const handleClearSelection = () => {
+    setSelectedImages([]);
+  };
+
+  // Handle batch model swap generation
   const handleGenerate = async (prompt: string) => {
-    if (!selectedImage || !prompt.trim()) {
+    if (selectedImages.length === 0 || !prompt.trim()) {
       shopify.toast.show(
-        "Please select an image and enter a model description",
+        "Please select at least one image and enter a model description",
         { isError: true },
       );
       return;
     }
 
-    setIsGenerating(true);
+    // Initialize batch processing state
+    setBatchProcessingState({
+      isProcessing: true,
+      currentIndex: 0,
+      totalImages: selectedImages.length,
+      completedImages: [],
+      failedImages: [],
+    });
+
+    // Set pending action to indicate batch generation is in progress
     setPendingAction("generate");
-    try {
-      const fd = new FormData();
-      fd.set("sourceImageUrl", selectedImage);
-      fd.set("prompt", prompt);
-      fd.set("productId", product?.id || "");
-      fd.set("intent", "generate");
-      fetcher.submit(fd, { method: "post" });
-    } catch (error) {
-      console.error("❌ Model swap failed:", error);
-      const fallbackResult: GeneratedImage = {
-        id: `fallback_${Date.now()}`,
-        imageUrl:
-          "https://via.placeholder.com/500x500/FF6B6B/white?text=AI+Generated+Image",
-        confidence: 0.85,
-        metadata: {
-          error: "Demo mode - AI provider failed",
-          prompt,
-        },
-      };
-      setGeneratedImages((prev) => [...prev, fallbackResult]);
-      shopify.toast.show("Demo mode: AI provider simulation", {
-        isError: false,
-      });
+
+    // Process images sequentially
+    for (let i = 0; i < selectedImages.length; i++) {
+      const image = selectedImages[i];
+
+      // Update current processing index
+      setBatchProcessingState((prev) => ({
+        ...prev,
+        currentIndex: i,
+      }));
+
+      try {
+        const fd = new FormData();
+        fd.set("sourceImageUrl", image.url);
+        fd.set("prompt", prompt);
+        fd.set("productId", product?.id || "");
+        fd.set("intent", "generate");
+
+        // Wait for the generation to complete
+        const response = await fetch(window.location.pathname, {
+          method: "POST",
+          body: fd,
+        });
+
+        const result = await response.json();
+
+        if (result.ok && result.result) {
+          // Add successful result - ensure proper structure
+          const generatedImage: GeneratedImage = {
+            id: result.result.id || `batch_${Date.now()}_${i}`,
+            imageUrl: result.result.imageUrl,
+            confidence: result.result.confidence || 0.9,
+            metadata: {
+              ...result.result.metadata,
+              sourceImage: image,
+              prompt,
+              batchIndex: i + 1,
+              batchTotal: selectedImages.length,
+              generatedAt: new Date().toISOString(),
+            },
+          };
+
+          setBatchProcessingState((prev) => ({
+            ...prev,
+            completedImages: [...prev.completedImages, generatedImage],
+          }));
+
+          setGeneratedImages((prev) => [...prev, generatedImage]);
+        } else {
+          // Add failed result
+          setBatchProcessingState((prev) => ({
+            ...prev,
+            failedImages: [
+              ...prev.failedImages,
+              {
+                imageUrl: image.url,
+                error: result.error || "Unknown error",
+              },
+            ],
+          }));
+        }
+      } catch (error) {
+        console.error(`❌ Model swap failed for image ${i + 1}:`, error);
+        setBatchProcessingState((prev) => ({
+          ...prev,
+          failedImages: [
+            ...prev.failedImages,
+            {
+              imageUrl: image.url,
+              error: error instanceof Error ? error.message : "Network error",
+            },
+          ],
+        }));
+      }
     }
+
+    // Complete batch processing and show completion toast
+    setBatchProcessingState((prev) => {
+      const completedCount = prev.completedImages.length;
+      const failedCount = prev.failedImages.length;
+
+      // Show completion toast
+      if (failedCount === 0) {
+        shopify.toast.show(
+          `Successfully generated ${completedCount} AI images! 🎉`,
+        );
+      } else if (completedCount > 0) {
+        shopify.toast.show(
+          `Generated ${completedCount} images successfully, ${failedCount} failed`,
+          { isError: false },
+        );
+      } else {
+        shopify.toast.show(`Failed to generate images. Please try again.`, {
+          isError: true,
+        });
+      }
+
+      return {
+        ...prev,
+        isProcessing: false,
+      };
+    });
+
+    // Reset pending action after batch completion
+    setPendingAction(null);
   };
 
   useEffect(() => {
     const data = fetcher.data as
       | ({ ok: true; result: any } & any)
       | ({ ok: true; published: true } & any)
-      | ({ ok: true; draftSaved: true } & any)
+      | ({ ok: true; savedToLibrary: true } & any)
       | { ok: false; error: string }
       | undefined;
-    if (data?.ok && pendingAction === "generate" && (data as any).result) {
-      setGeneratedImages((prev) => [...prev, (data as any).result]);
+
+    // Handle single image generation (legacy mode - not batch processing)
+    if (
+      data?.ok &&
+      pendingAction === "generate" &&
+      (data as any).result &&
+      !batchProcessingState.isProcessing
+    ) {
+      const result = (data as any).result;
+      // Ensure the generated image has a proper structure
+      const generatedImage: GeneratedImage = {
+        id: result.id || `generated_${Date.now()}`,
+        imageUrl: result.imageUrl,
+        confidence: result.confidence || 0.9,
+        metadata: {
+          ...result.metadata,
+          sourceImage: selectedImages.length > 0 ? selectedImages[0] : null,
+          generatedAt: new Date().toISOString(),
+        },
+      };
+      setGeneratedImages((prev) => [...prev, generatedImage]);
       shopify.toast.show("AI image generated successfully! 🎉");
-      setIsGenerating(false);
       setPendingAction(null);
     } else if (data?.ok && pendingAction === "publish") {
       shopify.toast.show("Published to product");
       setPendingAction(null);
-    } else if (data?.ok && pendingAction === "saveDraft") {
+    } else if (data?.ok && pendingAction === "saveToLibrary") {
       if ((data as any).duplicate) {
-        shopify.toast.show("Draft already saved", { isError: false });
-      } else if ((data as any).draftSaved) {
-        shopify.toast.show("Draft saved");
+        shopify.toast.show("Item already in library", { isError: false });
+      } else if ((data as any).savedToLibrary) {
+        shopify.toast.show("Saved to library");
       }
       const img =
         (fetcher.formData?.get &&
           (fetcher.formData.get("imageUrl") as string)) ||
         null;
       if (img) {
-        setDrafts((prev) => [
-          { imageUrl: img, sourceUrl: selectedImage },
-          ...prev,
-        ]);
+        const sourceUrl =
+          (fetcher.formData?.get &&
+            (fetcher.formData.get("sourceUrl") as string)) ||
+          (selectedImages.length > 0 ? selectedImages[0].url : null);
+        setLibraryItems((prev) => [{ imageUrl: img, sourceUrl }, ...prev]);
       }
       setPendingAction(null);
-    } else if (data?.ok && pendingAction === "deleteDraft") {
+    } else if (data?.ok && pendingAction === "deleteFromLibrary") {
       const img =
         (fetcher.formData?.get &&
           (fetcher.formData.get("imageUrl") as string)) ||
         null;
       if (img) {
-        setDrafts((prev) =>
-          prev.filter((d) =>
-            typeof d === "string" ? d !== img : d.imageUrl !== img,
+        setLibraryItems((prev) =>
+          prev.filter((item) =>
+            typeof item === "string" ? item !== img : item.imageUrl !== img,
           ),
         );
       }
-      shopify.toast.show("Draft removed");
-      setDraftToDelete(null);
+      shopify.toast.show("Removed from library");
+      setLibraryItemToDelete(null);
       setPendingAction(null);
     } else if (data && !data.ok) {
       shopify.toast.show(String(data.error), { isError: true });
-      if (pendingAction === "generate") setIsGenerating(false);
       setPendingAction(null);
     }
-  }, [fetcher.data, pendingAction, shopify]);
+  }, [fetcher.data, pendingAction, shopify, batchProcessingState.isProcessing]);
 
   const handlePublishImage = async (image: any) => {
     const fd = new FormData();
@@ -455,13 +679,101 @@ export default function AIStudio() {
     fetcher.submit(fd, { method: "post" });
   };
 
-  const handlePublishDraft = (url: string) => {
+  const handlePublishFromLibrary = (url: string) => {
     const fd = new FormData();
     fd.set("intent", "publish");
     fd.set("imageUrl", url);
     fd.set("productId", product?.id || "");
     setPendingAction("publish");
     fetcher.submit(fd, { method: "post" });
+  };
+
+  const handleABTestCreate = async (request: any) => {
+    try {
+      const fd = new FormData();
+      fd.set("intent", "create");
+      fd.set("name", request.name);
+      fd.set("productId", request.productId);
+      fd.set("variantAImages", JSON.stringify(request.variantAImages));
+      fd.set("variantBImages", JSON.stringify(request.variantBImages));
+      fd.set("trafficSplit", String(request.trafficSplit || 50));
+
+      const response = await fetch("/app/ab-tests", {
+        method: "POST",
+        body: fd,
+      });
+
+      const result = await response.json();
+
+      if (result.ok) {
+        shopify.toast.show(
+          `A/B test "${request.name}" created successfully! 🎉`,
+        );
+        // Refresh the page to show the new test
+        window.location.reload();
+      } else {
+        shopify.toast.show(result.error || "Failed to create A/B test", {
+          isError: true,
+        });
+      }
+    } catch (error) {
+      console.error("Failed to create A/B test:", error);
+      shopify.toast.show("Failed to create A/B test", { isError: true });
+    }
+  };
+
+  const handleABTestAction = async (
+    testId: string,
+    action: "start" | "stop" | "delete",
+  ) => {
+    try {
+      const fd = new FormData();
+      fd.set("intent", action);
+      fd.set("testId", testId);
+
+      const response = await fetch("/app/ab-tests", {
+        method: "POST",
+        body: fd,
+      });
+
+      const result = await response.json();
+
+      if (result.ok) {
+        if (action === "delete") {
+          shopify.toast.show("A/B test deleted successfully");
+        } else if (action === "start") {
+          shopify.toast.show("A/B test started successfully");
+        } else if (action === "stop") {
+          shopify.toast.show("A/B test stopped successfully");
+        }
+        // Refresh the page to show the updated test state
+        window.location.reload();
+      } else {
+        shopify.toast.show(result.error || `Failed to ${action} A/B test`, {
+          isError: true,
+        });
+      }
+    } catch (error) {
+      console.error(`Failed to ${action} A/B test:`, error);
+      shopify.toast.show(`Failed to ${action} A/B test`, { isError: true });
+    }
+  };
+
+  // Get all available images (original + generated + library)
+  const getAllImages = () => {
+    const originalImages =
+      product?.media?.nodes
+        ?.map((node: any) => node.image?.url)
+        .filter(Boolean) || [];
+
+    const generatedImageUrls = generatedImages.map((img) => img.imageUrl);
+
+    const libraryImageUrls = libraryItems.map((item) =>
+      typeof item === "string" ? item : item.imageUrl,
+    );
+
+    // Note: libraryImageUrls are now also selectable as source images via ImageSelector
+    return [...originalImages, ...generatedImageUrls, ...libraryImageUrls];
   };
 
   if (!product) {
@@ -478,8 +790,8 @@ export default function AIStudio() {
   }
 
   return (
-    <Page>
-      <TitleBar title={`Product: ${product.title}`}>
+    <Page fullWidth>
+      <TitleBar title={`AI Studio - ${product.title}`}>
         <button
           onClick={() => {
             // Navigate back to product
@@ -494,103 +806,126 @@ export default function AIStudio() {
         </button>
       </TitleBar>
 
-      <Layout>
-        <Layout.Section>
-          <BlockStack gap="500">
-            {previewImage && (
-              <ImagePreviewModal
-                url={previewImage}
-                baseUrl={previewBase}
-                onClose={() => setPreviewImage(null)}
-              />
-            )}
-            {/* Delete confirmation modal */}
-            {draftToDelete && (
-              <Modal
-                open
-                onClose={() => setDraftToDelete(null)}
-                title="Remove draft?"
-                primaryAction={{
-                  content: "Delete",
-                  destructive: true,
-                  onAction: () => {
-                    const fd = new FormData();
-                    fd.set("intent", "deleteDraft");
-                    fd.set("imageUrl", draftToDelete);
-                    fd.set("productId", product?.id || "");
-                    setPendingAction("deleteDraft");
-                    fetcher.submit(fd, { method: "post" });
-                  },
-                }}
-                secondaryActions={[
-                  {
-                    content: "Cancel",
-                    onAction: () => setDraftToDelete(null),
-                  },
-                ]}
-              >
-                <BlockStack gap="200">
-                  <Text as="p">
-                    This will permanently remove the draft image.
-                  </Text>
-                </BlockStack>
-              </Modal>
-            )}
-            <Card>
-              <BlockStack gap="500">
-                <Layout>
-                  <Layout.Section variant="oneHalf">
-                    <ImageSelector
-                      media={product.media?.nodes || []}
-                      selectedImage={selectedImage}
-                      onSelect={(url) => setSelectedImage(url)}
-                    />
-                  </Layout.Section>
-                  <Layout.Section variant="oneHalf">
-                    <ModelPromptForm
-                      disabled={!selectedImage || isGenerating}
-                      onGenerate={handleGenerate}
-                    />
-                  </Layout.Section>
-                </Layout>
-              </BlockStack>
-            </Card>
+      <BlockStack gap="500">
+        {previewImage && (
+          <ImagePreviewModal
+            url={previewImage}
+            baseUrl={previewBase}
+            onClose={() => setPreviewImage(null)}
+          />
+        )}
 
-            <GeneratedImagesGrid
-              images={generatedImages}
-              onPublish={(img) => handlePublishImage(img)}
-              onSaveDraft={(img) => {
+        {/* A/B Testing Section - Now at the top */}
+        <ABTestManager
+          productId={product?.id || ""}
+          availableImages={getAllImages()}
+          existingTests={abTests || []}
+          activeTest={activeTest}
+          onTestCreate={handleABTestCreate}
+          onTestAction={handleABTestAction}
+          isCreating={false}
+        />
+        {/* Delete confirmation modal */}
+        {libraryItemToDelete && (
+          <Modal
+            open
+            onClose={() => setLibraryItemToDelete(null)}
+            title="Remove from library?"
+            primaryAction={{
+              content: "Delete",
+              destructive: true,
+              onAction: () => {
                 const fd = new FormData();
-                fd.set("intent", "saveDraft");
-                fd.set("imageUrl", img.imageUrl);
-                fd.set("sourceUrl", selectedImage || "");
+                fd.set("intent", "deleteFromLibrary");
+                fd.set("imageUrl", libraryItemToDelete);
                 fd.set("productId", product?.id || "");
-                setPendingAction("saveDraft");
+                setPendingAction("deleteFromLibrary");
                 fetcher.submit(fd, { method: "post" });
-              }}
-              onPreview={(img) => {
-                setPreviewImage(img.imageUrl);
-                setPreviewBase(selectedImage);
-              }}
-              isBusy={
-                pendingAction === "publish" || pendingAction === "saveDraft"
-              }
+              },
+            }}
+            secondaryActions={[
+              {
+                content: "Cancel",
+                onAction: () => setLibraryItemToDelete(null),
+              },
+            ]}
+          >
+            <BlockStack gap="200">
+              <Text as="p">
+                This will permanently remove the image from your library.
+              </Text>
+            </BlockStack>
+          </Modal>
+        )}
+
+        {/* AI Image Generation Section */}
+        <Card>
+          <BlockStack gap="500">
+            <Text as="h2" variant="headingLg">
+              AI Image Generation
+            </Text>
+
+            {/* Images in horizontal row at top */}
+            <ImageSelector
+              media={product.media?.nodes || []}
+              libraryItems={libraryItems}
+              generatedImages={generatedImages}
+              selectedImages={selectedImages}
+              onSelect={handleImageSelect}
+              onClearSelection={handleClearSelection}
             />
 
-            <DraftsGrid
-              drafts={drafts}
-              onPublish={(url) => handlePublishDraft(url)}
-              onPreview={(url, base) => {
-                setPreviewImage(url);
-                setPreviewBase(base || null);
-              }}
-              onRemove={(url) => {
-                setDraftToDelete(url);
-              }}
+            {/* Model prompt form below - full width */}
+            <ModelPromptForm
+              disabled={selectedImages.length === 0}
+              selectedImageCount={selectedImages.length}
+              batchProcessingState={batchProcessingState}
+              onGenerate={handleGenerate}
             />
           </BlockStack>
-        </Layout.Section>
-      </Layout>
+        </Card>
+
+        <GeneratedImagesGrid
+          images={generatedImages}
+          onPublish={(img) => handlePublishImage(img)}
+          onSaveToLibrary={(img) => {
+            const fd = new FormData();
+            fd.set("intent", "saveToLibrary");
+            fd.set("imageUrl", img.imageUrl);
+            // Use the source image from metadata if available
+            const sourceUrl =
+              img.metadata?.sourceImage?.url ||
+              (selectedImages.length > 0 ? selectedImages[0].url : "");
+            fd.set("sourceUrl", sourceUrl);
+            fd.set("productId", product?.id || "");
+            setPendingAction("saveToLibrary");
+            fetcher.submit(fd, { method: "post" });
+          }}
+          onPreview={(img) => {
+            setPreviewImage(img.imageUrl);
+            // Use the source image from metadata if available
+            const baseUrl =
+              img.metadata?.sourceImage?.url ||
+              (selectedImages.length > 0 ? selectedImages[0].url : null);
+            setPreviewBase(baseUrl);
+          }}
+          isBusy={
+            pendingAction === "publish" || pendingAction === "saveToLibrary"
+          }
+        />
+
+        <LibraryGrid
+          libraryItems={libraryItems}
+          onPublish={(url) => handlePublishFromLibrary(url)}
+          onPreview={(url, base) => {
+            setPreviewImage(url);
+            setPreviewBase(base || null);
+          }}
+          onRemove={(url) => {
+            setLibraryItemToDelete(url);
+          }}
+        />
+      </BlockStack>
     </Page>
   );
 }

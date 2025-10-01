@@ -92,7 +92,7 @@ export class AIProviderFactory {
   static getProvider(name: string): AIProvider {
     const provider = this.providers.get(name);
     if (!provider) {
-      throw new Error(`AI Provider '${name}' not found`);
+      throw new Error(`AI Provider '${name}' not found. Available providers: ${this.getAvailableProviders().join(', ')}`);
     }
     return provider;
   }
@@ -100,11 +100,23 @@ export class AIProviderFactory {
   static getAvailableProviders(): string[] {
     return Array.from(this.providers.keys());
   }
+
+  static hasProvider(name: string): boolean {
+    return this.providers.has(name);
+  }
+
+  static clear() {
+    this.providers.clear();
+  }
 }
 
-// Initialize with FAL.AI
-export const initializeAIProviders = () => {
-  const falKey = process.env.FAL_KEY || "";
+// Initialize with FAL.AI - SERVER ONLY
+// This function should only be called in server-side contexts
+export const initializeAIProviders = (falKey: string) => {
+  if (typeof window !== 'undefined') {
+    throw new Error('initializeAIProviders should only be called on the server');
+  }
+  
   const falProvider = new FalAIProvider(falKey);
   AIProviderFactory.registerProvider("fal.ai", falProvider);
 };
