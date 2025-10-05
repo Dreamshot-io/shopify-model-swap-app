@@ -1,0 +1,17 @@
+# Learn more about theme app extensions at
+# https://shopify.dev/docs/apps/online-store/theme-app-extensions
+
+api_version = "2025-07"
+
+[[extensions]]
+name = "ab-test-loader"
+uid = "2e6fe9a5-b618-171c-7cda-ff727e1d44b39d13fa53"
+type = "theme"
+handle = "ab-test-loader"
+
+[[extensions.files]]
+# The liquid file that will be injected into the theme
+path = "blocks/ab-test-script.liquid"
+
+[extensions.settings]
+# Theme app extensions can have settings, but we don't need any for this script loader

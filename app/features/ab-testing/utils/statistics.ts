@@ -4,14 +4,40 @@ export function calculateStatistics(events: ABTestEvent[]): ABTestStats {
   const variantAEvents = events.filter(e => e.variant === "A");
   const variantBEvents = events.filter(e => e.variant === "B");
 
-  const variantAImpressions = variantAEvents.filter(e => e.eventType === "IMPRESSION").length;
-  const variantBImpressions = variantBEvents.filter(e => e.eventType === "IMPRESSION").length;
+  const variantAImpressions = variantAEvents.filter(
+    e => e.eventType === "IMPRESSION"
+  ).length;
+  const variantBImpressions = variantBEvents.filter(
+    e => e.eventType === "IMPRESSION"
+  ).length;
 
-  const variantAConversions = variantAEvents.filter(e => e.eventType === "ADD_TO_CART").length;
-  const variantBConversions = variantBEvents.filter(e => e.eventType === "ADD_TO_CART").length;
+  const variantAAddToCarts = variantAEvents.filter(
+    e => e.eventType === "ADD_TO_CART"
+  ).length;
+  const variantBAddToCarts = variantBEvents.filter(
+    e => e.eventType === "ADD_TO_CART"
+  ).length;
 
-  const variantARate = variantAImpressions > 0 ? (variantAConversions / variantAImpressions) : 0;
-  const variantBRate = variantBImpressions > 0 ? (variantBConversions / variantBImpressions) : 0;
+  const variantAPurchases = variantAEvents.filter(
+    e => e.eventType === "PURCHASE"
+  ).length;
+  const variantBPurchases = variantBEvents.filter(
+    e => e.eventType === "PURCHASE"
+  ).length;
+
+  const variantARevenue = variantAEvents
+    .filter(e => e.eventType === "PURCHASE")
+    .reduce((sum, e) => sum + (e.revenue || 0), 0);
+  const variantBRevenue = variantBEvents
+    .filter(e => e.eventType === "PURCHASE")
+    .reduce((sum, e) => sum + (e.revenue || 0), 0);
+
+  const variantARate = variantAImpressions > 0
+    ? (variantAAddToCarts / variantAImpressions)
+    : 0;
+  const variantBRate = variantBImpressions > 0
+    ? (variantBAddToCarts / variantBImpressions)
+    : 0;
 
   // Calculate statistical significance using z-test for proportions
   const n1 = variantAImpressions;
@@ -23,10 +49,10 @@ export function calculateStatistics(events: ABTestEvent[]): ABTestStats {
   let pValue = 1;
   let confidence = 0;
 
-  if (n1 > 0 && n2 > 0 && (variantAConversions + variantBConversions) > 0) {
-    const pooledP = (variantAConversions + variantBConversions) / (n1 + n2);
+  if (n1 > 0 && n2 > 0 && (variantAAddToCarts + variantBAddToCarts) > 0) {
+    const pooledP = (variantAAddToCarts + variantBAddToCarts) / (n1 + n2);
     const se = Math.sqrt(pooledP * (1 - pooledP) * (1/n1 + 1/n2));
-    
+
     if (se > 0) {
       zScore = Math.abs(p1 - p2) / se;
       // Approximate p-value using normal distribution
@@ -36,24 +62,36 @@ export function calculateStatistics(events: ABTestEvent[]): ABTestStats {
   }
 
   // Calculate lift (percentage improvement of B over A)
-  const lift = variantARate > 0 ? ((variantBRate - variantARate) / variantARate * 100) : 0;
+  const lift = variantARate > 0
+    ? ((variantBRate - variantARate) / variantARate * 100)
+    : 0;
 
   // Determine winner
   let winner: "A" | "B" | null = null;
   if (confidence >= 95) {
-    winner = variantBRate > variantARate ? "B" : variantARate > variantBRate ? "A" : null;
+    winner = variantBRate > variantARate
+      ? "B"
+      : variantARate > variantBRate
+        ? "A"
+        : null;
   }
 
   return {
     variantA: {
       impressions: variantAImpressions,
-      conversions: variantAConversions,
+      addToCarts: variantAAddToCarts,
+      purchases: variantAPurchases,
+      revenue: variantARevenue,
+      conversions: variantAAddToCarts, // backwards compatibility
       rate: variantARate,
       ratePercent: (variantARate * 100).toFixed(2)
     },
     variantB: {
       impressions: variantBImpressions,
-      conversions: variantBConversions,
+      addToCarts: variantBAddToCarts,
+      purchases: variantBPurchases,
+      revenue: variantBRevenue,
+      conversions: variantBAddToCarts, // backwards compatibility
       rate: variantBRate,
       ratePercent: (variantBRate * 100).toFixed(2)
     },

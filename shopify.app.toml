@@ -2,13 +2,20 @@
 
 client_id = "a37f0ea132844ccc3c8e104205da4c41"
 name = "dreamshot-model-swap"
-application_url = "https://heard-huge-fears-chairman.trycloudflare.com"
+application_url = "https://charming-heroic-vulture.ngrok-free.app"
 embedded = true
 handle = "dreamshot-model-swap"
 
 [build]
-include_config_on_deploy = true
-automatically_update_urls_on_dev = true
+automatically_update_urls_on_dev = false
+
+# App Proxy Configuration
+# Routes /apps/model-swap/* on storefront to app backend
+# IMPORTANT: prefix and subpath are IMMUTABLE after first install
+[app_proxy]
+url = "https://charming-heroic-vulture.ngrok-free.app"
+subpath = "model-swap"
+prefix = "apps"
 
 [webhooks]
 api_version = "2025-07"
@@ -27,10 +34,10 @@ api_version = "2025-07"
 
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
-scopes = "write_products"
+scopes = "write_products,write_files"
 
 [auth]
-redirect_urls = ["https://heard-huge-fears-chairman.trycloudflare.com/auth/callback", "https://heard-huge-fears-chairman.trycloudflare.com/auth/shopify/callback", "https://heard-huge-fears-chairman.trycloudflare.com/api/auth/callback"]
+redirect_urls = ["https://charming-heroic-vulture.ngrok-free.app/auth/callback", "https://charming-heroic-vulture.ngrok-free.app/auth/shopify/callback", "https://charming-heroic-vulture.ngrok-free.app/api/auth/callback"]
 
 [pos]
 embedded = false

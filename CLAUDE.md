@@ -6,6 +6,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is a Shopify app built with Remix that provides AI-powered model swapping functionality for product images. The app integrates with fal.ai to perform image editing operations where users can apply prompts to transform product images.
 
+## Subagents, PRP, and AI workflows
+
+- Always use subagents in a PROACTIVE WAY
+- When creating a PRD, store the markdown in /prd folder
+- Do not start with the implementation until the PRD is validated by the user.
+
 ## Core Development Philosophy
 
 ### KISS (Keep It Simple, Stupid)

@@ -1,0 +1,25 @@
+api_version = "2025-07"
+
+name = "ab-test-pixel"
+uid = "ecaa6226-8e43-2519-e06f-e0ea40d84876e26a2ae3"
+type = "web_pixel_extension"
+runtime_context = "strict"
+
+[customer_privacy]
+analytics = true
+marketing = true
+preferences = false
+sale_of_data = "enabled"
+
+[settings]
+type = "object"
+
+[settings.fields.enabled]
+name = "Enable A/B Testing"
+description = "Enable A/B testing tracking on your storefront"
+type = "single_line_text_field"
+
+[settings.fields.debug]
+name = "Debug Mode"
+description = "Enable console logging for debugging"
+type = "single_line_text_field"

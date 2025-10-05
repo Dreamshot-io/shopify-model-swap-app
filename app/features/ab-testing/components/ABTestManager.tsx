@@ -13,6 +13,7 @@ import { ABTestCreator } from "./ABTestCreator";
 import { ABTestCard } from "./ABTestCard";
 import { ABTestSummary } from "./ABTestSummary";
 import type { ABTest, ABTestStats, ABTestCreateRequest } from "../types";
+import { calculateStatistics } from "../utils/statistics";
 
 interface ABTestManagerProps {
   productId: string;
@@ -50,33 +51,6 @@ export function ABTestManager({
     },
     [onTestCreate],
   );
-
-  // Mock stats for demonstration - in real implementation, these would come from props or API
-  const getMockStats = (test: ABTest): ABTestStats => ({
-    variantA: {
-      impressions: Math.floor(Math.random() * 1000) + 100,
-      addToCarts: Math.floor(Math.random() * 50) + 10,
-      purchases: Math.floor(Math.random() * 20),
-      revenue: Math.floor(Math.random() * 5000),
-      conversions: Math.floor(Math.random() * 50) + 10,
-      rate: 0.12,
-      ratePercent: "12.5",
-    },
-    variantB: {
-      impressions: Math.floor(Math.random() * 1000) + 100,
-      addToCarts: Math.floor(Math.random() * 50) + 10,
-      purchases: Math.floor(Math.random() * 20),
-      revenue: Math.floor(Math.random() * 5000),
-      conversions: Math.floor(Math.random() * 50) + 10,
-      rate: 0.15,
-      ratePercent: "15.2",
-    },
-    lift: "+21.6",
-    confidence: "87",
-    isSignificant: false,
-    winner: null,
-    sampleSize: Math.floor(Math.random() * 2000) + 500,
-  });
 
   if (availableImages.length === 0) {
     return (
@@ -230,7 +204,7 @@ export function ABTestManager({
             {/* Tests Table */}
             <BlockStack gap="300">
               {existingTests.map((test) => {
-                const stats = getMockStats(test);
+                const stats = calculateStatistics(test.events || []);
                 const variantAImages = (() => {
                   const imageUrls = test.variants.find(
                     (v) => v.variant === "A",
@@ -397,12 +371,10 @@ export function ABTestManager({
                           {stats.variantA.conversions.toLocaleString()}
                         </Text>
                         <Text as="span" variant="bodySm">
-                          {(
-                            stats.variantA as any
-                          ).purchases?.toLocaleString() || "0"}
+                          {stats.variantA.purchases.toLocaleString()}
                         </Text>
                         <Text as="span" variant="bodySm">
-                          ${((stats.variantA as any).revenue || 0).toFixed(2)}
+                          ${stats.variantA.revenue.toFixed(2)}
                         </Text>
                         <Text
                           as="span"
@@ -460,12 +432,10 @@ export function ABTestManager({
                           {stats.variantB.conversions.toLocaleString()}
                         </Text>
                         <Text as="span" variant="bodySm">
-                          {(
-                            stats.variantB as any
-                          ).purchases?.toLocaleString() || "0"}
+                          {stats.variantB.purchases.toLocaleString()}
                         </Text>
                         <Text as="span" variant="bodySm">
-                          ${((stats.variantB as any).revenue || 0).toFixed(2)}
+                          ${stats.variantB.revenue.toFixed(2)}
                         </Text>
                         <Text
                           as="span"

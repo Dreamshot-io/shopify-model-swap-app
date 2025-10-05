@@ -1,24 +1,29 @@
 import type { LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
+import { authenticate } from "../shopify.server";
 import db from "../db.server";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
-  const url = new URL(request.url);
-  const sessionId = url.searchParams.get("session");
-  const productId = params.productId;
-
-  if (!sessionId || !productId) {
-    return json(
-      { error: "Missing session or productId" },
-      { status: 400 }
-    );
-  }
-
+  // CRITICAL: Add proper authentication with HMAC validation
   try {
-    // Find active A/B test for this product
+    const { session, cors } = await authenticate.public.appProxy(request);
+
+    const url = new URL(request.url);
+    const sessionId = url.searchParams.get("session");
+    const productId = params.productId;
+
+    if (!sessionId || !productId) {
+      return json(
+        { error: "Missing session or productId" },
+        { status: 400, headers: cors.headers }
+      );
+    }
+
+    // Find active A/B test for this product and shop
     const activeTest = await db.aBTest.findFirst({
       where: {
         productId,
+        shop: session?.shop, // Add shop verification
         status: "RUNNING",
       },
       include: {
@@ -27,7 +32,10 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     });
 
     if (!activeTest || activeTest.variants.length !== 2) {
-      return json({ variant: null });
+      return json(
+        { variant: null },
+        { headers: cors.headers }
+      );
     }
 
     // Check if user already has a variant assigned
@@ -50,9 +58,12 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     }
 
     const variantData = activeTest.variants.find(v => v.variant === selectedVariant);
-    
+
     if (!variantData) {
-      return json({ error: "Variant not found" }, { status: 404 });
+      return json(
+        { error: "Variant not found" },
+        { status: 404, headers: cors.headers }
+      );
     }
 
     // Parse image URLs
@@ -80,9 +91,20 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       variant: selectedVariant,
       imageUrls,
       testId: activeTest.id,
+    }, {
+      headers: cors.headers // Use Shopify's CORS headers
     });
   } catch (error) {
     console.error("Error in variant endpoint:", error);
+
+    // Handle authentication errors
+    if (error instanceof Error && error.message.includes("authenticate")) {
+      return json(
+        { error: "Authentication failed" },
+        { status: 401 }
+      );
+    }
+
     return json(
       { error: "Internal server error" },
       { status: 500 }

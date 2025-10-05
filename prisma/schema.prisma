@@ -75,6 +75,11 @@ model ABTest {
   events        ABTestEvent[]
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
+
+  // Performance indexes for common queries
+  @@index([shop, status])
+  @@index([shop, productId])
+  @@index([status, startDate])
 }
 
 model ABTestVariant {
@@ -82,7 +87,10 @@ model ABTestVariant {
   testId    String
   variant   String   // "A" or "B"
   imageUrls String   // JSON array stored as string
-  test      ABTest   @relation(fields: [testId], references: [id])
+  test      ABTest   @relation(fields: [testId], references: [id], onDelete: Cascade)
+
+  // Performance index for variant lookup
+  @@index([testId, variant])
 }
 
 model ABTestEvent {
@@ -94,5 +102,10 @@ model ABTestEvent {
   productId  String
   revenue    Decimal?
   createdAt  DateTime        @default(now())
-  test       ABTest          @relation(fields: [testId], references: [id])
+  test       ABTest          @relation(fields: [testId], references: [id], onDelete: Cascade)
+
+  // Performance indexes for event queries
+  @@index([testId, sessionId])
+  @@index([testId, eventType])
+  @@index([testId, createdAt])
 }

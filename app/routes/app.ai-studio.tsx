@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import type { LoaderFunctionArgs, ActionFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
-import { useLoaderData, useSearchParams, useFetcher } from "@remix-run/react";
-import { Page, Text, Card, BlockStack, Banner, Modal } from "@shopify/polaris";
+import { useLoaderData, useSearchParams, useFetcher, useNavigate } from "@remix-run/react";
+import { Page, Text, Card, BlockStack, Banner, Modal, InlineGrid, InlineStack, TextField, EmptyState } from "@shopify/polaris";
 import { TitleBar, useAppBridge } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
@@ -10,11 +10,13 @@ import {
   generateAIImage,
   checkAIProviderHealth,
 } from "../services/ai-providers.server";
+import { uploadImageToShopify } from "../services/file-upload.server";
 import { ImagePreviewModal } from "../features/ai-studio/components/ImagePreviewModal";
 import { ImageSelector } from "../features/ai-studio/components/ImageSelector";
 import { ModelPromptForm } from "../features/ai-studio/components/ModelPromptForm";
 import { GeneratedImagesGrid } from "../features/ai-studio/components/GeneratedImagesGrid";
 import { LibraryGrid } from "../features/ai-studio/components/LibraryGrid";
+import { ImageUploader } from "../features/ai-studio/components/ImageUploader";
 import type {
   LibraryItem,
   GeneratedImage,
@@ -34,7 +36,34 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const productId = url.searchParams.get("productId");
 
   if (!productId) {
-    return { product: null, abTests: [], activeTest: null };
+    // Fetch products for selection
+    const productsResponse = await admin.graphql(
+      `#graphql
+      query GetProducts($first: Int!) {
+        products(first: $first, sortKey: UPDATED_AT, reverse: true) {
+          edges {
+            node {
+              id
+              title
+              handle
+              status
+              featuredImage {
+                url
+                altText
+              }
+            }
+          }
+        }
+      }`,
+      {
+        variables: { first: 50 },
+      },
+    );
+
+    const productsJson = await productsResponse.json();
+    const products = productsJson.data?.products?.edges?.map((edge: any) => edge.node) || [];
+
+    return { product: null, abTests: [], activeTest: null, products };
   }
 
   // Fetch product data
@@ -94,6 +123,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     product: responseJson.data?.product || null,
     abTests,
     activeTest,
+    products: [],
   };
 };
 
@@ -312,6 +342,217 @@ export const action = async ({
       return json(successResponse);
     }
 
+    // NEW: Upload intent handler
+    if (intent === "upload") {
+      const file = formData.get("file") as File;
+      const { admin } = await authenticate.admin(request);
+
+      if (!file || !file.size) {
+        const errorResponse: ActionErrorResponse = {
+          ok: false,
+          error: "No file provided",
+        };
+        return json(errorResponse, { status: 400 });
+      }
+
+      try {
+        // Upload to Shopify using staged upload
+        const uploadedFile = await uploadImageToShopify(
+          admin,
+          file,
+          `AI Studio upload - ${new Date().toISOString()}`,
+        );
+
+        // Add to product's AI library metafield
+        const query = `#graphql
+          query GetLibrary($id: ID!) {
+            product(id: $id) {
+              id
+              metafield(namespace: "dreamshot", key: "ai_library") {
+                id
+                value
+              }
+            }
+          }
+        `;
+
+        const qRes = await admin.graphql(query, {
+          variables: { id: productId },
+        });
+        const qJson = await qRes.json();
+
+        const current = qJson?.data?.product?.metafield?.value;
+        let libraryItems: Array<
+          string | { imageUrl: string; sourceUrl?: string | null }
+        > = [];
+        try {
+          libraryItems = current ? JSON.parse(current) : [];
+        } catch {
+          libraryItems = [];
+        }
+
+        // Add uploaded image to library
+        libraryItems.push({
+          imageUrl: uploadedFile.url,
+          sourceUrl: null,
+        });
+
+        // Save updated library
+        const setMutation = `#graphql
+          mutation SetLibrary($ownerId: ID!, $value: String!) {
+            metafieldsSet(metafields: [{
+              ownerId: $ownerId,
+              namespace: "dreamshot",
+              key: "ai_library",
+              type: "json",
+              value: $value
+            }]) {
+              metafields { id }
+              userErrors { field message }
+            }
+          }
+        `;
+
+        const setRes = await admin.graphql(setMutation, {
+          variables: {
+            ownerId: productId,
+            value: JSON.stringify(libraryItems),
+          },
+        });
+
+        const setJson = await setRes.json();
+
+        if (setJson?.data?.metafieldsSet?.userErrors?.length > 0) {
+          const errorResponse: ActionErrorResponse = {
+            ok: false,
+            error: setJson.data.metafieldsSet.userErrors[0].message,
+          };
+          return json(errorResponse, { status: 400 });
+        }
+
+        // Log upload event
+        try {
+          await (db as any).metricEvent.create({
+            data: {
+              shop: session.shop,
+              type: "UPLOADED",
+              productId,
+              imageUrl: uploadedFile.url,
+            },
+          });
+        } catch (loggingError) {
+          console.warn("Failed to log upload event:", loggingError);
+        }
+
+        const successResponse: LibraryActionResponse = {
+          ok: true,
+          savedToLibrary: true,
+        };
+        return json(successResponse);
+      } catch (error) {
+        console.error("Upload failed:", error);
+        const errorResponse: ActionErrorResponse = {
+          ok: false,
+          error: error instanceof Error ? error.message : "Upload failed",
+        };
+        return json(errorResponse, { status: 500 });
+      }
+    }
+
+    // A/B Test management intents
+    if (intent === "createABTest") {
+      const name = String(formData.get("name") || "");
+      const variantAImages = String(formData.get("variantAImages") || "");
+      const variantBImages = String(formData.get("variantBImages") || "");
+      const trafficSplit = parseInt(String(formData.get("trafficSplit") || "50"));
+
+      if (!name || !productId || !variantAImages || !variantBImages) {
+        return json(
+          { ok: false, error: "Missing required fields" },
+          { status: 400 }
+        );
+      }
+
+      try {
+        const test = await db.aBTest.create({
+          data: {
+            shop: session.shop,
+            productId,
+            name,
+            status: "DRAFT",
+            trafficSplit,
+            variants: {
+              create: [
+                {
+                  variant: "A",
+                  imageUrls: variantAImages,
+                },
+                {
+                  variant: "B",
+                  imageUrls: variantBImages,
+                }
+              ]
+            }
+          },
+          include: {
+            variants: true,
+          },
+        });
+
+        return json({ ok: true, test });
+      } catch (error) {
+        console.error("Failed to create A/B test:", error);
+        return json(
+          { ok: false, error: "Failed to create A/B test" },
+          { status: 500 }
+        );
+      }
+    }
+
+    if (intent === "startABTest" || intent === "stopABTest" || intent === "deleteABTest") {
+      const testId = String(formData.get("testId") || "");
+
+      if (!testId) {
+        return json(
+          { ok: false, error: "Missing test ID" },
+          { status: 400 }
+        );
+      }
+
+      try {
+        if (intent === "startABTest") {
+          const updatedTest = await db.aBTest.update({
+            where: { id: testId },
+            data: {
+              status: "RUNNING",
+              startDate: new Date(),
+            },
+          });
+          return json({ ok: true, test: updatedTest });
+        } else if (intent === "stopABTest") {
+          const updatedTest = await db.aBTest.update({
+            where: { id: testId },
+            data: {
+              status: "COMPLETED",
+              endDate: new Date(),
+            },
+          });
+          return json({ ok: true, test: updatedTest });
+        } else if (intent === "deleteABTest") {
+          await db.aBTest.delete({
+            where: { id: testId },
+          });
+          return json({ ok: true });
+        }
+      } catch (error) {
+        console.error(`Failed to ${intent}:`, error);
+        return json(
+          { ok: false, error: `Failed to ${intent}` },
+          { status: 500 }
+        );
+      }
+    }
+
     // Health check for AI providers
     const healthCheck = checkAIProviderHealth();
     if (!healthCheck.healthy) {
@@ -390,10 +631,12 @@ export const action = async ({
 };
 
 export default function AIStudio() {
-  const { product, abTests, activeTest } = useLoaderData<typeof loader>();
+  const { product, abTests, activeTest, products } = useLoaderData<typeof loader>();
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const shopify = useAppBridge();
   const fetcher = useFetcher<typeof action>();
+  const [searchQuery, setSearchQuery] = useState("");
 
   // State management
   const [selectedImages, setSelectedImages] = useState<SelectedImage[]>([]);
@@ -668,7 +911,23 @@ export default function AIStudio() {
       shopify.toast.show(String(data.error), { isError: true });
       setPendingAction(null);
     }
-  }, [fetcher.data, pendingAction, shopify, batchProcessingState.isProcessing]);
+
+    // Handle A/B test responses
+    const intent = fetcher.formData?.get?.("intent") as string;
+    if (data?.ok && intent === "createABTest") {
+      shopify.toast.show("A/B test created successfully! 🎉");
+      window.location.reload(); // Refresh to show new test
+    } else if (data?.ok && intent === "startABTest") {
+      shopify.toast.show("A/B test started successfully");
+      window.location.reload();
+    } else if (data?.ok && intent === "stopABTest") {
+      shopify.toast.show("A/B test stopped successfully");
+      window.location.reload();
+    } else if (data?.ok && intent === "deleteABTest") {
+      shopify.toast.show("A/B test deleted successfully");
+      window.location.reload();
+    }
+  }, [fetcher.data, pendingAction, shopify, batchProcessingState.isProcessing, fetcher.formData]);
 
   const handlePublishImage = async (image: any) => {
     const fd = new FormData();
@@ -688,75 +947,27 @@ export default function AIStudio() {
     fetcher.submit(fd, { method: "post" });
   };
 
-  const handleABTestCreate = async (request: any) => {
-    try {
-      const fd = new FormData();
-      fd.set("intent", "create");
-      fd.set("name", request.name);
-      fd.set("productId", request.productId);
-      fd.set("variantAImages", JSON.stringify(request.variantAImages));
-      fd.set("variantBImages", JSON.stringify(request.variantBImages));
-      fd.set("trafficSplit", String(request.trafficSplit || 50));
+  const handleABTestCreate = (request: any) => {
+    const fd = new FormData();
+    fd.set("intent", "createABTest");
+    fd.set("name", request.name);
+    fd.set("productId", request.productId);
+    fd.set("variantAImages", JSON.stringify(request.variantAImages));
+    fd.set("variantBImages", JSON.stringify(request.variantBImages));
+    fd.set("trafficSplit", String(request.trafficSplit || 50));
 
-      const response = await fetch("/app/ab-tests", {
-        method: "POST",
-        body: fd,
-      });
-
-      const result = await response.json();
-
-      if (result.ok) {
-        shopify.toast.show(
-          `A/B test "${request.name}" created successfully! 🎉`,
-        );
-        // Refresh the page to show the new test
-        window.location.reload();
-      } else {
-        shopify.toast.show(result.error || "Failed to create A/B test", {
-          isError: true,
-        });
-      }
-    } catch (error) {
-      console.error("Failed to create A/B test:", error);
-      shopify.toast.show("Failed to create A/B test", { isError: true });
-    }
+    fetcher.submit(fd, { method: "post" });
   };
 
-  const handleABTestAction = async (
+  const handleABTestAction = (
     testId: string,
     action: "start" | "stop" | "delete",
   ) => {
-    try {
-      const fd = new FormData();
-      fd.set("intent", action);
-      fd.set("testId", testId);
+    const fd = new FormData();
+    fd.set("intent", `${action}ABTest`);
+    fd.set("testId", testId);
 
-      const response = await fetch("/app/ab-tests", {
-        method: "POST",
-        body: fd,
-      });
-
-      const result = await response.json();
-
-      if (result.ok) {
-        if (action === "delete") {
-          shopify.toast.show("A/B test deleted successfully");
-        } else if (action === "start") {
-          shopify.toast.show("A/B test started successfully");
-        } else if (action === "stop") {
-          shopify.toast.show("A/B test stopped successfully");
-        }
-        // Refresh the page to show the updated test state
-        window.location.reload();
-      } else {
-        shopify.toast.show(result.error || `Failed to ${action} A/B test`, {
-          isError: true,
-        });
-      }
-    } catch (error) {
-      console.error(`Failed to ${action} A/B test:`, error);
-      shopify.toast.show(`Failed to ${action} A/B test`, { isError: true });
-    }
+    fetcher.submit(fd, { method: "post" });
   };
 
   // Get all available images (original + generated + library)
@@ -777,14 +988,141 @@ export default function AIStudio() {
   };
 
   if (!product) {
+    // Filter products based on search query
+    const filteredProducts = products?.filter((p: any) =>
+      p.title.toLowerCase().includes(searchQuery.toLowerCase())
+    ) || [];
+
     return (
       <Page>
         <TitleBar title="AI Image Studio" />
-        <Banner tone="critical">
-          <Text as="p">
-            No product selected. Please go back and select a product.
-          </Text>
-        </Banner>
+        <BlockStack gap="500">
+          <Card>
+            <BlockStack gap="400">
+              <Text as="h2" variant="headingLg">
+                Select a Product
+              </Text>
+              <Text as="p" tone="subdued">
+                Choose a product to start generating AI images
+              </Text>
+              <TextField
+                label=""
+                value={searchQuery}
+                onChange={setSearchQuery}
+                placeholder="Search products..."
+                autoComplete="off"
+                clearButton
+                onClearButtonClick={() => setSearchQuery("")}
+              />
+            </BlockStack>
+          </Card>
+
+          {filteredProducts.length === 0 ? (
+            <Card>
+              <EmptyState
+                heading="No products found"
+                image="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
+              >
+                <p>
+                  {searchQuery
+                    ? "Try adjusting your search to find products"
+                    : "Create products in your store to use AI Studio"}
+                </p>
+              </EmptyState>
+            </Card>
+          ) : (
+            <InlineGrid columns={{ xs: 1, sm: 2, md: 3, lg: 4 }} gap="400">
+              {filteredProducts.map((product: any) => (
+                <Card key={product.id}>
+                  <BlockStack gap="300">
+                    {product.featuredImage?.url ? (
+                      <div
+                        onClick={() =>
+                          navigate(
+                            `/app/ai-studio?productId=${encodeURIComponent(
+                              product.id
+                            )}`
+                          )
+                        }
+                        style={{
+                          cursor: "pointer",
+                          borderRadius: "8px",
+                          overflow: "hidden",
+                          aspectRatio: "1",
+                          backgroundColor: "#F6F6F7",
+                        }}
+                      >
+                        <img
+                          src={product.featuredImage.url}
+                          alt={product.featuredImage.altText || product.title}
+                          style={{
+                            width: "100%",
+                            height: "100%",
+                            objectFit: "cover",
+                          }}
+                        />
+                      </div>
+                    ) : (
+                      <div
+                        onClick={() =>
+                          navigate(
+                            `/app/ai-studio?productId=${encodeURIComponent(
+                              product.id
+                            )}`
+                          )
+                        }
+                        style={{
+                          cursor: "pointer",
+                          borderRadius: "8px",
+                          aspectRatio: "1",
+                          backgroundColor: "#F6F6F7",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}
+                      >
+                        <Text as="p" tone="subdued">
+                          No image
+                        </Text>
+                      </div>
+                    )}
+                    <BlockStack gap="200">
+                      <Text as="h3" variant="headingMd" truncate>
+                        {product.title}
+                      </Text>
+                      <InlineStack align="space-between">
+                        <Text as="p" tone="subdued">
+                          {product.status}
+                        </Text>
+                        <button
+                          onClick={() =>
+                            navigate(
+                              `/app/ai-studio?productId=${encodeURIComponent(
+                                product.id
+                              )}`
+                            )
+                          }
+                          style={{
+                            background: "#008060",
+                            color: "white",
+                            border: "none",
+                            borderRadius: "6px",
+                            padding: "8px 16px",
+                            cursor: "pointer",
+                            fontSize: "14px",
+                            fontWeight: "500",
+                          }}
+                        >
+                          Select
+                        </button>
+                      </InlineStack>
+                    </BlockStack>
+                  </BlockStack>
+                </Card>
+              ))}
+            </InlineGrid>
+          )}
+        </BlockStack>
       </Page>
     );
   }
@@ -924,6 +1262,35 @@ export default function AIStudio() {
           onRemove={(url) => {
             setLibraryItemToDelete(url);
           }}
+        />
+
+        <ImageUploader
+          onUpload={async (files) => {
+            // Upload files sequentially
+            for (const file of files) {
+              const formData = new FormData();
+              formData.set("intent", "upload");
+              formData.set("file", file);
+              formData.set("productId", product?.id || "");
+
+              // Use fetch with multipart/form-data
+              const response = await fetch(window.location.pathname, {
+                method: "POST",
+                body: formData,
+              });
+
+              const result = await response.json();
+
+              if (!result.ok) {
+                throw new Error(result.error || "Upload failed");
+              }
+            }
+
+            // Reload to show new images in library
+            window.location.reload();
+          }}
+          maxFiles={5}
+          maxSizeMB={10}
         />
       </BlockStack>
     </Page>

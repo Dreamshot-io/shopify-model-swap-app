@@ -2,8 +2,10 @@
   "name": "dreamshot-model-swap",
   "private": true,
   "scripts": {
-    "build": "remix vite:build",
-    "dev": "shopify app dev",
+    "build": "npm run build:script && remix vite:build",
+    "build:script": "terser public/image-replacer.js -c -m --toplevel -o public/image-replacer.min.js",
+    "dev": "PORT=3000 shopify app dev --tunnel-url=https://charming-heroic-vulture.ngrok-free.app:3000",
+    "dev:stable": "ngrok http 3000 --domain=charming-heroic-vulture.ngrok-free.app & sleep 3 && shopify app dev --tunnel-url=https://charming-heroic-vulture.ngrok-free.app:3000",
     "config:link": "shopify app config link",
     "generate": "shopify app generate",
     "deploy": "shopify app deploy",
@@ -54,6 +56,7 @@
     "eslint": "^8.42.0",
     "eslint-config-prettier": "^10.0.1",
     "prettier": "^3.2.4",
+    "terser": "^5.44.0",
     "typescript": "^5.2.2",
     "vite": "^6.2.2"
   },

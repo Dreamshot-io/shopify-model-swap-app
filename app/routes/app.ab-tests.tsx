@@ -37,182 +37,193 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
-  const { session } = await authenticate.admin(request);
-  const formData = await request.formData();
-  const intent = String(formData.get("intent") || "");
+  try {
+    const { session } = await authenticate.admin(request);
+    const formData = await request.formData();
+    const intent = String(formData.get("intent") || "");
 
-  if (intent === "create") {
-    const name = String(formData.get("name") || "");
-    const productId = String(formData.get("productId") || "");
-    const variantAImages = String(formData.get("variantAImages") || "");
-    const variantBImages = String(formData.get("variantBImages") || "");
+    if (intent === "create") {
+      const name = String(formData.get("name") || "");
+      const productId = String(formData.get("productId") || "");
+      const variantAImages = String(formData.get("variantAImages") || "");
+      const variantBImages = String(formData.get("variantBImages") || "");
 
-    if (!name || !productId || !variantAImages || !variantBImages) {
-      return json(
-        { ok: false, error: "Missing required fields" },
-        { status: 400 }
-      );
-    }
-
-    // Check for existing active test for this product
-    const existingActiveTest = await db.aBTest.findFirst({
-      where: {
-        shop: session.shop,
-        productId,
-        status: {
-          in: ["DRAFT", "RUNNING"]
-        }
+      if (!name || !productId || !variantAImages || !variantBImages) {
+        return json(
+          { ok: false, error: "Missing required fields" },
+          { status: 400 }
+        );
       }
-    });
 
-    if (existingActiveTest) {
-      return json(
-        { 
-          ok: false, 
-          error: "An active A/B test already exists for this product. Please complete or delete the existing test before creating a new one." 
-        },
-        { status: 400 }
-      );
-    }
-
-    try {
-      const test = await db.aBTest.create({
-        data: {
+      // Check for existing active test for this product
+      const existingActiveTest = await db.aBTest.findFirst({
+        where: {
           shop: session.shop,
           productId,
-          name,
-          status: "DRAFT",
-          variants: {
-            create: [
-              {
-                variant: "A",
-                imageUrls: variantAImages,
-              },
-              {
-                variant: "B", 
-                imageUrls: variantBImages,
-              }
-            ]
+          status: {
+            in: ["DRAFT", "RUNNING"]
           }
-        },
-        include: {
-          variants: true,
-        },
+        }
       });
 
-      return json({ ok: true, test });
-    } catch (error) {
-      console.error("Failed to create A/B test:", error);
-      return json(
-        { ok: false, error: "Failed to create A/B test" },
-        { status: 500 }
-      );
-    }
-  }
-
-  if (intent === "start") {
-    const testId = String(formData.get("testId") || "");
-    
-    // Check if test belongs to this shop
-    const test = await db.aBTest.findFirst({
-      where: { 
-        id: testId, 
-        shop: session.shop 
+      if (existingActiveTest) {
+        return json(
+          {
+            ok: false,
+            error: "An active A/B test already exists for this product. Please complete or delete the existing test before creating a new one."
+          },
+          { status: 400 }
+        );
       }
-    });
 
-    if (!test) {
-      return json(
-        { ok: false, error: "Test not found" },
-        { status: 404 }
-      );
-    }
+      try {
+        const test = await db.aBTest.create({
+          data: {
+            shop: session.shop,
+            productId,
+            name,
+            status: "DRAFT",
+            variants: {
+              create: [
+                {
+                  variant: "A",
+                  imageUrls: variantAImages,
+                },
+                {
+                  variant: "B",
+                  imageUrls: variantBImages,
+                }
+              ]
+            }
+          },
+          include: {
+            variants: true,
+          },
+        });
 
-    // Check for other active tests on the same product
-    const otherActiveTest = await db.aBTest.findFirst({
-      where: {
-        shop: session.shop,
-        productId: test.productId,
-        id: { not: testId },
-        status: "RUNNING"
+        return json({ ok: true, test });
+      } catch (error) {
+        console.error("Failed to create A/B test:", error);
+        return json(
+          { ok: false, error: "Failed to create A/B test" },
+          { status: 500 }
+        );
       }
-    });
-
-    if (otherActiveTest) {
-      return json(
-        { 
-          ok: false, 
-          error: "Another test is already running for this product. Please stop it first." 
-        },
-        { status: 400 }
-      );
     }
-    
-    try {
-      const updatedTest = await db.aBTest.update({
-        where: { id: testId },
-        data: {
-          status: "RUNNING",
-          startDate: new Date(),
-        },
+
+    if (intent === "start") {
+      const testId = String(formData.get("testId") || "");
+
+      // Check if test belongs to this shop
+      const test = await db.aBTest.findFirst({
+        where: {
+          id: testId,
+          shop: session.shop
+        }
       });
 
-      return json({ ok: true, test: updatedTest });
-    } catch (error) {
-      return json(
-        { ok: false, error: "Failed to start test" },
-        { status: 500 }
-      );
+      if (!test) {
+        return json(
+          { ok: false, error: "Test not found" },
+          { status: 404 }
+        );
+      }
+
+      // Check for other active tests on the same product
+      const otherActiveTest = await db.aBTest.findFirst({
+        where: {
+          shop: session.shop,
+          productId: test.productId,
+          id: { not: testId },
+          status: "RUNNING"
+        }
+      });
+
+      if (otherActiveTest) {
+        return json(
+          {
+            ok: false,
+            error: "Another test is already running for this product. Please stop it first."
+          },
+          { status: 400 }
+        );
+      }
+
+      try {
+        const updatedTest = await db.aBTest.update({
+          where: { id: testId },
+          data: {
+            status: "RUNNING",
+            startDate: new Date(),
+          },
+        });
+
+        return json({ ok: true, test: updatedTest });
+      } catch (error) {
+        return json(
+          { ok: false, error: "Failed to start test" },
+          { status: 500 }
+        );
+      }
     }
+
+    if (intent === "stop") {
+      const testId = String(formData.get("testId") || "");
+
+      try {
+        const test = await db.aBTest.update({
+          where: { id: testId },
+          data: {
+            status: "COMPLETED",
+            endDate: new Date(),
+          },
+        });
+
+        return json({ ok: true, test });
+      } catch (error) {
+        return json(
+          { ok: false, error: "Failed to stop test" },
+          { status: 500 }
+        );
+      }
+    }
+
+    if (intent === "delete") {
+      const testId = String(formData.get("testId") || "");
+
+      try {
+        await db.aBTestEvent.deleteMany({
+          where: { testId },
+        });
+
+        await db.aBTestVariant.deleteMany({
+          where: { testId },
+        });
+
+        await db.aBTest.delete({
+          where: { id: testId },
+        });
+
+        return json({ ok: true });
+      } catch (error) {
+        return json(
+          { ok: false, error: "Failed to delete test" },
+          { status: 500 }
+        );
+      }
+    }
+
+    return json({ ok: false, error: "Unknown intent" }, { status: 400 });
+  } catch (error) {
+    console.error("Action error:", error);
+    return json(
+      {
+        ok: false,
+        error: error instanceof Error ? error.message : "Internal server error"
+      },
+      { status: 500 }
+    );
   }
-
-  if (intent === "stop") {
-    const testId = String(formData.get("testId") || "");
-    
-    try {
-      const test = await db.aBTest.update({
-        where: { id: testId },
-        data: {
-          status: "COMPLETED",
-          endDate: new Date(),
-        },
-      });
-
-      return json({ ok: true, test });
-    } catch (error) {
-      return json(
-        { ok: false, error: "Failed to stop test" },
-        { status: 500 }
-      );
-    }
-  }
-
-  if (intent === "delete") {
-    const testId = String(formData.get("testId") || "");
-    
-    try {
-      await db.aBTestEvent.deleteMany({
-        where: { testId },
-      });
-      
-      await db.aBTestVariant.deleteMany({
-        where: { testId },
-      });
-      
-      await db.aBTest.delete({
-        where: { id: testId },
-      });
-
-      return json({ ok: true });
-    } catch (error) {
-      return json(
-        { ok: false, error: "Failed to delete test" },
-        { status: 500 }
-      );
-    }
-  }
-
-  return json({ ok: false, error: "Unknown intent" }, { status: 400 });
 };
 
 export default function ABTests() {

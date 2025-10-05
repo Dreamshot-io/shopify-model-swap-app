@@ -1,5 +1,6 @@
 import type { ActionFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
+import { authenticate } from "../shopify.server";
 import db from "../db.server";
 
 export const action = async ({ request }: ActionFunctionArgs) => {
@@ -8,13 +9,16 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   }
 
   try {
+    // CRITICAL: Add proper authentication with HMAC validation
+    const { session, cors } = await authenticate.public.appProxy(request);
+
     const body = await request.json();
     const { testId, sessionId, eventType, revenue, productId } = body;
 
     if (!testId || !sessionId || !eventType || !productId) {
       return json(
         { error: "Missing required fields" },
-        { status: 400 }
+        { status: 400, headers: cors.headers }
       );
     }
 
@@ -23,7 +27,22 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     if (!validEventTypes.includes(eventType)) {
       return json(
         { error: "Invalid event type" },
-        { status: 400 }
+        { status: 400, headers: cors.headers }
+      );
+    }
+
+    // Verify test belongs to this shop
+    const test = await db.aBTest.findFirst({
+      where: {
+        id: testId,
+        shop: session?.shop,
+      }
+    });
+
+    if (!test) {
+      return json(
+        { error: "Test not found or unauthorized" },
+        { status: 404, headers: cors.headers }
       );
     }
 
@@ -38,7 +57,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     if (!existingEvent) {
       return json(
         { error: "No variant assignment found for this session" },
-        { status: 404 }
+        { status: 404, headers: cors.headers }
       );
     }
 
@@ -52,7 +71,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     });
 
     if (duplicateEvent) {
-      return json({ success: true, message: "Event already tracked" });
+      return json(
+        { success: true, message: "Event already tracked" },
+        { headers: cors.headers }
+      );
     }
 
     // Create the tracking event
@@ -67,9 +89,21 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       },
     });
 
-    return json({ success: true });
+    return json(
+      { success: true },
+      { headers: cors.headers }
+    );
   } catch (error) {
     console.error("Error tracking A/B test event:", error);
+
+    // Handle authentication errors
+    if (error instanceof Error && error.message.includes("authenticate")) {
+      return json(
+        { error: "Authentication failed" },
+        { status: 401 }
+      );
+    }
+
     return json(
       { error: "Internal server error" },
       { status: 500 }

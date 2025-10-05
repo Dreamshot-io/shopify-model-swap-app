@@ -21,6 +21,7 @@ import {
 import { TitleBar } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
+import { calculateStatistics } from "../features/ab-testing/utils/statistics";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   const { session } = await authenticate.admin(request);
@@ -48,81 +49,9 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   return json({ abTest });
 };
 
-function calculateStatistics(events: any[]) {
-  const variantAEvents = events.filter(e => e.variant === "A");
-  const variantBEvents = events.filter(e => e.variant === "B");
-
-  const variantAImpressions = variantAEvents.filter(e => e.eventType === "IMPRESSION").length;
-  const variantBImpressions = variantBEvents.filter(e => e.eventType === "IMPRESSION").length;
-
-  const variantAAddToCarts = variantAEvents.filter(e => e.eventType === "ADD_TO_CART").length;
-  const variantBAddToCarts = variantBEvents.filter(e => e.eventType === "ADD_TO_CART").length;
-
-  const variantAPurchases = variantAEvents.filter(e => e.eventType === "PURCHASE").length;
-  const variantBPurchases = variantBEvents.filter(e => e.eventType === "PURCHASE").length;
-
-  const variantARevenue = variantAEvents
-    .filter(e => e.eventType === "PURCHASE")
-    .reduce((sum, e) => sum + (e.revenue || 0), 0);
-  const variantBRevenue = variantBEvents
-    .filter(e => e.eventType === "PURCHASE")
-    .reduce((sum, e) => sum + (e.revenue || 0), 0);
-
-  const variantARate = variantAImpressions > 0 ? (variantAAddToCarts / variantAImpressions) : 0;
-  const variantBRate = variantBImpressions > 0 ? (variantBAddToCarts / variantBImpressions) : 0;
-
-  // Calculate statistical significance using z-test
-  const n1 = variantAImpressions;
-  const n2 = variantBImpressions;
-  const p1 = variantARate;
-  const p2 = variantBRate;
-
-  let zScore = 0;
-  let pValue = 1;
-  let confidence = 0;
-
-  if (n1 > 0 && n2 > 0) {
-    const pooledP = (variantAAddToCarts + variantBAddToCarts) / (n1 + n2);
-    const se = Math.sqrt(pooledP * (1 - pooledP) * (1/n1 + 1/n2));
-    
-    if (se > 0) {
-      zScore = (p1 - p2) / se;
-      // Approximate p-value calculation
-      pValue = 2 * (1 - Math.abs(zScore) / Math.sqrt(2 * Math.PI));
-      confidence = Math.max(0, (1 - pValue) * 100);
-    }
-  }
-
-  return {
-    variantA: {
-      impressions: variantAImpressions,
-      addToCarts: variantAAddToCarts,
-      purchases: variantAPurchases,
-      revenue: variantARevenue,
-      conversions: variantAAddToCarts, // backwards compatibility
-      rate: variantARate,
-      ratePercent: (variantARate * 100).toFixed(2)
-    },
-    variantB: {
-      impressions: variantBImpressions,
-      addToCarts: variantBAddToCarts,
-      purchases: variantBPurchases,
-      revenue: variantBRevenue,
-      conversions: variantBAddToCarts, // backwards compatibility
-      rate: variantBRate,
-      ratePercent: (variantBRate * 100).toFixed(2)
-    },
-    lift: ((variantBRate - variantARate) / Math.max(variantARate, 0.001) * 100).toFixed(2),
-    confidence: confidence.toFixed(1),
-    isSignificant: confidence >= 95,
-    winner: variantBRate > variantARate ? "B" : variantARate > variantBRate ? "A" : null,
-    sampleSize: n1 + n2
-  };
-}
-
 export default function ABTestDetails() {
   const { abTest } = useLoaderData<typeof loader>();
-  const stats = calculateStatistics(abTest.events);
+  const stats = calculateStatistics(abTest.events as any);
   const [previewVariant, setPreviewVariant] = useState<{ variant: "A" | "B"; images: string[] } | null>(null);
 
   const getStatusBadge = (status: string) => {
@@ -262,9 +191,9 @@ export default function ABTestDetails() {
                         </InlineStack>
                       </div>,
                       stats.variantA.impressions.toLocaleString(),
-                      stats.variantA.addToCarts?.toLocaleString() || "0",
-                      stats.variantA.purchases?.toLocaleString() || "0",
-                      `$${(stats.variantA.revenue || 0).toFixed(2)}`,
+                      stats.variantA.addToCarts.toLocaleString(),
+                      stats.variantA.purchases.toLocaleString(),
+                      `$${stats.variantA.revenue.toFixed(2)}`,
                       <Button
                         key="variant-a-preview"
                         size="micro"
@@ -315,9 +244,9 @@ export default function ABTestDetails() {
                         </InlineStack>
                       </div>,
                       stats.variantB.impressions.toLocaleString(),
-                      stats.variantB.addToCarts?.toLocaleString() || "0",
-                      stats.variantB.purchases?.toLocaleString() || "0",
-                      `$${(stats.variantB.revenue || 0).toFixed(2)}`,
+                      stats.variantB.addToCarts.toLocaleString(),
+                      stats.variantB.purchases.toLocaleString(),
+                      `$${stats.variantB.revenue.toFixed(2)}`,
                       <Button
                         key="variant-b-preview"
                         size="micro"

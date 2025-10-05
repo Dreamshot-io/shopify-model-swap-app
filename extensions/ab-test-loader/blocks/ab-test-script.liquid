@@ -1,0 +1,28 @@
+{% comment %}
+A/B Test Image Replacement Script Loader
+Loads on product pages only to enable A/B testing of product images
+
+This script runs in the main thread and has full DOM access, unlike Web Pixels
+which are sandboxed in a worker. The script handles:
+- Product ID detection
+- Variant assignment fetching
+- Image replacement
+- Session management
+
+Tracking events are handled by the Web Pixels extension separately.
+{% endcomment %}
+
+{% if template.name == 'product' %}
+  <script src="{{ 'https://' | append: shop.domain | append: '/apps/model-swap/script' }}" async defer></script>
+{% endif %}
+
+{% schema %}
+{
+  "name": "A/B Test Script",
+  "target": "body",
+  "enabled_on": {
+    "templates": ["product"]
+  },
+  "settings": []
+}
+{% endschema %}
