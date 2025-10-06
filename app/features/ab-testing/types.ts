@@ -1,4 +1,9 @@
-export type ABTestStatus = "DRAFT" | "RUNNING" | "PAUSED" | "COMPLETED" | "ARCHIVED";
+export type ABTestStatus =
+  | "DRAFT"
+  | "RUNNING"
+  | "PAUSED"
+  | "COMPLETED"
+  | "ARCHIVED";
 
 export type ABTestEventType = "IMPRESSION" | "ADD_TO_CART" | "PURCHASE";
 
@@ -75,4 +80,18 @@ export interface TrackingEvent {
   eventType: ABTestEventType;
   productId: string;
   revenue?: number;
+}
+
+// Serialized types for Remix loaders (Dates become strings after json() serialization)
+export interface SerializedABTestEvent extends Omit<ABTestEvent, "createdAt"> {
+  createdAt: string;
+}
+
+export interface SerializedABTest extends Omit<ABTest, "startDate" | "endDate" | "createdAt" | "updatedAt" | "variants" | "events"> {
+  startDate?: string | null;
+  endDate?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  variants: ABTestVariant[];
+  events: SerializedABTestEvent[];
 }

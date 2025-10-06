@@ -12,14 +12,14 @@ import {
 import { ABTestCreator } from "./ABTestCreator";
 import { ABTestCard } from "./ABTestCard";
 import { ABTestSummary } from "./ABTestSummary";
-import type { ABTest, ABTestStats, ABTestCreateRequest } from "../types";
+import type { ABTest, ABTestStats, ABTestCreateRequest, SerializedABTest } from "../types";
 import { calculateStatistics } from "../utils/statistics";
 
 interface ABTestManagerProps {
   productId: string;
   availableImages: string[];
-  existingTests?: ABTest[];
-  activeTest?: ABTest | null;
+  existingTests?: SerializedABTest[];
+  activeTest?: SerializedABTest | null;
   onTestCreate: (request: ABTestCreateRequest) => Promise<void>;
   onTestAction?: (testId: string, action: "start" | "stop" | "delete") => void;
   isCreating?: boolean;

@@ -77,7 +77,12 @@
       "Bash(pkill:*)",
       "Read(//private/tmp/**)",
       "Bash(git log:*)",
-      "Bash(npm run:*)"
+      "Bash(npm run:*)",
+      "Bash(xargs kill:*)",
+      "Bash(timeout 10 npm run dev)",
+      "Bash(timeout 30 npm run dev:*)",
+      "Bash(npm ls:*)",
+      "Bash(open \"https://admin.shopify.com/store/charming-heroic-vulture/apps/dreamshot-model-swap/app/ai-studio\")"
     ],
     "deny": []
   }

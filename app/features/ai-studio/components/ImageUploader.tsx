@@ -143,8 +143,8 @@ export function ImageUploader({
                   {files.map((file, index) => (
                     <div key={`${file.name}-${index}`} style={{ position: 'relative' }}>
                       <Thumbnail
-                        source={objectUrls[index]}
-                        alt={file.name}
+                        source={objectUrls[index] || ""}
+                        alt={file.name || "Uploaded image"}
                         size="large"
                       />
                       {!uploading && (

@@ -23,14 +23,14 @@ import db from "../db.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session } = await authenticate.admin(request);
-  
+
   const abTests = await db.aBTest.findMany({
     where: { shop: session.shop },
     include: {
       variants: true,
       events: true,
     },
-    orderBy: { createdAt: 'desc' },
+    orderBy: { createdAt: "desc" },
   });
 
   return json({ abTests });
@@ -51,7 +51,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       if (!name || !productId || !variantAImages || !variantBImages) {
         return json(
           { ok: false, error: "Missing required fields" },
-          { status: 400 }
+          { status: 400 },
         );
       }
 
@@ -61,18 +61,19 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           shop: session.shop,
           productId,
           status: {
-            in: ["DRAFT", "RUNNING"]
-          }
-        }
+            in: ["DRAFT", "RUNNING"],
+          },
+        },
       });
 
       if (existingActiveTest) {
         return json(
           {
             ok: false,
-            error: "An active A/B test already exists for this product. Please complete or delete the existing test before creating a new one."
+            error:
+              "An active A/B test already exists for this product. Please complete or delete the existing test before creating a new one.",
           },
-          { status: 400 }
+          { status: 400 },
         );
       }
 
@@ -92,9 +93,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                 {
                   variant: "B",
                   imageUrls: variantBImages,
-                }
-              ]
-            }
+                },
+              ],
+            },
           },
           include: {
             variants: true,
@@ -106,7 +107,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         console.error("Failed to create A/B test:", error);
         return json(
           { ok: false, error: "Failed to create A/B test" },
-          { status: 500 }
+          { status: 500 },
         );
       }
     }
@@ -118,15 +119,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       const test = await db.aBTest.findFirst({
         where: {
           id: testId,
-          shop: session.shop
-        }
+          shop: session.shop,
+        },
       });
 
       if (!test) {
-        return json(
-          { ok: false, error: "Test not found" },
-          { status: 404 }
-        );
+        return json({ ok: false, error: "Test not found" }, { status: 404 });
       }
 
       // Check for other active tests on the same product
@@ -135,17 +133,18 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           shop: session.shop,
           productId: test.productId,
           id: { not: testId },
-          status: "RUNNING"
-        }
+          status: "RUNNING",
+        },
       });
 
       if (otherActiveTest) {
         return json(
           {
             ok: false,
-            error: "Another test is already running for this product. Please stop it first."
+            error:
+              "Another test is already running for this product. Please stop it first.",
           },
-          { status: 400 }
+          { status: 400 },
         );
       }
 
@@ -162,7 +161,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       } catch (error) {
         return json(
           { ok: false, error: "Failed to start test" },
-          { status: 500 }
+          { status: 500 },
         );
       }
     }
@@ -183,7 +182,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       } catch (error) {
         return json(
           { ok: false, error: "Failed to stop test" },
-          { status: 500 }
+          { status: 500 },
         );
       }
     }
@@ -208,7 +207,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       } catch (error) {
         return json(
           { ok: false, error: "Failed to delete test" },
-          { status: 500 }
+          { status: 500 },
         );
       }
     }
@@ -219,9 +218,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     return json(
       {
         ok: false,
-        error: error instanceof Error ? error.message : "Internal server error"
+        error: error instanceof Error ? error.message : "Internal server error",
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 };
@@ -278,18 +277,40 @@ export default function ABTests() {
     const variantAEvents = test.events.filter((e: any) => e.variant === "A");
     const variantBEvents = test.events.filter((e: any) => e.variant === "B");
 
-    const variantAImpressions = variantAEvents.filter((e: any) => e.eventType === "IMPRESSION").length;
-    const variantBImpressions = variantBEvents.filter((e: any) => e.eventType === "IMPRESSION").length;
+    const variantAImpressions = variantAEvents.filter(
+      (e: any) => e.eventType === "IMPRESSION",
+    ).length;
+    const variantBImpressions = variantBEvents.filter(
+      (e: any) => e.eventType === "IMPRESSION",
+    ).length;
 
-    const variantAConversions = variantAEvents.filter((e: any) => e.eventType === "ADD_TO_CART").length;
-    const variantBConversions = variantBEvents.filter((e: any) => e.eventType === "ADD_TO_CART").length;
+    const variantAConversions = variantAEvents.filter(
+      (e: any) => e.eventType === "ADD_TO_CART",
+    ).length;
+    const variantBConversions = variantBEvents.filter(
+      (e: any) => e.eventType === "ADD_TO_CART",
+    ).length;
 
-    const variantARate = variantAImpressions > 0 ? ((variantAConversions / variantAImpressions) * 100).toFixed(2) : "0";
-    const variantBRate = variantBImpressions > 0 ? ((variantBConversions / variantBImpressions) * 100).toFixed(2) : "0";
+    const variantARate =
+      variantAImpressions > 0
+        ? ((variantAConversions / variantAImpressions) * 100).toFixed(2)
+        : "0";
+    const variantBRate =
+      variantBImpressions > 0
+        ? ((variantBConversions / variantBImpressions) * 100).toFixed(2)
+        : "0";
 
     return {
-      variantA: { impressions: variantAImpressions, conversions: variantAConversions, rate: variantARate },
-      variantB: { impressions: variantBImpressions, conversions: variantBConversions, rate: variantBRate },
+      variantA: {
+        impressions: variantAImpressions,
+        conversions: variantAConversions,
+        rate: variantARate,
+      },
+      variantB: {
+        impressions: variantBImpressions,
+        conversions: variantBConversions,
+        rate: variantBRate,
+      },
     };
   };
 
@@ -349,14 +370,16 @@ export default function ABTests() {
   return (
     <Page>
       <TitleBar title="A/B Tests" />
-      
+
       <Layout>
         <Layout.Section>
           <BlockStack gap="500">
             <Card>
               <BlockStack gap="300">
                 <InlineStack align="space-between">
-                  <Text as="h2" variant="headingMd">A/B Tests</Text>
+                  <Text as="h2" variant="headingMd">
+                    A/B Tests
+                  </Text>
                   <Button
                     variant="primary"
                     onClick={() => setShowCreateModal(true)}
@@ -368,13 +391,28 @@ export default function ABTests() {
                 {abTests.length === 0 ? (
                   <Banner>
                     <Text as="p">
-                      No A/B tests created yet. Create your first test to start comparing image variants.
+                      No A/B tests created yet. Create your first test to start
+                      comparing image variants.
                     </Text>
                   </Banner>
                 ) : (
                   <DataTable
-                    columnContentTypes={["text", "text", "text", "text", "text", "text"]}
-                    headings={["Name", "Product ID", "Status", "Variant A (Views/CVR)", "Variant B (Views/CVR)", "Actions"]}
+                    columnContentTypes={[
+                      "text",
+                      "text",
+                      "text",
+                      "text",
+                      "text",
+                      "text",
+                    ]}
+                    headings={[
+                      "Name",
+                      "Product ID",
+                      "Status",
+                      "Variant A (Views/CVR)",
+                      "Variant B (Views/CVR)",
+                      "Actions",
+                    ]}
                     rows={rows}
                   />
                 )}
@@ -399,7 +437,12 @@ export default function ABTests() {
             fd.set("variantBImages", variantBImages);
             fetcher.submit(fd, { method: "post" });
           },
-          disabled: !newTestName || !selectedProductId || !variantAImages || !variantBImages || fetcher.state === "submitting",
+          disabled:
+            !newTestName ||
+            !selectedProductId ||
+            !variantAImages ||
+            !variantBImages ||
+            fetcher.state === "submitting",
           loading: fetcher.state === "submitting",
         }}
         secondaryActions={[

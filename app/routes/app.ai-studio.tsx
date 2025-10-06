@@ -1,8 +1,25 @@
 import { useEffect, useState } from "react";
 import type { LoaderFunctionArgs, ActionFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
-import { useLoaderData, useSearchParams, useFetcher, useNavigate } from "@remix-run/react";
-import { Page, Text, Card, BlockStack, Banner, Modal, InlineGrid, InlineStack, TextField, EmptyState } from "@shopify/polaris";
+import {
+  useLoaderData,
+  useSearchParams,
+  useFetcher,
+  useNavigate,
+  useRevalidator,
+} from "@remix-run/react";
+import {
+  Page,
+  Text,
+  Card,
+  BlockStack,
+  Banner,
+  Modal,
+  InlineGrid,
+  InlineStack,
+  TextField,
+  EmptyState,
+} from "@shopify/polaris";
 import { TitleBar, useAppBridge } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
@@ -31,6 +48,7 @@ import type {
   ActionErrorResponse,
 } from "../features/ai-studio/types";
 import { ABTestManager } from "../features/ab-testing/components/ABTestManager";
+import type { ABTestCreateRequest } from "../features/ab-testing/types";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { admin, session } = await authenticate.admin(request);
@@ -64,9 +82,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     );
 
     const productsJson = await productsResponse.json();
-    const products = productsJson.data?.products?.edges?.map((edge: any) => edge.node) || [];
+    const products =
+      productsJson.data?.products?.edges?.map((edge: any) => edge.node) || [];
 
-    return { product: null, abTests: [], activeTest: null, products };
+    return { product: null, abTests: [], activeTest: null, products, shop: session.shop };
   }
 
   // Fetch product data
@@ -104,7 +123,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const responseJson = await response.json();
 
   // Fetch A/B tests for this product
-  const abTests = await db.aBTest.findMany({
+  const abTestsRaw = await db.aBTest.findMany({
     where: {
       shop: session.shop,
       productId: productId,
@@ -115,6 +134,19 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     },
     orderBy: { createdAt: "desc" },
   });
+
+  // Transform Prisma data to match TypeScript interfaces
+  const abTests = abTestsRaw.map((test) => ({
+    ...test,
+    variants: test.variants.map((v) => ({
+      ...v,
+      imageUrls: JSON.parse(v.imageUrls),
+    })),
+    events: test.events.map((e) => ({
+      ...e,
+      revenue: e.revenue ? Number(e.revenue) : undefined,
+    })),
+  }));
 
   // Find active test (RUNNING or DRAFT)
   const activeTest =
@@ -127,19 +159,71 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     abTests,
     activeTest,
     products: [],
+    shop: session.shop,
   };
 };
 
 export const action = async ({
   request,
 }: ActionFunctionArgs): Promise<Response> => {
+  const requestId = crypto.randomUUID().slice(0, 8);
+  console.log(`[ACTION:${requestId}] ===== ACTION START =====`);
+  console.log(`[ACTION:${requestId}] Request received - URL:`, request.url);
+  console.log(`[ACTION:${requestId}] Method:`, request.method);
+  console.log(`[ACTION:${requestId}] Content-Type:`, request.headers.get("content-type"));
+  console.log(`[ACTION:${requestId}] All Headers:`, Object.fromEntries(request.headers.entries()));
+
   try {
-    const formData = await request.formData();
+    // Attempt to parse form data
+    let formData: FormData;
+    try {
+      console.log(`[ACTION:${requestId}] Parsing formData...`);
+      formData = await request.formData();
+      console.log(`[ACTION:${requestId}] FormData parsed successfully`);
+    } catch (formError) {
+      console.error(`[ACTION:${requestId}] Failed to parse formData:`, formError);
+      return json(
+        {
+          ok: false,
+          error: "Failed to parse request data",
+        },
+        { status: 400, headers: { "Content-Type": "application/json" } }
+      );
+    }
+
     const intent = String(formData.get("intent") || "generate");
     const productId = String(formData.get("productId") || "");
-    const { admin, session } = await authenticate.admin(request);
+
+    console.log(`[ACTION:${requestId}] Intent: ${intent}, ProductId: ${productId}`);
+
+    // Wrap authentication in try-catch to catch redirect responses
+    let admin;
+    let session;
+    try {
+      console.log(`[ACTION:${requestId}] Starting authentication...`);
+      const authResult = await authenticate.admin(request);
+      admin = authResult.admin;
+      session = authResult.session;
+      console.log(`[ACTION:${requestId}] Authentication successful - shop: ${session.shop}`);
+    } catch (authError) {
+      console.error(`[ACTION:${requestId}] Authentication failed:`, authError);
+      // Catch redirect responses from authentication
+      if (authError instanceof Response) {
+        console.log(`[ACTION:${requestId}] Auth error is Response - returning 401 JSON`);
+        return json(
+          {
+            ok: false,
+            error: "Session expired. Please refresh the page.",
+            needsAuth: true,
+          },
+          { status: 401, headers: { "Content-Type": "application/json" } }
+        );
+      }
+      throw authError;
+    }
 
     // Route to appropriate handler based on intent
+    console.log(`[ACTION:${requestId}] Routing to handler: ${intent}`);
     switch (intent) {
       case "publish":
         return handlePublish(formData, admin, session.shop);
@@ -154,7 +238,10 @@ export const action = async ({
         return handleDeleteFromLibrary(formData, admin, session.shop);
 
       case "upload":
-        return handleUpload(formData, admin, session.shop);
+        console.log(`[ACTION:${requestId}] Calling handleUpload...`);
+        const uploadResult = await handleUpload(formData, admin, session.shop);
+        console.log(`[ACTION:${requestId}] Upload handler completed`);
+        return uploadResult;
 
       case "createABTest": {
         const name = String(formData.get("name") || "");
@@ -167,21 +254,32 @@ export const action = async ({
         if (!name || !productId || !variantAImages || !variantBImages) {
           return json(
             { ok: false, error: "Missing required fields" },
-            { status: 400 },
+            { status: 400, headers: { "Content-Type": "application/json" } },
           );
         }
 
+        const testId = crypto.randomUUID();
         const test = await db.aBTest.create({
           data: {
+            id: testId,
             shop: session.shop,
             productId,
             name,
             status: "DRAFT",
             trafficSplit,
+            updatedAt: new Date(),
             variants: {
               create: [
-                { variant: "A", imageUrls: variantAImages },
-                { variant: "B", imageUrls: variantBImages },
+                {
+                  id: crypto.randomUUID(),
+                  variant: "A",
+                  imageUrls: variantAImages,
+                },
+                {
+                  id: crypto.randomUUID(),
+                  variant: "B",
+                  imageUrls: variantBImages,
+                },
               ],
             },
           },
@@ -198,20 +296,28 @@ export const action = async ({
         if (!testId) {
           return json(
             { ok: false, error: "Missing test ID" },
-            { status: 400 },
+            { status: 400, headers: { "Content-Type": "application/json" } },
           );
         }
 
         if (intent === "startABTest") {
           const updatedTest = await db.aBTest.update({
             where: { id: testId },
-            data: { status: "RUNNING", startDate: new Date() },
+            data: {
+              status: "RUNNING",
+              startDate: new Date(),
+              updatedAt: new Date(),
+            },
           });
           return json({ ok: true, test: updatedTest });
         } else if (intent === "stopABTest") {
           const updatedTest = await db.aBTest.update({
             where: { id: testId },
-            data: { status: "COMPLETED", endDate: new Date() },
+            data: {
+              status: "COMPLETED",
+              endDate: new Date(),
+              updatedAt: new Date(),
+            },
           });
           return json({ ok: true, test: updatedTest });
         } else {
@@ -228,7 +334,10 @@ export const action = async ({
             ok: false,
             error: `AI service unavailable: ${healthCheck.error}`,
           };
-          return json(errorResponse, { status: 503 });
+          return json(errorResponse, {
+            status: 503,
+            headers: { "Content-Type": "application/json" },
+          });
         }
 
         return handleGenerate(formData, session.shop);
@@ -248,14 +357,19 @@ export const action = async ({
             }
           : undefined,
     };
-    return json(errorResponse, { status: 500 });
+    return json(errorResponse, {
+      status: 500,
+      headers: { "Content-Type": "application/json" },
+    });
   }
 };
 
 export default function AIStudio() {
-  const { product, abTests, activeTest, products } = useLoaderData<typeof loader>();
+  const { product, abTests, activeTest, products, shop } =
+    useLoaderData<typeof loader>();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const revalidator = useRevalidator();
   const shopify = useAppBridge();
   const fetcher = useFetcher<typeof action>();
   const [searchQuery, setSearchQuery] = useState("");
@@ -275,7 +389,12 @@ export default function AIStudio() {
   const [previewBase, setPreviewBase] = useState<string | null>(null);
   const [libraryItems, setLibraryItems] = useState<LibraryItem[]>([]);
   const [pendingAction, setPendingAction] = useState<
-    null | "generate" | "publish" | "saveToLibrary" | "deleteFromLibrary"
+    | null
+    | "generate"
+    | "publish"
+    | "saveToLibrary"
+    | "deleteFromLibrary"
+    | "deleteFromProduct"
   >(null);
   const [libraryItemToDelete, setLibraryItemToDelete] = useState<string | null>(
     null,
@@ -538,18 +657,25 @@ export default function AIStudio() {
     const intent = fetcher.formData?.get?.("intent") as string;
     if (data?.ok && intent === "createABTest") {
       shopify.toast.show("A/B test created successfully! 🎉");
-      window.location.reload(); // Refresh to show new test
+      revalidator.revalidate(); // Refresh loader data to show new test
     } else if (data?.ok && intent === "startABTest") {
       shopify.toast.show("A/B test started successfully");
-      window.location.reload();
+      revalidator.revalidate();
     } else if (data?.ok && intent === "stopABTest") {
       shopify.toast.show("A/B test stopped successfully");
-      window.location.reload();
+      revalidator.revalidate();
     } else if (data?.ok && intent === "deleteABTest") {
       shopify.toast.show("A/B test deleted successfully");
-      window.location.reload();
+      revalidator.revalidate();
     }
-  }, [fetcher.data, pendingAction, shopify, batchProcessingState.isProcessing, fetcher.formData]);
+  }, [
+    fetcher.data,
+    pendingAction,
+    shopify,
+    batchProcessingState.isProcessing,
+    fetcher.formData,
+    revalidator,
+  ]);
 
   const handlePublishImage = async (image: any) => {
     const fd = new FormData();
@@ -569,7 +695,9 @@ export default function AIStudio() {
     fetcher.submit(fd, { method: "post" });
   };
 
-  const handleABTestCreate = (request: any) => {
+  const handleABTestCreate = async (
+    request: ABTestCreateRequest,
+  ): Promise<void> => {
     const fd = new FormData();
     fd.set("intent", "createABTest");
     fd.set("name", request.name);
@@ -611,9 +739,10 @@ export default function AIStudio() {
 
   if (!product) {
     // Filter products based on search query
-    const filteredProducts = products?.filter((p: any) =>
-      p.title.toLowerCase().includes(searchQuery.toLowerCase())
-    ) || [];
+    const filteredProducts =
+      products?.filter((p: any) =>
+        p.title.toLowerCase().includes(searchQuery.toLowerCase()),
+      ) || [];
 
     return (
       <Page>
@@ -662,8 +791,8 @@ export default function AIStudio() {
                         onClick={() =>
                           navigate(
                             `/app/ai-studio?productId=${encodeURIComponent(
-                              product.id
-                            )}`
+                              product.id,
+                            )}`,
                           )
                         }
                         style={{
@@ -689,8 +818,8 @@ export default function AIStudio() {
                         onClick={() =>
                           navigate(
                             `/app/ai-studio?productId=${encodeURIComponent(
-                              product.id
-                            )}`
+                              product.id,
+                            )}`,
                           )
                         }
                         style={{
@@ -720,8 +849,8 @@ export default function AIStudio() {
                           onClick={() =>
                             navigate(
                               `/app/ai-studio?productId=${encodeURIComponent(
-                                product.id
-                              )}`
+                                product.id,
+                              )}`,
                             )
                           }
                           style={{
@@ -763,6 +892,14 @@ export default function AIStudio() {
           }}
         >
           View Product
+        </button>
+        <button
+          onClick={() => {
+            // Open product on storefront
+            window.open(`https://${shop}/products/${product.handle}`, "_blank");
+          }}
+        >
+          View in Store
         </button>
       </TitleBar>
 
@@ -812,8 +949,8 @@ export default function AIStudio() {
         <ABTestManager
           productId={product?.id || ""}
           availableImages={getAllImages()}
-          existingTests={abTests || []}
-          activeTest={activeTest}
+          existingTests={(abTests || []) as any}
+          activeTest={activeTest as any}
           onTestCreate={handleABTestCreate}
           onTestAction={handleABTestAction}
           isCreating={false}
@@ -877,47 +1014,135 @@ export default function AIStudio() {
             setLibraryItemToDelete(url);
           }}
           onUpload={async (files) => {
-            const uploadedImages = [];
+            const uploadedImages: LibraryItem[] = [];
+            const errors: string[] = [];
 
-            for (const file of files) {
+            // Process all files, tracking successes and failures
+            for (let i = 0; i < files.length; i++) {
+              const file = files[i];
               const formData = new FormData();
               formData.set("intent", "upload");
               formData.set("file", file);
               formData.set("productId", product?.id || "");
 
-              const response = await fetch(window.location.pathname, {
-                method: "POST",
-                body: formData,
-              });
+              // Retry logic with exponential backoff
+              const maxRetries = 2;
+              let uploadSuccess = false;
 
-              if (!response.ok) {
-                const contentType = response.headers.get("content-type");
-                if (contentType?.includes("text/html")) {
-                  throw new Error(
-                    "Server error occurred. Please refresh and try again.",
-                  );
+              for (let retry = 0; retry <= maxRetries; retry++) {
+                try {
+                  const response = await fetch(window.location.pathname, {
+                    method: "POST",
+                    body: formData,
+                  });
+
+                  // Check content-type BEFORE parsing JSON
+                  const contentType = response.headers.get("content-type");
+
+                  if (!contentType?.includes("application/json")) {
+                    console.error(
+                      `Upload attempt ${retry + 1}/${maxRetries + 1} - Non-JSON response:`,
+                      contentType,
+                      "Status:",
+                      response.status,
+                    );
+
+                    // If this is the last retry, throw error
+                    if (retry === maxRetries) {
+                      throw new Error(
+                        "Session expired or server error. Please refresh the page.",
+                      );
+                    }
+
+                    // Wait before retry with exponential backoff
+                    await new Promise((resolve) =>
+                      setTimeout(resolve, 1000 * (retry + 1)),
+                    );
+                    continue;
+                  }
+
+                  // Now safe to parse JSON
+                  const result = await response.json();
+
+                  if (!result.ok) {
+                    if (result.needsAuth) {
+                      throw new Error(
+                        "Session expired. Please refresh the page.",
+                      );
+                    }
+                    throw new Error(result.error || "Upload failed");
+                  }
+
+                  // Add the uploaded image to our list
+                  if (result.imageUrl) {
+                    uploadedImages.push({
+                      imageUrl: result.imageUrl,
+                      sourceUrl: null,
+                    });
+                    uploadSuccess = true;
+                    break; // Success - exit retry loop
+                  }
+                } catch (error) {
+                  const errorMsg =
+                    error instanceof Error ? error.message : "Unknown error";
+
+                  // If this is the last retry or session expired, log error and break
+                  if (
+                    retry === maxRetries ||
+                    errorMsg.includes("Session expired")
+                  ) {
+                    errors.push(`${file.name}: ${errorMsg}`);
+
+                    // If session expired, stop trying remaining files
+                    if (errorMsg.includes("Session expired")) {
+                      break;
+                    }
+                  } else {
+                    // Wait before retry with exponential backoff
+                    console.log(
+                      `Retry ${retry + 1}/${maxRetries} for ${file.name}`,
+                    );
+                    await new Promise((resolve) =>
+                      setTimeout(resolve, 1000 * (retry + 1)),
+                    );
+                  }
                 }
               }
 
-              const result = await response.json();
-
-              if (!result.ok) {
-                throw new Error(result.error || "Upload failed");
+              // If we had errors with this file, stop processing remaining files if session expired
+              if (
+                !uploadSuccess &&
+                errors.some((e) => e.includes("Session expired"))
+              ) {
+                break;
               }
 
-              // Add the uploaded image to our list
-              if (result.imageUrl) {
-                uploadedImages.push({
-                  imageUrl: result.imageUrl,
-                  sourceUrl: null
-                });
+              // Add delay between uploads to prevent session token exhaustion
+              // (except for the last file)
+              if (i < files.length - 1 && uploadSuccess) {
+                await new Promise((resolve) => setTimeout(resolve, 500));
               }
             }
 
-            // Update library items state immediately with the uploaded images
+            // Update UI with successfully uploaded images
             if (uploadedImages.length > 0) {
               setLibraryItems((prev) => [...uploadedImages, ...prev]);
-              shopify.toast.show(`Successfully uploaded ${uploadedImages.length} image${uploadedImages.length !== 1 ? 's' : ''}`);
+              shopify.toast.show(
+                `Successfully uploaded ${uploadedImages.length} of ${files.length} image${files.length > 1 ? "s" : ""}!`,
+              );
+            }
+
+            // Show errors if any
+            if (errors.length > 0) {
+              shopify.toast.show(
+                `Failed to upload ${errors.length} file${errors.length > 1 ? "s" : ""}: ${errors[0]}`,
+                { isError: true },
+              );
+            }
+
+            // If all failed, throw to show error state
+            if (uploadedImages.length === 0 && errors.length > 0) {
+              throw new Error(errors[0]);
             }
           }}
           isBusy={

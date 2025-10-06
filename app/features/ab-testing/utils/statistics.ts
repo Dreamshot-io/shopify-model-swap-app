@@ -1,6 +1,6 @@
-import type { ABTestEvent, ABTestStats } from "../types";
+import type { ABTestEvent, ABTestStats, SerializedABTestEvent } from "../types";
 
-export function calculateStatistics(events: ABTestEvent[]): ABTestStats {
+export function calculateStatistics(events: ABTestEvent[] | SerializedABTestEvent[]): ABTestStats {
   const variantAEvents = events.filter(e => e.variant === "A");
   const variantBEvents = events.filter(e => e.variant === "B");
 

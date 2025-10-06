@@ -32,9 +32,9 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   }
 
   const abTest = await db.aBTest.findFirst({
-    where: { 
+    where: {
       id: testId,
-      shop: session.shop 
+      shop: session.shop,
     },
     include: {
       variants: true,
@@ -52,7 +52,10 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 export default function ABTestDetails() {
   const { abTest } = useLoaderData<typeof loader>();
   const stats = calculateStatistics(abTest.events as any);
-  const [previewVariant, setPreviewVariant] = useState<{ variant: "A" | "B"; images: string[] } | null>(null);
+  const [previewVariant, setPreviewVariant] = useState<{
+    variant: "A" | "B";
+    images: string[];
+  } | null>(null);
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -71,8 +74,12 @@ export default function ABTestDetails() {
     }
   };
 
-  const variantAImages = JSON.parse(abTest.variants.find((v: any) => v.variant === "A")?.imageUrls || "[]");
-  const variantBImages = JSON.parse(abTest.variants.find((v: any) => v.variant === "B")?.imageUrls || "[]");
+  const variantAImages = JSON.parse(
+    abTest.variants.find((v: any) => v.variant === "A")?.imageUrls || "[]",
+  );
+  const variantBImages = JSON.parse(
+    abTest.variants.find((v: any) => v.variant === "B")?.imageUrls || "[]",
+  );
 
   return (
     <Page
@@ -81,7 +88,7 @@ export default function ABTestDetails() {
       subtitle={`Product ID: ${abTest.productId}`}
     >
       <TitleBar title={`A/B Test: ${abTest.name}`} />
-      
+
       <Layout>
         <Layout.Section>
           <BlockStack gap="500">
@@ -92,26 +99,41 @@ export default function ABTestDetails() {
                   <Text variant="headingMd">Test Overview</Text>
                   {getStatusBadge(abTest.status)}
                 </InlineStack>
-                
+
                 <Grid columns={{ xs: 1, sm: 2, md: 4 }}>
                   <Card>
-                    <Text variant="bodyMd" tone="subdued">Total Impressions</Text>
+                    <Text variant="bodyMd" tone="subdued">
+                      Total Impressions
+                    </Text>
                     <Text variant="headingLg">{stats.sampleSize}</Text>
                   </Card>
                   <Card>
-                    <Text variant="bodyMd" tone="subdued">Confidence Level</Text>
+                    <Text variant="bodyMd" tone="subdued">
+                      Confidence Level
+                    </Text>
                     <Text variant="headingLg">{stats.confidence}%</Text>
                   </Card>
                   <Card>
-                    <Text variant="bodyMd" tone="subdued">Lift</Text>
-                    <Text variant="headingLg" tone={parseFloat(stats.lift) > 0 ? "success" : "critical"}>
+                    <Text variant="bodyMd" tone="subdued">
+                      Lift
+                    </Text>
+                    <Text
+                      variant="headingLg"
+                      tone={parseFloat(stats.lift) > 0 ? "success" : "critical"}
+                    >
                       {stats.lift}%
                     </Text>
                   </Card>
                   <Card>
-                    <Text variant="bodyMd" tone="subdued">Winner</Text>
+                    <Text variant="bodyMd" tone="subdued">
+                      Winner
+                    </Text>
                     <Text variant="headingLg">
-                      {stats.isSignificant ? (stats.winner ? `Variant ${stats.winner}` : "Tie") : "TBD"}
+                      {stats.isSignificant
+                        ? stats.winner
+                          ? `Variant ${stats.winner}`
+                          : "Tie"
+                        : "TBD"}
                     </Text>
                   </Card>
                 </Grid>
@@ -119,7 +141,10 @@ export default function ABTestDetails() {
                 {stats.isSignificant && (
                   <Banner tone="success">
                     <Text as="p">
-                      Statistical significance achieved! Variant {stats.winner} is performing {Math.abs(parseFloat(stats.lift))}% {parseFloat(stats.lift) > 0 ? "better" : "worse"} than the other variant.
+                      Statistical significance achieved! Variant {stats.winner}{" "}
+                      is performing {Math.abs(parseFloat(stats.lift))}%{" "}
+                      {parseFloat(stats.lift) > 0 ? "better" : "worse"} than the
+                      other variant.
                     </Text>
                   </Banner>
                 )}
@@ -127,7 +152,8 @@ export default function ABTestDetails() {
                 {!stats.isSignificant && stats.sampleSize > 100 && (
                   <Banner tone="info">
                     <Text as="p">
-                      Test needs more data to reach statistical significance (95% confidence). Current confidence: {stats.confidence}%
+                      Test needs more data to reach statistical significance
+                      (95% confidence). Current confidence: {stats.confidence}%
                     </Text>
                   </Banner>
                 )}
@@ -144,13 +170,34 @@ export default function ABTestDetails() {
             <Card>
               <BlockStack gap="300">
                 <Text variant="headingMd">Variant Performance</Text>
-                
+
                 <DataTable
-                  columnContentTypes={["text", "numeric", "numeric", "numeric", "numeric", "text"]}
-                  headings={["Images", "Impressions", "ATC", "Purchases", "Revenue", "Preview"]}
+                  columnContentTypes={[
+                    "text",
+                    "numeric",
+                    "numeric",
+                    "numeric",
+                    "numeric",
+                    "text",
+                  ]}
+                  headings={[
+                    "Images",
+                    "Impressions",
+                    "ATC",
+                    "Purchases",
+                    "Revenue",
+                    "Preview",
+                  ]}
                   rows={[
                     [
-                      <div key="variant-a-images" style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                      <div
+                        key="variant-a-images"
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "12px",
+                        }}
+                      >
                         <InlineStack gap="200" wrap={false} align="center">
                           <Text variant="headingMd">
                             Variant A
@@ -159,29 +206,31 @@ export default function ABTestDetails() {
                             )}
                           </Text>
                           <InlineStack gap="100" wrap={false}>
-                            {variantAImages.slice(0, 5).map((url: string, index: number) => (
-                              <div
-                                key={index}
-                                style={{
-                                  width: "40px",
-                                  height: "40px",
-                                  borderRadius: "4px",
-                                  overflow: "hidden",
-                                  border: "1px solid #E1E3E5",
-                                  flexShrink: 0,
-                                }}
-                              >
-                                <img
-                                  src={url}
-                                  alt={`Variant A image ${index + 1}`}
+                            {variantAImages
+                              .slice(0, 5)
+                              .map((url: string, index: number) => (
+                                <div
+                                  key={index}
                                   style={{
-                                    width: "100%",
-                                    height: "100%",
-                                    objectFit: "cover",
+                                    width: "40px",
+                                    height: "40px",
+                                    borderRadius: "4px",
+                                    overflow: "hidden",
+                                    border: "1px solid #E1E3E5",
+                                    flexShrink: 0,
                                   }}
-                                />
-                              </div>
-                            ))}
+                                >
+                                  <img
+                                    src={url}
+                                    alt={`Variant A image ${index + 1}`}
+                                    style={{
+                                      width: "100%",
+                                      height: "100%",
+                                      objectFit: "cover",
+                                    }}
+                                  />
+                                </div>
+                              ))}
                             {variantAImages.length > 5 && (
                               <Text variant="bodySm" tone="subdued">
                                 +{variantAImages.length - 5}
@@ -197,13 +246,25 @@ export default function ABTestDetails() {
                       <Button
                         key="variant-a-preview"
                         size="micro"
-                        onClick={() => setPreviewVariant({ variant: "A", images: variantAImages })}
+                        onClick={() =>
+                          setPreviewVariant({
+                            variant: "A",
+                            images: variantAImages,
+                          })
+                        }
                       >
                         👁️ Preview
                       </Button>,
                     ],
                     [
-                      <div key="variant-b-images" style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                      <div
+                        key="variant-b-images"
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "12px",
+                        }}
+                      >
                         <InlineStack gap="200" wrap={false} align="center">
                           <Text variant="headingMd">
                             Variant B
@@ -212,29 +273,31 @@ export default function ABTestDetails() {
                             )}
                           </Text>
                           <InlineStack gap="100" wrap={false}>
-                            {variantBImages.slice(0, 5).map((url: string, index: number) => (
-                              <div
-                                key={index}
-                                style={{
-                                  width: "40px",
-                                  height: "40px",
-                                  borderRadius: "4px",
-                                  overflow: "hidden",
-                                  border: "1px solid #E1E3E5",
-                                  flexShrink: 0,
-                                }}
-                              >
-                                <img
-                                  src={url}
-                                  alt={`Variant B image ${index + 1}`}
+                            {variantBImages
+                              .slice(0, 5)
+                              .map((url: string, index: number) => (
+                                <div
+                                  key={index}
                                   style={{
-                                    width: "100%",
-                                    height: "100%",
-                                    objectFit: "cover",
+                                    width: "40px",
+                                    height: "40px",
+                                    borderRadius: "4px",
+                                    overflow: "hidden",
+                                    border: "1px solid #E1E3E5",
+                                    flexShrink: 0,
                                   }}
-                                />
-                              </div>
-                            ))}
+                                >
+                                  <img
+                                    src={url}
+                                    alt={`Variant B image ${index + 1}`}
+                                    style={{
+                                      width: "100%",
+                                      height: "100%",
+                                      objectFit: "cover",
+                                    }}
+                                  />
+                                </div>
+                              ))}
                             {variantBImages.length > 5 && (
                               <Text variant="bodySm" tone="subdued">
                                 +{variantBImages.length - 5}
@@ -250,7 +313,12 @@ export default function ABTestDetails() {
                       <Button
                         key="variant-b-preview"
                         size="micro"
-                        onClick={() => setPreviewVariant({ variant: "B", images: variantBImages })}
+                        onClick={() =>
+                          setPreviewVariant({
+                            variant: "B",
+                            images: variantBImages,
+                          })
+                        }
                       >
                         👁️ Preview
                       </Button>,
@@ -266,19 +334,31 @@ export default function ABTestDetails() {
                 <Text variant="headingMd">Test Timeline</Text>
                 <Grid columns={{ xs: 1, sm: 3 }}>
                   <BlockStack gap="100">
-                    <Text variant="bodyMd" tone="subdued">Created</Text>
-                    <Text variant="bodyMd">{new Date(abTest.createdAt).toLocaleDateString()}</Text>
+                    <Text variant="bodyMd" tone="subdued">
+                      Created
+                    </Text>
+                    <Text variant="bodyMd">
+                      {new Date(abTest.createdAt).toLocaleDateString()}
+                    </Text>
                   </BlockStack>
                   {abTest.startDate && (
                     <BlockStack gap="100">
-                      <Text variant="bodyMd" tone="subdued">Started</Text>
-                      <Text variant="bodyMd">{new Date(abTest.startDate).toLocaleDateString()}</Text>
+                      <Text variant="bodyMd" tone="subdued">
+                        Started
+                      </Text>
+                      <Text variant="bodyMd">
+                        {new Date(abTest.startDate).toLocaleDateString()}
+                      </Text>
                     </BlockStack>
                   )}
                   {abTest.endDate && (
                     <BlockStack gap="100">
-                      <Text variant="bodyMd" tone="subdued">Ended</Text>
-                      <Text variant="bodyMd">{new Date(abTest.endDate).toLocaleDateString()}</Text>
+                      <Text variant="bodyMd" tone="subdued">
+                        Ended
+                      </Text>
+                      <Text variant="bodyMd">
+                        {new Date(abTest.endDate).toLocaleDateString()}
+                      </Text>
                     </BlockStack>
                   )}
                 </Grid>
@@ -299,16 +379,18 @@ export default function ABTestDetails() {
           <Modal.Section>
             <BlockStack gap="400">
               <Text variant="headingMd" as="h3">
-                How your product would look with Variant {previewVariant.variant} images:
+                How your product would look with Variant{" "}
+                {previewVariant.variant} images:
               </Text>
-              
+
               {/* Product Mock-up */}
               <Card>
                 <BlockStack gap="400">
                   <Text variant="bodyMd" tone="subdued">
-                    Product ID: {abTest.productId.replace("gid://shopify/Product/", "")}
+                    Product ID:{" "}
+                    {abTest.productId.replace("gid://shopify/Product/", "")}
                   </Text>
-                  
+
                   {/* Main product image area */}
                   <div
                     style={{
@@ -341,11 +423,15 @@ export default function ABTestDetails() {
                         }}
                       />
                     </div>
-                    
+
                     {/* Image Gallery Thumbnails */}
                     {previewVariant.images.length > 1 && (
                       <div>
-                        <Text variant="bodySm" tone="subdued" alignment="center">
+                        <Text
+                          variant="bodySm"
+                          tone="subdued"
+                          alignment="center"
+                        >
                           Additional images:
                         </Text>
                         <div
@@ -357,29 +443,31 @@ export default function ABTestDetails() {
                             flexWrap: "wrap",
                           }}
                         >
-                          {previewVariant.images.slice(1, 6).map((url, index) => (
-                            <div
-                              key={index}
-                              style={{
-                                width: "60px",
-                                height: "60px",
-                                borderRadius: "6px",
-                                overflow: "hidden",
-                                border: "1px solid #E1E3E5",
-                                flexShrink: 0,
-                              }}
-                            >
-                              <img
-                                src={url}
-                                alt={`Variant ${previewVariant.variant} image ${index + 2}`}
+                          {previewVariant.images
+                            .slice(1, 6)
+                            .map((url, index) => (
+                              <div
+                                key={index}
                                 style={{
-                                  width: "100%",
-                                  height: "100%",
-                                  objectFit: "cover",
+                                  width: "60px",
+                                  height: "60px",
+                                  borderRadius: "6px",
+                                  overflow: "hidden",
+                                  border: "1px solid #E1E3E5",
+                                  flexShrink: 0,
                                 }}
-                              />
-                            </div>
-                          ))}
+                              >
+                                <img
+                                  src={url}
+                                  alt={`Variant ${previewVariant.variant} image ${index + 2}`}
+                                  style={{
+                                    width: "100%",
+                                    height: "100%",
+                                    objectFit: "cover",
+                                  }}
+                                />
+                              </div>
+                            ))}
                           {previewVariant.images.length > 6 && (
                             <div
                               style={{
@@ -402,20 +490,20 @@ export default function ABTestDetails() {
                       </div>
                     )}
                   </div>
-                  
+
                   {/* Product Page Simulation */}
                   <BlockStack gap="300">
                     <Text variant="headingLg" as="h2">
                       [Product Title]
                     </Text>
-                    <Text variant="bodyLg">
-                      $XX.XX
-                    </Text>
+                    <Text variant="bodyLg">$XX.XX</Text>
                     <Text variant="bodyMd" tone="subdued">
-                      This is how your product page would appear to customers seeing Variant {previewVariant.variant} images. 
-                      The primary image above would be the main product photo, with additional images available in the gallery.
+                      This is how your product page would appear to customers
+                      seeing Variant {previewVariant.variant} images. The
+                      primary image above would be the main product photo, with
+                      additional images available in the gallery.
                     </Text>
-                    
+
                     {/* Mock Add to Cart */}
                     <div style={{ marginTop: "16px" }}>
                       <Button variant="primary" size="large" disabled>
@@ -425,15 +513,19 @@ export default function ABTestDetails() {
                   </BlockStack>
                 </BlockStack>
               </Card>
-              
+
               {/* Variant Comparison */}
               <Banner tone="info">
                 <Text as="p">
-                  <strong>A/B Test Insight:</strong> This variant has {stats.variantA.impressions} impressions 
-                  with a {previewVariant.variant === "A" ? stats.variantA.ratePercent : stats.variantB.ratePercent}% conversion rate.
-                  {stats.isSignificant && stats.winner === previewVariant.variant && 
-                    " 🏆 This is the winning variant!"
-                  }
+                  <strong>A/B Test Insight:</strong> This variant has{" "}
+                  {stats.variantA.impressions} impressions with a{" "}
+                  {previewVariant.variant === "A"
+                    ? stats.variantA.ratePercent
+                    : stats.variantB.ratePercent}
+                  % conversion rate.
+                  {stats.isSignificant &&
+                    stats.winner === previewVariant.variant &&
+                    " 🏆 This is the winning variant!"}
                 </Text>
               </Banner>
             </BlockStack>

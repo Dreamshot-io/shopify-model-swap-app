@@ -45,7 +45,9 @@ export async function handleSaveToLibrary(
       savedToLibrary: false,
       duplicate: true,
     };
-    return json(duplicateResponse);
+    return json(duplicateResponse, {
+      headers: { "Content-Type": "application/json" },
+    });
   }
 
   libraryItems.push({ imageUrl, sourceUrl: sourceUrl || null });
@@ -73,7 +75,10 @@ export async function handleSaveToLibrary(
       ok: false,
       error: uErr[0].message,
     };
-    return json(errorResponse, { status: 400 });
+    return json(errorResponse, {
+      status: 400,
+      headers: { "Content-Type": "application/json" },
+    });
   }
 
   try {
@@ -92,7 +97,9 @@ export async function handleSaveToLibrary(
     ok: true,
     savedToLibrary: true,
   };
-  return json(successResponse);
+  return json(successResponse, {
+    headers: { "Content-Type": "application/json" },
+  });
 }
 
 export async function handleDeleteFromLibrary(
@@ -150,7 +157,10 @@ export async function handleDeleteFromLibrary(
       ok: false,
       error: uErr[0].message,
     };
-    return json(errorResponse, { status: 400 });
+    return json(errorResponse, {
+      status: 400,
+      headers: { "Content-Type": "application/json" },
+    });
   }
 
   try {
@@ -169,7 +179,9 @@ export async function handleDeleteFromLibrary(
     ok: true,
     deletedFromLibrary: true,
   };
-  return json(successResponse);
+  return json(successResponse, {
+    headers: { "Content-Type": "application/json" },
+  });
 }
 
 export async function handleUpload(
@@ -177,15 +189,29 @@ export async function handleUpload(
   admin: AdminApiContext,
   shop: string,
 ) {
+  console.log("[UPLOAD] Handler called - shop:", shop);
+
   const file = formData.get("file") as File;
   const productId = String(formData.get("productId") || "");
 
+  console.log("[UPLOAD] File info:", {
+    hasFile: !!file,
+    size: file?.size,
+    name: file?.name,
+    type: file?.type,
+    productId,
+  });
+
   if (!file || !file.size) {
+    console.log("[UPLOAD] Validation failed - no file provided");
     const errorResponse: ActionErrorResponse = {
       ok: false,
       error: "No file provided",
     };
-    return json(errorResponse, { status: 400 });
+    return json(errorResponse, {
+      status: 400,
+      headers: { "Content-Type": "application/json" },
+    });
   }
 
   try {
@@ -256,7 +282,10 @@ export async function handleUpload(
         ok: false,
         error: setJson.data.metafieldsSet.userErrors[0].message,
       };
-      return json(errorResponse, { status: 400 });
+      return json(errorResponse, {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
     }
 
     try {
@@ -278,13 +307,18 @@ export async function handleUpload(
       savedToLibrary: true,
       imageUrl: uploadedFile.url,
     };
-    return json(successResponse);
+    return json(successResponse, {
+      headers: { "Content-Type": "application/json" },
+    });
   } catch (error: any) {
     console.error("Upload failed:", error);
     const errorResponse: ActionErrorResponse = {
       ok: false,
       error: error.message || "Upload failed",
     };
-    return json(errorResponse, { status: 500 });
+    return json(errorResponse, {
+      status: 500,
+      headers: { "Content-Type": "application/json" },
+    });
   }
 }

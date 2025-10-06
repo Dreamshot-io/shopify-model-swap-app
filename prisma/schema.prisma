@@ -18,8 +18,8 @@ model ABTest {
   endDate       DateTime?
   createdAt     DateTime        @default(now())
   updatedAt     DateTime
-  ABTestEvent   ABTestEvent[]
-  ABTestVariant ABTestVariant[]
+  events        ABTestEvent[]
+  variants      ABTestVariant[]
 
   @@index([status, startDate])
   @@index([shop, productId])
