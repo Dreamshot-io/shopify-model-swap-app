@@ -2,7 +2,7 @@
 
 client_id = "a37f0ea132844ccc3c8e104205da4c41"
 name = "dreamshot-model-swap"
-application_url = "https://charming-heroic-vulture.ngrok-free.app"
+application_url = "https://app-dev.dreamshot.io"
 embedded = true
 handle = "dreamshot-model-swap"
 
@@ -13,7 +13,7 @@ automatically_update_urls_on_dev = false
 # Routes /apps/model-swap/* on storefront to app backend
 # IMPORTANT: prefix and subpath are IMMUTABLE after first install
 [app_proxy]
-url = "https://charming-heroic-vulture.ngrok-free.app"
+url = "https://app-dev.dreamshot.io"
 subpath = "model-swap"
 prefix = "apps"
 
@@ -37,7 +37,7 @@ api_version = "2025-07"
 scopes = "write_products,write_files"
 
 [auth]
-redirect_urls = ["https://charming-heroic-vulture.ngrok-free.app/auth/callback", "https://charming-heroic-vulture.ngrok-free.app/auth/shopify/callback", "https://charming-heroic-vulture.ngrok-free.app/api/auth/callback"]
+redirect_urls = ["https://app-dev.dreamshot.io/auth/callback", "https://app-dev.dreamshot.io/auth/shopify/callback", "https://app-dev.dreamshot.io/api/auth/callback"]
 
 [pos]
 embedded = false

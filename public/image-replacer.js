@@ -181,8 +181,21 @@
               img.loading = 'eager'; // Force immediate loading
             }
 
+            // Show the image
+            img.style.display = '';
+            if (img.parentElement) {
+              img.parentElement.style.display = '';
+            }
+
             processedImages.add(img);
             replaced++;
+          } else {
+            // Hide extra images beyond test variant count
+            img.style.display = 'none';
+            if (img.parentElement && img.parentElement.tagName !== 'BODY') {
+              img.parentElement.style.display = 'none';
+            }
+            processedImages.add(img);
           }
         });
       } catch (e) {
@@ -226,7 +239,18 @@
   // Fetch variant assignment from app proxy
   async function fetchVariant(productId, attempt = 1) {
     const sessionId = getSessionId();
-    const url = APP_PROXY_BASE + '/variant/' + encodeURIComponent(productId) + '?session=' + sessionId;
+    
+    // Check for forced variant in URL (for testing: ?variant=a or ?variant=b)
+    const urlParams = new URLSearchParams(window.location.search);
+    const forcedVariant = urlParams.get('variant');
+    
+    let url = APP_PROXY_BASE + '/variant/' + encodeURIComponent(productId) + '?session=' + sessionId;
+    
+    // Add forced variant parameter if present
+    if (forcedVariant && (forcedVariant.toLowerCase() === 'a' || forcedVariant.toLowerCase() === 'b')) {
+      url += '&force=' + forcedVariant.toUpperCase();
+      console.log('[A/B Test] 🔧 Forcing variant:', forcedVariant.toUpperCase());
+    }
 
     debugLog('Fetching variant from:', url, 'Attempt:', attempt);
 
