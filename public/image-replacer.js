@@ -18,6 +18,10 @@
   const MAX_RETRY_ATTEMPTS = 3;
   const RETRY_DELAY = 100;
 
+  // Re-entry guard to prevent infinite loops
+  let isReplacingImages = false;
+  const processedImageUrls = new Set(); // Track which image URLs we've already applied
+
   // Log script initialization
   console.log('[A/B Test] Script loaded and initialized', DEBUG_MODE ? '(debug mode ON)' : '');
 
@@ -90,125 +94,318 @@
     return null;
   }
 
-  // Replace images with multiple selector strategies
+  // Check if an image is visible (not hidden by CSS or dimensions)
+  function isImageVisible(img) {
+    if (!img || !img.offsetParent) return false; // Element is hidden
+
+    const style = window.getComputedStyle(img);
+    if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') {
+      return false;
+    }
+
+    // Check if image has dimensions
+    const rect = img.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return false;
+
+    return true;
+  }
+
+  // Score an image based on its likelihood of being a main product image
+  function scoreProductImage(img) {
+    let score = 0;
+
+    // Check if image is visible (critical)
+    if (!isImageVisible(img)) return -1000; // Heavily penalize hidden images
+
+    const rect = img.getBoundingClientRect();
+    const src = img.src || img.dataset.src || '';
+
+    // Size scoring (larger images are more likely to be main images)
+    const area = rect.width * rect.height;
+    score += Math.min(area / 1000, 500); // Cap at 500 points
+
+    // URL pattern scoring
+    if (src.includes('/products/') || src.includes('cdn.shopify.com')) score += 100;
+    if (src.includes('_grande') || src.includes('_large') || src.includes('_1024x')) score += 50;
+    if (src.includes('_thumb') || src.includes('_small') || src.includes('_icon')) score -= 100;
+
+    // Position scoring (images higher on page are more likely main images)
+    const scrollY = window.pageYOffset || document.documentElement.scrollTop;
+    const imageY = rect.top + scrollY;
+    if (imageY < 1000) score += 50; // Bonus for images near top
+
+    // Context scoring - check parent elements
+    let element = img;
+    for (let i = 0; i < 5 && element; i++) {
+      const classList = element.classList ? Array.from(element.classList).join(' ') : '';
+      const className = element.className || '';
+
+      // Positive signals
+      if (/product|gallery|media|featured|main|primary/i.test(className)) score += 30;
+      if (/slider|carousel|swiper|slick|flickity/i.test(className)) score += 20;
+
+      // Negative signals
+      if (/thumb|thumbnail|nav|navigation|breadcrumb|footer|header/i.test(className)) score -= 50;
+
+      element = element.parentElement;
+    }
+
+    // Check for data attributes
+    if (img.dataset.productImage || img.dataset.productFeaturedImage) score += 50;
+
+    debugLog('Image score:', score, 'src:', src.substring(0, 60), 'size:', rect.width, 'x', rect.height);
+
+    return score;
+  }
+
+  // Find the product gallery container
+  function findGalleryContainer() {
+    // Common gallery container selectors for different themes
+    const gallerySelectors = [
+      // Horizon theme
+      '.product__media-list',
+      '.product-media-gallery',
+      '.product__media-wrapper',
+
+      // Dawn theme
+      '.product__media-list',
+      '.product__media-wrapper',
+
+      // Debut theme
+      '.product-single__photos',
+      '.product__main-photos',
+
+      // Brooklyn theme
+      '.product__slides',
+
+      // Generic patterns
+      '.product-gallery',
+      '.product-images',
+      '.product-photos',
+      '[data-product-images]',
+      '[data-product-gallery]',
+      '.gallery',
+      '.image-gallery',
+    ];
+
+    // Try each selector
+    for (const selector of gallerySelectors) {
+      const container = document.querySelector(selector);
+      if (container) {
+        const images = container.querySelectorAll('img');
+        if (images.length >= 2) { // Must have at least 2 images to be a gallery
+          debugLog('Found gallery container:', selector, 'with', images.length, 'images');
+          return { container, images: Array.from(images) };
+        }
+      }
+    }
+
+    // Fallback: Find element containing multiple product images
+    const allImages = Array.from(document.querySelectorAll('img'));
+    const productImages = allImages.filter(img => {
+      const src = img.src || img.dataset.src || '';
+      return src.includes('/products/') || src.includes('cdn.shopify.com');
+    });
+
+    if (productImages.length >= 2) {
+      // Find common parent
+      let commonParent = productImages[0].parentElement;
+      let depth = 0;
+      const maxDepth = 5;
+
+      while (commonParent && depth < maxDepth) {
+        const imagesInParent = commonParent.querySelectorAll('img');
+        if (imagesInParent.length >= productImages.length * 0.8) {
+          debugLog('Found common parent container with', imagesInParent.length, 'images');
+          return { container: commonParent, images: Array.from(imagesInParent) };
+        }
+        commonParent = commonParent.parentElement;
+        depth++;
+      }
+    }
+
+    debugLog('No gallery container found');
+    return null;
+  }
+
+  // Find all product images using intelligent detection
+  function findProductImages() {
+    // Get all images on the page
+    const allImages = Array.from(document.querySelectorAll('img'));
+
+    // Score and sort images
+    const scoredImages = allImages
+      .map(img => ({ img, score: scoreProductImage(img) }))
+      .filter(item => item.score > 0) // Only positive scores
+      .sort((a, b) => b.score - a.score); // Highest score first
+
+    debugLog('Found', scoredImages.length, 'potential product images');
+
+    return scoredImages.map(item => item.img);
+  }
+
+  // Hide an image and its container
+  function hideImage(img) {
+    if (!img) return;
+
+    // Mark as hidden to prevent re-processing
+    img.dataset.abTestHidden = 'true';
+    img.style.display = 'none';
+    img.style.visibility = 'hidden';
+
+    // Also hide parent container if it's a wrapper
+    let parent = img.parentElement;
+    let depth = 0;
+    while (parent && depth < 3) {
+      const classList = parent.className || '';
+
+      // Only hide if this looks like an image wrapper (not the whole gallery)
+      if (/media-item|slide|photo-item|image-item|gallery-item/i.test(classList)) {
+        parent.style.display = 'none';
+        parent.dataset.abTestHidden = 'true';
+        debugLog('Hiding parent container:', classList);
+        break;
+      }
+
+      parent = parent.parentElement;
+      depth++;
+    }
+  }
+
+  // Replace a single image
+  function replaceImageSrc(img, newSrc) {
+    if (!img) return;
+
+    // Store original source
+    if (!img.dataset.originalSrc) {
+      img.dataset.originalSrc = img.src;
+    }
+
+    // Replace image source
+    img.src = newSrc;
+
+    // Clear srcset to prevent browser from loading original responsive images
+    if (img.srcset) {
+      img.dataset.originalSrcset = img.srcset;
+      img.srcset = '';
+    }
+
+    // Handle lazy loading attributes
+    if (img.dataset.src) {
+      img.dataset.originalDataSrc = img.dataset.src;
+      img.dataset.src = newSrc;
+    }
+
+    if (img.loading === 'lazy') {
+      img.loading = 'eager'; // Force immediate loading
+    }
+
+    // Ensure image is visible
+    img.style.display = '';
+    img.style.visibility = '';
+    img.dataset.abTestReplaced = 'true';
+  }
+
+  // Replace images with intelligent detection + fallback selectors
   function replaceImages(imageUrls) {
     if (!imageUrls || !imageUrls.length) return false;
 
-    // Comprehensive list of selectors for different themes
-    const selectors = [
-      // Dawn theme (default Shopify theme)
-      '.product__media img',
-      '.product__media-image-wrapper img',
-      '.product-media-container img',
-
-      // Debut theme (legacy)
-      '.product-single__photo img',
-      '.product-single__photo-wrapper img',
-      '.product__main-photos img',
-
-      // Brooklyn theme (OS 1.0)
-      '.product__slides img',
-      '.product__photo img',
-
-      // Common custom theme patterns
-      '.product-image img',
-      '.product-images img',
-      '.product-photo img',
-      '.product-photos img',
-      '.product-gallery img',
-      '.product-slider img',
-      '.main-product-image img',
-
-      // Data attribute selectors
-      '[data-product-image]',
-      '[data-product-featured-image]',
-      '[data-image-id] img',
-
-      // Generic product selectors
-      '.product img[src*="/products/"]',
-      '.product-wrapper img',
-      '.product-container img',
-
-      // Slick slider
-      '.slick-slide img',
-      '.slick-track img',
-
-      // Swiper
-      '.swiper-slide img',
-
-      // Flickity
-      '.flickity-viewport img',
-
-      // Generic gallery selectors
-      '.gallery img',
-      '.image-gallery img',
-      '.product-thumbnails img'
-    ];
-
-    let replaced = 0;
-    const processedImages = new Set();
-
-    // Try each selector strategy
-    selectors.forEach(selector => {
-      try {
-        const images = document.querySelectorAll(selector);
-        images.forEach((img, index) => {
-          // Skip if already processed
-          if (processedImages.has(img)) return;
-
-          if (index < imageUrls.length) {
-            // Store original source
-            if (!img.dataset.originalSrc) {
-              img.dataset.originalSrc = img.src;
-            }
-
-            // Replace image source
-            img.src = imageUrls[index];
-
-            // Clear srcset to prevent browser from loading original responsive images
-            if (img.srcset) {
-              img.dataset.originalSrcset = img.srcset;
-              img.srcset = '';
-            }
-
-            // Handle lazy loading attributes
-            if (img.dataset.src) {
-              img.dataset.originalDataSrc = img.dataset.src;
-              img.dataset.src = imageUrls[index];
-            }
-
-            if (img.loading === 'lazy') {
-              img.loading = 'eager'; // Force immediate loading
-            }
-
-            // Show the image
-            img.style.display = '';
-            if (img.parentElement) {
-              img.parentElement.style.display = '';
-            }
-
-            processedImages.add(img);
-            replaced++;
-          } else {
-            // Hide extra images beyond test variant count
-            img.style.display = 'none';
-            if (img.parentElement && img.parentElement.tagName !== 'BODY') {
-              img.parentElement.style.display = 'none';
-            }
-            processedImages.add(img);
-          }
-        });
-      } catch (e) {
-        // Silently handle selector errors
-      }
-    });
-
-    // Handle lazy-loaded images that might appear later
-    if (replaced > 0) {
-      observeLazyImages(imageUrls);
+    // Re-entry guard: prevent infinite loops from MutationObserver
+    if (isReplacingImages) {
+      debugLog('Skipping replaceImages - already in progress');
+      return false;
     }
 
-    return replaced > 0;
+    // Check if we've already processed these exact URLs
+    const urlKey = imageUrls.join('|');
+    if (processedImageUrls.has(urlKey)) {
+      debugLog('Skipping replaceImages - already processed these URLs');
+      return true; // Return true since we successfully processed them before
+    }
+
+    isReplacingImages = true;
+    processedImageUrls.add(urlKey);
+
+    try {
+      let replaced = 0;
+      let hidden = 0;
+      let visibleReplaced = 0;
+
+      // PHASE 1: Try to find product gallery container (theme-agnostic approach)
+      const gallery = findGalleryContainer();
+
+      if (gallery && gallery.images.length > 0) {
+        debugLog('Using gallery-based approach with', gallery.images.length, 'images');
+
+        // Filter to only visible images
+        const visibleImages = gallery.images.filter(img => isImageVisible(img));
+        debugLog('Visible images in gallery:', visibleImages.length);
+
+        // PHASE 2: Replace first N images (where N = imageUrls.length)
+        visibleImages.forEach((img, index) => {
+          if (index < imageUrls.length) {
+            const wasVisible = isImageVisible(img);
+            replaceImageSrc(img, imageUrls[index]);
+            replaced++;
+            if (wasVisible) visibleReplaced++;
+            debugLog('Replaced gallery image', index, 'visible:', wasVisible);
+          } else {
+            // PHASE 3: Hide remaining images
+            hideImage(img);
+            hidden++;
+            debugLog('Hiding extra gallery image', index);
+          }
+        });
+
+        // Also handle hidden images that might become visible later
+        const hiddenImages = gallery.images.filter(img => !isImageVisible(img));
+        hiddenImages.forEach(img => {
+          if (!img.dataset.abTestReplaced) {
+            hideImage(img);
+          }
+        });
+
+      } else {
+        // Fallback: Use intelligent scoring
+        debugLog('Using intelligent scoring approach (no gallery container found)');
+        const productImages = findProductImages();
+
+        // Replace first N images
+        productImages.forEach((img, index) => {
+          if (index < imageUrls.length) {
+            const wasVisible = isImageVisible(img);
+            replaceImageSrc(img, imageUrls[index]);
+            replaced++;
+            if (wasVisible) visibleReplaced++;
+            debugLog('Replaced image (scoring)', index, 'visible:', wasVisible);
+          } else {
+            // Hide extra images beyond variant count
+            hideImage(img);
+            hidden++;
+            debugLog('Hiding extra image (scoring)', index);
+          }
+        });
+      }
+
+      // Report results
+      console.log('[A/B Test] Replacement summary:', {
+        replaced: replaced,
+        visible: visibleReplaced,
+        hidden: hidden,
+        expected: imageUrls.length
+      });
+
+      // Handle lazy-loaded images that might appear later
+      if (replaced > 0) {
+        observeLazyImages(imageUrls);
+      }
+
+      // Only consider it successful if we replaced visible images
+      return visibleReplaced > 0;
+    } finally {
+      // Always reset the flag, even if an error occurs
+      isReplacingImages = false;
+    }
   }
 
   // Observe for lazy-loaded images
@@ -216,22 +413,55 @@
     if (!window.MutationObserver) return;
 
     let observerTimeout;
+    let triggerCount = 0;
+    const MAX_TRIGGERS = 3; // Limit number of times observer can trigger
+
     const observer = new MutationObserver(function(mutations) {
+      // Check if we've triggered too many times
+      if (triggerCount >= MAX_TRIGGERS) {
+        debugLog('Observer reached max triggers, disconnecting');
+        observer.disconnect();
+        return;
+      }
+
+      // Only trigger if new <img> elements were actually added
+      let hasNewImages = false;
+      for (const mutation of mutations) {
+        if (mutation.type === 'childList') {
+          for (const node of mutation.addedNodes) {
+            if (node.tagName === 'IMG' || (node.querySelectorAll && node.querySelectorAll('img').length > 0)) {
+              hasNewImages = true;
+              break;
+            }
+          }
+        }
+        if (hasNewImages) break;
+      }
+
+      if (!hasNewImages) {
+        debugLog('No new images detected, skipping');
+        return;
+      }
+
+      triggerCount++;
+      debugLog('Observer detected new images, trigger count:', triggerCount);
+
       clearTimeout(observerTimeout);
       observerTimeout = setTimeout(function() {
         replaceImages(imageUrls);
-      }, 50);
+      }, 100);
     });
 
-    // Observe for a limited time (5 seconds)
+    // Only watch for new child elements, NOT attribute changes
+    // This prevents triggering when we modify src attributes
     observer.observe(document.body, {
       childList: true,
-      subtree: true,
-      attributes: true,
-      attributeFilter: ['src', 'data-src']
+      subtree: true
     });
 
+    // Disconnect after 5 seconds
     setTimeout(function() {
+      debugLog('Observer timeout reached, disconnecting');
       observer.disconnect();
     }, 5000);
   }
@@ -316,9 +546,11 @@
             productId: productId
           }));
 
-          console.log('[A/B Test] ✅ Images replaced successfully');
+          console.log('[A/B Test] ✅ Visible images replaced successfully');
         } else {
-          console.warn('[A/B Test] ⚠️ Failed to replace images - selectors may not match theme');
+          console.warn('[A/B Test] ⚠️ Failed to replace visible images');
+          console.warn('[A/B Test] This may indicate theme compatibility issues');
+          console.warn('[A/B Test] Enable debug mode with ?ab_debug=true for detailed logs');
           debugLog('Image URLs attempted:', data.imageUrls);
         }
       } else {
