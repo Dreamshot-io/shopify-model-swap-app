@@ -6,17 +6,20 @@ import { Page, Text, Card, BlockStack, Banner, Modal, InlineGrid, InlineStack, T
 import { TitleBar, useAppBridge } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
-import {
-  generateAIImage,
-  checkAIProviderHealth,
-} from "../services/ai-providers.server";
-import { uploadImageToShopify } from "../services/file-upload.server";
+import { checkAIProviderHealth } from "../services/ai-providers.server";
 import { ImagePreviewModal } from "../features/ai-studio/components/ImagePreviewModal";
-import { ImageSelector } from "../features/ai-studio/components/ImageSelector";
-import { ModelPromptForm } from "../features/ai-studio/components/ModelPromptForm";
-import { GeneratedImagesGrid } from "../features/ai-studio/components/GeneratedImagesGrid";
-import { LibraryGrid } from "../features/ai-studio/components/LibraryGrid";
-import { ImageUploader } from "../features/ai-studio/components/ImageUploader";
+import { ImageGenerationHub } from "../features/ai-studio/components/ImageGenerationHub";
+import { ProductGallery } from "../features/ai-studio/components/ProductGallery";
+import { handleGenerate } from "../features/ai-studio/handlers/generation.server";
+import {
+  handleSaveToLibrary,
+  handleDeleteFromLibrary,
+  handleUpload,
+} from "../features/ai-studio/handlers/library.server";
+import {
+  handlePublish,
+  handleDeleteFromProduct,
+} from "../features/ai-studio/handlers/product-media.server";
 import type {
   LibraryItem,
   GeneratedImage,
@@ -132,348 +135,42 @@ export const action = async ({
 }: ActionFunctionArgs): Promise<Response> => {
   try {
     const formData = await request.formData();
-    const sourceImageUrl = String(formData.get("sourceImageUrl") || "");
-    const prompt = String(formData.get("prompt") || "");
-    const productId = String(formData.get("productId") || "");
     const intent = String(formData.get("intent") || "generate");
-    const { session } = await authenticate.admin(request);
+    const productId = String(formData.get("productId") || "");
+    const { admin, session } = await authenticate.admin(request);
 
-    // Validate only for generation
-    if (intent === "generate" && (!sourceImageUrl || !prompt)) {
-      const errorResponse: ActionErrorResponse = {
-        ok: false,
-        error: "Missing sourceImageUrl or prompt",
-      };
-      return json(errorResponse, { status: 400 });
-    }
+    // Route to appropriate handler based on intent
+    switch (intent) {
+      case "publish":
+        return handlePublish(formData, admin, session.shop);
 
-    if (intent === "publish") {
-      const imageUrl = String(formData.get("imageUrl") || "");
-      const { admin } = await authenticate.admin(request);
-      const mutation = `
-      mutation ProductCreateMedia($productId: ID!, $media: [CreateMediaInput!]!) {
-        productCreateMedia(productId: $productId, media: $media) {
-          media { id }
-          mediaUserErrors { field message code }
-        }
-      }
-    `;
-      const resp = await admin.graphql(mutation, {
-        variables: {
-          productId,
-          media: [
-            {
-              originalSource: imageUrl,
-              mediaContentType: "IMAGE",
-              alt: "AI generated image",
-            },
-          ],
-        },
-      });
-      const jsonRes = await resp.json();
-      const errors = jsonRes?.data?.productCreateMedia?.mediaUserErrors;
-      if (errors && errors.length) {
-        const errorResponse: ActionErrorResponse = {
-          ok: false,
-          error: errors[0].message,
-          debug: errors,
-        };
-        return json(errorResponse, { status: 400 });
-      }
-      // Log publish event
-      try {
-        await (db as any).metricEvent.create({
-          data: {
-            shop: session.shop,
-            type: "PUBLISHED",
-            productId,
-            imageUrl,
-          },
-        });
-      } catch {}
-      const successResponse: PublishImageResponse = {
-        ok: true,
-        published: true,
-      };
-      return json(successResponse);
-    }
+      case "deleteFromProduct":
+        return handleDeleteFromProduct(formData, admin, session.shop);
 
-    if (intent === "saveToLibrary") {
-      const imageUrl = String(formData.get("imageUrl") || "");
-      const sourceUrl = String(formData.get("sourceUrl") || "");
-      const { admin } = await authenticate.admin(request);
-      // Read existing metafield
-      const query = `#graphql
-      query GetLibrary($id: ID!) {
-        product(id: $id) {
-          id
-          metafield(namespace: "dreamshot", key: "ai_library") { id value }
-        }
-      }
-    `;
-      const qRes = await admin.graphql(query, { variables: { id: productId } });
-      const qJson = await qRes.json();
-      const current = qJson?.data?.product?.metafield?.value;
-      let libraryItems: Array<
-        string | { imageUrl: string; sourceUrl?: string | null }
-      > = [];
-      try {
-        libraryItems = current ? JSON.parse(current) : [];
-      } catch {
-        libraryItems = [];
-      }
-      // Prevent duplicates
-      const exists = libraryItems.some((item: any) =>
-        typeof item === "string"
-          ? item === imageUrl
-          : item?.imageUrl === imageUrl,
-      );
-      if (exists) {
-        const duplicateResponse: LibraryActionResponse = {
-          ok: true,
-          savedToLibrary: false,
-          duplicate: true,
-        };
-        return json(duplicateResponse);
-      }
-      // Store as an object so we can preserve the original image for comparison
-      libraryItems.push({ imageUrl, sourceUrl: sourceUrl || null });
+      case "saveToLibrary":
+        return handleSaveToLibrary(formData, admin, session.shop);
 
-      const setMutation = `#graphql
-      mutation SetLibrary($ownerId: ID!, $value: String!) {
-        metafieldsSet(metafields: [{ ownerId: $ownerId, namespace: "dreamshot", key: "ai_library", type: "json", value: $value }]) {
-          userErrors { field message }
-        }
-      }
-    `;
-      const sRes = await admin.graphql(setMutation, {
-        variables: { ownerId: productId, value: JSON.stringify(libraryItems) },
-      });
-      const sJson = await sRes.json();
-      const uErr = sJson?.data?.metafieldsSet?.userErrors;
-      if (uErr && uErr.length) {
-        const errorResponse: ActionErrorResponse = {
-          ok: false,
-          error: uErr[0].message,
-        };
-        return json(errorResponse, { status: 400 });
-      }
-      // Log library saved event
-      try {
-        await (db as any).metricEvent.create({
-          data: {
-            shop: session.shop,
-            type: "LIBRARY_SAVED",
-            productId,
-            imageUrl,
-          },
-        });
-      } catch {}
-      const successResponse: LibraryActionResponse = {
-        ok: true,
-        savedToLibrary: true,
-      };
-      return json(successResponse);
-    }
+      case "deleteFromLibrary":
+        return handleDeleteFromLibrary(formData, admin, session.shop);
 
-    if (intent === "deleteFromLibrary") {
-      const imageUrl = String(formData.get("imageUrl") || "");
-      const { admin } = await authenticate.admin(request);
-      const query = `#graphql
-      query GetLibrary($id: ID!) {
-        product(id: $id) {
-          id
-          metafield(namespace: "dreamshot", key: "ai_library") { id value }
-        }
-      }
-    `;
-      const qRes = await admin.graphql(query, { variables: { id: productId } });
-      const qJson = await qRes.json();
-      const current = qJson?.data?.product?.metafield?.value;
-      let libraryItems: Array<
-        string | { imageUrl: string; sourceUrl?: string | null }
-      > = [];
-      try {
-        libraryItems = current ? JSON.parse(current) : [];
-      } catch {
-        libraryItems = [];
-      }
+      case "upload":
+        return handleUpload(formData, admin, session.shop);
 
-      const filtered = libraryItems.filter((item: any) =>
-        typeof item === "string"
-          ? item !== imageUrl
-          : item?.imageUrl !== imageUrl,
-      );
-
-      const setMutation = `#graphql
-      mutation SetLibrary($ownerId: ID!, $value: String!) {
-        metafieldsSet(metafields: [{ ownerId: $ownerId, namespace: "dreamshot", key: "ai_library", type: "json", value: $value }]) {
-          userErrors { field message }
-        }
-      }
-    `;
-      const sRes = await admin.graphql(setMutation, {
-        variables: { ownerId: productId, value: JSON.stringify(filtered) },
-      });
-      const sJson = await sRes.json();
-      const uErr = sJson?.data?.metafieldsSet?.userErrors;
-      if (uErr && uErr.length) {
-        const errorResponse: ActionErrorResponse = {
-          ok: false,
-          error: uErr[0].message,
-        };
-        return json(errorResponse, { status: 400 });
-      }
-      // Log library item deleted event
-      try {
-        await (db as any).metricEvent.create({
-          data: {
-            shop: session.shop,
-            type: "LIBRARY_DELETED",
-            productId,
-            imageUrl,
-          },
-        });
-      } catch {}
-      const successResponse: LibraryActionResponse = {
-        ok: true,
-        deletedFromLibrary: true,
-      };
-      return json(successResponse);
-    }
-
-    // NEW: Upload intent handler
-    if (intent === "upload") {
-      const file = formData.get("file") as File;
-      const { admin } = await authenticate.admin(request);
-
-      if (!file || !file.size) {
-        const errorResponse: ActionErrorResponse = {
-          ok: false,
-          error: "No file provided",
-        };
-        return json(errorResponse, { status: 400 });
-      }
-
-      try {
-        // Upload to Shopify using staged upload
-        const uploadedFile = await uploadImageToShopify(
-          admin,
-          file,
-          `AI Studio upload - ${new Date().toISOString()}`,
+      case "createABTest": {
+        const name = String(formData.get("name") || "");
+        const variantAImages = String(formData.get("variantAImages") || "");
+        const variantBImages = String(formData.get("variantBImages") || "");
+        const trafficSplit = parseInt(
+          String(formData.get("trafficSplit") || "50"),
         );
 
-        // Add to product's AI library metafield
-        const query = `#graphql
-          query GetLibrary($id: ID!) {
-            product(id: $id) {
-              id
-              metafield(namespace: "dreamshot", key: "ai_library") {
-                id
-                value
-              }
-            }
-          }
-        `;
-
-        const qRes = await admin.graphql(query, {
-          variables: { id: productId },
-        });
-        const qJson = await qRes.json();
-
-        const current = qJson?.data?.product?.metafield?.value;
-        let libraryItems: Array<
-          string | { imageUrl: string; sourceUrl?: string | null }
-        > = [];
-        try {
-          libraryItems = current ? JSON.parse(current) : [];
-        } catch {
-          libraryItems = [];
+        if (!name || !productId || !variantAImages || !variantBImages) {
+          return json(
+            { ok: false, error: "Missing required fields" },
+            { status: 400 },
+          );
         }
 
-        // Add uploaded image to library
-        libraryItems.push({
-          imageUrl: uploadedFile.url,
-          sourceUrl: null,
-        });
-
-        // Save updated library
-        const setMutation = `#graphql
-          mutation SetLibrary($ownerId: ID!, $value: String!) {
-            metafieldsSet(metafields: [{
-              ownerId: $ownerId,
-              namespace: "dreamshot",
-              key: "ai_library",
-              type: "json",
-              value: $value
-            }]) {
-              metafields { id }
-              userErrors { field message }
-            }
-          }
-        `;
-
-        const setRes = await admin.graphql(setMutation, {
-          variables: {
-            ownerId: productId,
-            value: JSON.stringify(libraryItems),
-          },
-        });
-
-        const setJson = await setRes.json();
-
-        if (setJson?.data?.metafieldsSet?.userErrors?.length > 0) {
-          const errorResponse: ActionErrorResponse = {
-            ok: false,
-            error: setJson.data.metafieldsSet.userErrors[0].message,
-          };
-          return json(errorResponse, { status: 400 });
-        }
-
-        // Log upload event
-        try {
-          await (db as any).metricEvent.create({
-            data: {
-              shop: session.shop,
-              type: "UPLOADED",
-              productId,
-              imageUrl: uploadedFile.url,
-            },
-          });
-        } catch (loggingError) {
-          console.warn("Failed to log upload event:", loggingError);
-        }
-
-        const successResponse: LibraryActionResponse = {
-          ok: true,
-          savedToLibrary: true,
-        };
-        return json(successResponse);
-      } catch (error) {
-        console.error("Upload failed:", error);
-        const errorResponse: ActionErrorResponse = {
-          ok: false,
-          error: error instanceof Error ? error.message : "Upload failed",
-        };
-        return json(errorResponse, { status: 500 });
-      }
-    }
-
-    // A/B Test management intents
-    if (intent === "createABTest") {
-      const name = String(formData.get("name") || "");
-      const variantAImages = String(formData.get("variantAImages") || "");
-      const variantBImages = String(formData.get("variantBImages") || "");
-      const trafficSplit = parseInt(String(formData.get("trafficSplit") || "50"));
-
-      if (!name || !productId || !variantAImages || !variantBImages) {
-        return json(
-          { ok: false, error: "Missing required fields" },
-          { status: 400 }
-        );
-      }
-
-      try {
         const test = await db.aBTest.create({
           data: {
             shop: session.shop,
@@ -483,138 +180,63 @@ export const action = async ({
             trafficSplit,
             variants: {
               create: [
-                {
-                  variant: "A",
-                  imageUrls: variantAImages,
-                },
-                {
-                  variant: "B",
-                  imageUrls: variantBImages,
-                }
-              ]
-            }
+                { variant: "A", imageUrls: variantAImages },
+                { variant: "B", imageUrls: variantBImages },
+              ],
+            },
           },
-          include: {
-            variants: true,
-          },
+          include: { variants: true },
         });
 
         return json({ ok: true, test });
-      } catch (error) {
-        console.error("Failed to create A/B test:", error);
-        return json(
-          { ok: false, error: "Failed to create A/B test" },
-          { status: 500 }
-        );
-      }
-    }
-
-    if (intent === "startABTest" || intent === "stopABTest" || intent === "deleteABTest") {
-      const testId = String(formData.get("testId") || "");
-
-      if (!testId) {
-        return json(
-          { ok: false, error: "Missing test ID" },
-          { status: 400 }
-        );
       }
 
-      try {
+      case "startABTest":
+      case "stopABTest":
+      case "deleteABTest": {
+        const testId = String(formData.get("testId") || "");
+        if (!testId) {
+          return json(
+            { ok: false, error: "Missing test ID" },
+            { status: 400 },
+          );
+        }
+
         if (intent === "startABTest") {
           const updatedTest = await db.aBTest.update({
             where: { id: testId },
-            data: {
-              status: "RUNNING",
-              startDate: new Date(),
-            },
+            data: { status: "RUNNING", startDate: new Date() },
           });
           return json({ ok: true, test: updatedTest });
         } else if (intent === "stopABTest") {
           const updatedTest = await db.aBTest.update({
             where: { id: testId },
-            data: {
-              status: "COMPLETED",
-              endDate: new Date(),
-            },
+            data: { status: "COMPLETED", endDate: new Date() },
           });
           return json({ ok: true, test: updatedTest });
-        } else if (intent === "deleteABTest") {
-          await db.aBTest.delete({
-            where: { id: testId },
-          });
+        } else {
+          await db.aBTest.delete({ where: { id: testId } });
           return json({ ok: true });
         }
-      } catch (error) {
-        console.error(`Failed to ${intent}:`, error);
-        return json(
-          { ok: false, error: `Failed to ${intent}` },
-          { status: 500 }
-        );
-      }
-    }
-
-    // Health check for AI providers
-    const healthCheck = checkAIProviderHealth();
-    if (!healthCheck.healthy) {
-      const errorResponse: ActionErrorResponse = {
-        ok: false,
-        error: `AI service unavailable: ${healthCheck.error}`,
-      };
-      return json(errorResponse, { status: 503 });
-    }
-
-    // intent === "generate"
-    const r2Url = sourceImageUrl; // use public Shopify CDN
-
-    try {
-      const result = await generateAIImage({
-        sourceImageUrl: r2Url,
-        prompt,
-        productId,
-        modelType: "swap",
-      });
-
-      // Log generated image event
-      try {
-        await (db as any).metricEvent.create({
-          data: {
-            shop: session.shop,
-            type: "GENERATED",
-            productId,
-            imageUrl: result.imageUrl,
-          },
-        });
-      } catch (loggingError) {
-        console.warn("Failed to log metric event:", loggingError);
-        // Continue execution - logging failure shouldn't break the flow
       }
 
-      const successResponse: GenerateImageResponse = {
-        ok: true,
-        result: { ...result, originalSource: r2Url },
-        debug: { r2Url, prompt },
-      };
-      return json(successResponse);
-    } catch (error: any) {
-      console.error(`[action] AI generation error:`, {
-        error: error.message,
-        stack: error.stack,
-        sourceImageUrl: r2Url,
-        prompt,
-        productId,
-      });
+      case "generate":
+      default: {
+        const healthCheck = checkAIProviderHealth();
+        if (!healthCheck.healthy) {
+          const errorResponse: ActionErrorResponse = {
+            ok: false,
+            error: `AI service unavailable: ${healthCheck.error}`,
+          };
+          return json(errorResponse, { status: 503 });
+        }
 
-      const errorResponse: ActionErrorResponse = {
-        ok: false,
-        error: error?.message || "AI image generation failed",
-        debug: { r2Url, prompt, errorType: error.constructor.name },
-      };
-      return json(errorResponse, { status: 500 });
+        return handleGenerate(formData, session.shop);
+      }
     }
   } catch (globalError: any) {
     console.error("[action] Unexpected error:", globalError);
 
-    // Ensure we always return JSON, never HTML
     const errorResponse: ActionErrorResponse = {
       ok: false,
       error: "An unexpected error occurred. Please try again.",
@@ -1153,17 +775,7 @@ export default function AIStudio() {
           />
         )}
 
-        {/* A/B Testing Section - Now at the top */}
-        <ABTestManager
-          productId={product?.id || ""}
-          availableImages={getAllImages()}
-          existingTests={abTests || []}
-          activeTest={activeTest}
-          onTestCreate={handleABTestCreate}
-          onTestAction={handleABTestAction}
-          isCreating={false}
-        />
-        {/* Delete confirmation modal */}
+        {/* Delete confirmation modal for library items */}
         {libraryItemToDelete && (
           <Modal
             open
@@ -1196,41 +808,51 @@ export default function AIStudio() {
           </Modal>
         )}
 
-        {/* AI Image Generation Section */}
-        <Card>
-          <BlockStack gap="500">
-            <Text as="h2" variant="headingLg">
-              AI Image Generation
-            </Text>
+        {/* AREA 1: A/B Test Results - Unchanged */}
+        <ABTestManager
+          productId={product?.id || ""}
+          availableImages={getAllImages()}
+          existingTests={abTests || []}
+          activeTest={activeTest}
+          onTestCreate={handleABTestCreate}
+          onTestAction={handleABTestAction}
+          isCreating={false}
+        />
 
-            {/* Images in horizontal row at top */}
-            <ImageSelector
-              media={product.media?.nodes || []}
-              libraryItems={libraryItems}
-              generatedImages={generatedImages}
-              selectedImages={selectedImages}
-              onSelect={handleImageSelect}
-              onClearSelection={handleClearSelection}
-            />
+        {/* AREA 2: Product Gallery - Shows both published and library images */}
+        <ProductGallery
+          images={product.media?.nodes || []}
+          libraryItems={libraryItems}
+          onDelete={(mediaId) => {
+            const fd = new FormData();
+            fd.set("intent", "deleteFromProduct");
+            fd.set("mediaId", mediaId);
+            fd.set("productId", product?.id || "");
+            setPendingAction("deleteFromProduct");
+            fetcher.submit(fd, { method: "post" });
+          }}
+          onPublishFromLibrary={(url) => handlePublishFromLibrary(url)}
+          onRemoveFromLibrary={(url) => {
+            setLibraryItemToDelete(url);
+          }}
+          isDeleting={pendingAction === "deleteFromProduct"}
+        />
 
-            {/* Model prompt form below - full width */}
-            <ModelPromptForm
-              disabled={selectedImages.length === 0}
-              selectedImageCount={selectedImages.length}
-              batchProcessingState={batchProcessingState}
-              onGenerate={handleGenerate}
-            />
-          </BlockStack>
-        </Card>
-
-        <GeneratedImagesGrid
-          images={generatedImages}
+        {/* AREA 3: Image Generation Hub - New */}
+        <ImageGenerationHub
+          media={product.media?.nodes || []}
+          selectedImages={selectedImages}
+          generatedImages={generatedImages}
+          libraryItems={libraryItems}
+          batchProcessingState={batchProcessingState}
+          onImageSelect={handleImageSelect}
+          onClearSelection={handleClearSelection}
+          onGenerate={handleGenerate}
           onPublish={(img) => handlePublishImage(img)}
           onSaveToLibrary={(img) => {
             const fd = new FormData();
             fd.set("intent", "saveToLibrary");
             fd.set("imageUrl", img.imageUrl);
-            // Use the source image from metadata if available
             const sourceUrl =
               img.metadata?.sourceImage?.url ||
               (selectedImages.length > 0 ? selectedImages[0].url : "");
@@ -1241,56 +863,67 @@ export default function AIStudio() {
           }}
           onPreview={(img) => {
             setPreviewImage(img.imageUrl);
-            // Use the source image from metadata if available
             const baseUrl =
               img.metadata?.sourceImage?.url ||
               (selectedImages.length > 0 ? selectedImages[0].url : null);
             setPreviewBase(baseUrl);
           }}
-          isBusy={
-            pendingAction === "publish" || pendingAction === "saveToLibrary"
-          }
-        />
-
-        <LibraryGrid
-          libraryItems={libraryItems}
-          onPublish={(url) => handlePublishFromLibrary(url)}
-          onPreview={(url, base) => {
+          onPublishFromLibrary={(url) => handlePublishFromLibrary(url)}
+          onPreviewLibrary={(url, base) => {
             setPreviewImage(url);
             setPreviewBase(base || null);
           }}
-          onRemove={(url) => {
+          onRemoveFromLibrary={(url) => {
             setLibraryItemToDelete(url);
           }}
-        />
-
-        <ImageUploader
           onUpload={async (files) => {
-            // Upload files sequentially
+            const uploadedImages = [];
+
             for (const file of files) {
               const formData = new FormData();
               formData.set("intent", "upload");
               formData.set("file", file);
               formData.set("productId", product?.id || "");
 
-              // Use fetch with multipart/form-data
               const response = await fetch(window.location.pathname, {
                 method: "POST",
                 body: formData,
               });
+
+              if (!response.ok) {
+                const contentType = response.headers.get("content-type");
+                if (contentType?.includes("text/html")) {
+                  throw new Error(
+                    "Server error occurred. Please refresh and try again.",
+                  );
+                }
+              }
 
               const result = await response.json();
 
               if (!result.ok) {
                 throw new Error(result.error || "Upload failed");
               }
+
+              // Add the uploaded image to our list
+              if (result.imageUrl) {
+                uploadedImages.push({
+                  imageUrl: result.imageUrl,
+                  sourceUrl: null
+                });
+              }
             }
 
-            // Reload to show new images in library
-            window.location.reload();
+            // Update library items state immediately with the uploaded images
+            if (uploadedImages.length > 0) {
+              setLibraryItems((prev) => [...uploadedImages, ...prev]);
+              shopify.toast.show(`Successfully uploaded ${uploadedImages.length} image${uploadedImages.length !== 1 ? 's' : ''}`);
+            }
           }}
-          maxFiles={5}
-          maxSizeMB={10}
+          isBusy={
+            pendingAction === "publish" || pendingAction === "saveToLibrary"
+          }
+          pendingAction={pendingAction}
         />
       </BlockStack>
     </Page>

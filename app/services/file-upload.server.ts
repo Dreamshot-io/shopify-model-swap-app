@@ -31,7 +31,15 @@ const POLL_DELAY_MS = 1000;
 /**
  * Step 1: Create staged upload target
  *
- * Creates a staged upload URL in Shopify where the file will be uploaded.
+ * Creates a staged upload URL in Shopify's file library where the file will be uploaded.
+ * Uses resource type "IMAGE" for generic file library storage (compatible with fileCreate mutation).
+ *
+ * Note: Shopify resource types and their compatible mutations:
+ * - "IMAGE" → fileCreate (generic file library) - USED HERE
+ * - "PRODUCT_IMAGE" → productCreateMedia (direct product attachment)
+ * - "VIDEO" → fileCreate (generic file library)
+ * - "COLLECTION_IMAGE" → collectionUpdate (collection images)
+ *
  * This is the first step in Shopify's 3-step file upload process.
  *
  * @param admin - Shopify Admin API context
@@ -68,7 +76,7 @@ async function createStagedUpload(
         {
           filename: options.filename,
           mimeType: options.mimeType,
-          resource: "PRODUCT_IMAGE",
+          resource: "IMAGE",
           fileSize: options.fileSize.toString(),
           httpMethod: "POST",
         },

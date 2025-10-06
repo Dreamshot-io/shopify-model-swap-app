@@ -24,19 +24,19 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
   const [generated, draftsSaved, draftsDeleted, published, recent] =
     await Promise.all([
-      (db as any).metricEvent.count({
+      db.metricEvent.count({
         where: { shop, type: "GENERATED", createdAt: { gte: since } },
       }),
-      (db as any).metricEvent.count({
+      db.metricEvent.count({
         where: { shop, type: "DRAFT_SAVED", createdAt: { gte: since } },
       }),
-      (db as any).metricEvent.count({
+      db.metricEvent.count({
         where: { shop, type: "DRAFT_DELETED", createdAt: { gte: since } },
       }),
-      (db as any).metricEvent.count({
+      db.metricEvent.count({
         where: { shop, type: "PUBLISHED", createdAt: { gte: since } },
       }),
-      (db as any).metricEvent.findMany({
+      db.metricEvent.findMany({
         where: { shop },
         orderBy: { createdAt: "desc" },
         take: 10,

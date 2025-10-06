@@ -121,59 +121,66 @@ export function ImageUploader({
         )}
 
         <DropZone
-          accept="image/*"
+          accept="image/jpeg,image/png,image/webp"
           type="image"
           onDrop={handleDrop}
           allowMultiple
           disabled={uploading}
         >
-          <DropZone.FileUpload
-            actionTitle="Add images"
-            actionHint={`or drop files to upload (max ${maxFiles} images, ${maxSizeMB}MB each)`}
-          />
+          {files.length === 0 ? (
+            <DropZone.FileUpload
+              actionTitle="Add images"
+              actionHint={`or drop files to upload (max ${maxFiles} images, ${maxSizeMB}MB each)`}
+            />
+          ) : (
+            <BlockStack gap="400" align="center">
+              <BlockStack gap="300">
+                <Text as="p" variant="bodyMd" tone="subdued" alignment="center">
+                  {files.length} file{files.length !== 1 ? 's' : ''} selected
+                </Text>
+
+                <InlineStack gap="200" wrap align="center">
+                  {files.map((file, index) => (
+                    <div key={`${file.name}-${index}`} style={{ position: 'relative' }}>
+                      <Thumbnail
+                        source={objectUrls[index]}
+                        alt={file.name}
+                        size="large"
+                      />
+                      {!uploading && (
+                        <div style={{ marginTop: '4px', textAlign: 'center' }}>
+                          <Button
+                            size="micro"
+                            variant="plain"
+                            tone="critical"
+                            onClick={() => handleRemove(index)}
+                            disabled={uploading}
+                          >
+                            Remove
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </InlineStack>
+              </BlockStack>
+            </BlockStack>
+          )}
         </DropZone>
 
+        {/* Upload button and progress bar moved OUTSIDE the DropZone */}
         {files.length > 0 && (
           <BlockStack gap="300">
-            <Text as="p" variant="bodyMd" tone="subdued">
-              {files.length} file{files.length !== 1 ? 's' : ''} selected
-            </Text>
-
-            <InlineStack gap="200" wrap>
-              {files.map((file, index) => (
-                <div key={`${file.name}-${index}`} style={{ position: 'relative' }}>
-                  <Thumbnail
-                    source={objectUrls[index]}
-                    alt={file.name}
-                    size="large"
-                  />
-                  {!uploading && (
-                    <div style={{ marginTop: '4px' }}>
-                      <Button
-                        size="micro"
-                        variant="plain"
-                        tone="critical"
-                        onClick={() => handleRemove(index)}
-                        disabled={uploading}
-                      >
-                        Remove
-                      </Button>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </InlineStack>
-
             {uploading && (
               <BlockStack gap="200">
                 <ProgressBar progress={progress} size="small" />
-                <Text as="p" variant="bodySm" tone="subdued">
+                <Text as="p" variant="bodySm" tone="subdued" alignment="center">
                   Uploading... {progress}%
                 </Text>
               </BlockStack>
             )}
 
-            <InlineStack gap="200">
+            <InlineStack gap="200" align="center">
               <Button
                 variant="primary"
                 onClick={handleUpload}

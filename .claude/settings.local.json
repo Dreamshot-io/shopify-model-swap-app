@@ -76,7 +76,8 @@
       "mcp__serena__find_symbol",
       "Bash(pkill:*)",
       "Read(//private/tmp/**)",
-      "Bash(git log:*)"
+      "Bash(git log:*)",
+      "Bash(npm run:*)"
     ],
     "deny": []
   }

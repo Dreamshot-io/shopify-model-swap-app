@@ -61,6 +61,7 @@ export type PublishImageResponse = ActionResponse<{
 export type LibraryActionResponse = ActionResponse<{
   savedToLibrary?: boolean;
   deletedFromLibrary?: boolean;
+  deletedFromProduct?: boolean;
   duplicate?: boolean;
 }>;
 
