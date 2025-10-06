@@ -9,8 +9,8 @@ generator client {
 // enough when changing adapters.
 // See https://www.prisma.io/docs/orm/reference/prisma-schema-reference#string for more information
 datasource db {
-  provider = "sqlite"
-  url      = "file:dev.sqlite"
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 // Enums must be defined before models that use them
@@ -54,27 +54,27 @@ model Session {
 }
 
 model MetricEvent {
-  id         String    @id @default(cuid())
-  shop       String
-  type       EventType
-  productId  String?
-  imageUrl   String?
-  createdAt  DateTime  @default(now())
+  id        String    @id @default(cuid())
+  shop      String
+  type      EventType
+  productId String?
+  imageUrl  String?
+  createdAt DateTime  @default(now())
 }
 
 model ABTest {
-  id            String        @id @default(cuid())
-  shop          String
-  productId     String
-  name          String
-  status        ABTestStatus  @default(DRAFT)
-  trafficSplit  Int           @default(50)
-  startDate     DateTime?
-  endDate       DateTime?
-  variants      ABTestVariant[]
-  events        ABTestEvent[]
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
+  id           String          @id @default(cuid())
+  shop         String
+  productId    String
+  name         String
+  status       ABTestStatus    @default(DRAFT)
+  trafficSplit Int             @default(50)
+  startDate    DateTime?
+  endDate      DateTime?
+  variants     ABTestVariant[]
+  events       ABTestEvent[]
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
 
   // Performance indexes for common queries
   @@index([shop, status])
@@ -83,26 +83,26 @@ model ABTest {
 }
 
 model ABTestVariant {
-  id        String   @id @default(cuid())
+  id        String @id @default(cuid())
   testId    String
-  variant   String   // "A" or "B"
-  imageUrls String   // JSON array stored as string
-  test      ABTest   @relation(fields: [testId], references: [id], onDelete: Cascade)
+  variant   String // "A" or "B"
+  imageUrls String // JSON array stored as string
+  test      ABTest @relation(fields: [testId], references: [id], onDelete: Cascade)
 
   // Performance index for variant lookup
   @@index([testId, variant])
 }
 
 model ABTestEvent {
-  id         String          @id @default(cuid())
-  testId     String
-  sessionId  String
-  variant    String          // "A" or "B"
-  eventType  ABTestEventType
-  productId  String
-  revenue    Decimal?
-  createdAt  DateTime        @default(now())
-  test       ABTest          @relation(fields: [testId], references: [id], onDelete: Cascade)
+  id        String          @id @default(cuid())
+  testId    String
+  sessionId String
+  variant   String // "A" or "B"
+  eventType ABTestEventType
+  productId String
+  revenue   Decimal?
+  createdAt DateTime        @default(now())
+  test      ABTest          @relation(fields: [testId], references: [id], onDelete: Cascade)
 
   // Performance indexes for event queries
   @@index([testId, sessionId])

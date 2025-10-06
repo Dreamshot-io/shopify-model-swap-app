@@ -2,7 +2,12 @@
   "name": "dreamshot-model-swap",
   "private": true,
   "scripts": {
-    "build": "npm run build:script && remix vite:build",
+    "env:init": "bash ./scripts/init-env.sh",
+    "db:up": "docker compose up -d postgres",
+    "db:down": "docker compose down",
+    "db:logs": "docker compose logs -f postgres",
+    "db:psql": "docker exec -it dreamshot-postgres psql -U postgres -d dreamshot",
+    "build": "npm run build:script && prisma generate && remix vite:build",
     "build:script": "terser public/image-replacer.js -c -m --toplevel -o public/image-replacer.min.js",
     "dev": "./scripts/dev.sh",
     "dev:stable": "./scripts/dev-stable.sh",
@@ -14,7 +19,9 @@
     "env": "shopify app env",
     "start": "remix-serve ./build/server/index.js",
     "docker-start": "npm run setup && npm run start",
-    "setup": "prisma generate && prisma migrate deploy",
+    "setup": "prisma generate && prisma db push",
+    "postinstall": "prisma generate",
+    "vercel-build": "npm run build",
     "lint": "eslint --cache --cache-location ./node_modules/.cache/eslint .",
     "shopify": "shopify",
     "prisma": "prisma",
@@ -26,6 +33,7 @@
     "node": "^18.20 || ^20.10 || >=21.0.0"
   },
   "dependencies": {
+    "@remix-run/vercel": "^2.16.1",
     "@aws-sdk/client-s3": "3.879.0",
     "@aws-sdk/s3-request-presigner": "3.879.0",
     "@fal-ai/client": "1.6.2",
