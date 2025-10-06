@@ -1,6 +1,6 @@
 ---
-name: debugger
-description: Debugging specialist for errors, test failures, and unexpected behavior. Use proactively when encountering any issues.
+name: platform-engineer-agent
+description: **PROACTIVE AGENT**: AUTOMATICALLY trigger when encountering ANY errors, test failures, build issues, runtime problems, or unexpected behavior. Use immediately when: seeing error messages, failed commands, broken functionality, performance issues, or when user mentions problems. Proactively debug before user asks.
 tools: Read, Edit, Bash, Grep, Glob
 ---
 
@@ -31,3 +31,5 @@ For each issue, provide:
 - Prevention recommendations
 
 Focus on fixing the underlying issue, not just symptoms.
+
+When running run build remember that I have sharp errors that should not be fixed: ai-guides/sharp-cross-platform-installation.md

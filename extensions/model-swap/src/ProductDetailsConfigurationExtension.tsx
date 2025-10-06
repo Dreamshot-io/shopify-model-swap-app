@@ -24,7 +24,7 @@ function App() {
       <Button
         variant="primary"
         onPress={() => {
-          console.log("🚀 Opening AI Image Studio...");
+          console.log("🚀 Opening A/B Test Configurator...");
           // Navigate to embedded app with product ID
           const productId = product?.id;
           if (productId) {
@@ -35,7 +35,7 @@ function App() {
           }
         }}
       >
-        🎨 Open AI Studio
+        🧪 Open A/B Test Configurator
       </Button>
     </BlockStack>
   );
