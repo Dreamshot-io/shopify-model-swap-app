@@ -1,8 +1,8 @@
-import { createRequestHandler } from '@remix-run/vercel';
+import { createRequestHandler } from '@remix-run/node';
 import * as build from 'virtual:remix/server-build';
 
 export const config = {
-	runtime: 'nodejs',
+	runtime: 'nodejs18.x',
 };
 
 export default createRequestHandler({
