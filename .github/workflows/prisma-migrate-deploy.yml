@@ -1,0 +1,38 @@
+name: Prisma Migrate Deploy
+
+on:
+  workflow_dispatch: {}
+  push:
+    branches:
+      - main
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    if: ${{ secrets.DATABASE_URL != '' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Generate Prisma Client
+        run: npx prisma generate
+
+      - name: Run migrate deploy
+        run: npx prisma migrate deploy
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+  skip-migration:
+    runs-on: ubuntu-latest
+    if: ${{ secrets.DATABASE_URL == '' }}
+    steps:
+      - name: Skip migration
+        run: echo "DATABASE_URL not set. Skipping migrate deploy."

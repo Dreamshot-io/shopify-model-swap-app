@@ -1,0 +1,16 @@
+{
+	"buildCommand": "npm run build",
+	"outputDirectory": "build/client",
+	"framework": "remix",
+	"functions": {
+		"api/index.ts": {
+			"maxDuration": 30
+		}
+	},
+	"rewrites": [
+		{
+			"source": "/(.*)",
+			"destination": "/api/index"
+		}
+	]
+}

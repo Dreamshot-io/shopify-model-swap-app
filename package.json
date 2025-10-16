@@ -2,7 +2,7 @@
   "name": "dreamshot-model-swap",
   "private": true,
   "scripts": {
-    "build": "npm run build:script && remix vite:build",
+    "build": "npm run build:script && prisma generate && remix vite:build",
     "build:script": "terser public/image-replacer.js -c -m --toplevel -o public/image-replacer.min.js",
     "dev": "./scripts/dev.sh",
     "dev:stable": "./scripts/dev-stable.sh",
@@ -14,17 +14,24 @@
     "env": "shopify app env",
     "start": "remix-serve ./build/server/index.js",
     "docker-start": "npm run setup && npm run start",
-    "setup": "prisma generate && prisma migrate deploy",
+    "setup": "prisma generate && prisma db push",
     "lint": "eslint --cache --cache-location ./node_modules/.cache/eslint .",
     "shopify": "shopify",
     "prisma": "prisma",
     "graphql-codegen": "graphql-codegen",
-    "vite": "vite"
+    "vite": "vite",
+    "db:up": "docker compose up -d postgres",
+    "db:down": "docker compose down",
+    "db:logs": "docker compose logs -f postgres",
+    "db:psql": "docker exec -it dreamshot-postgres psql -U postgres -d dreamshot",
+    "postinstall": "prisma generate",
+    "vercel-build": "npm run build",
+    "env:init": "bash ./scripts/init-env.sh",
+    "migrate:dev": "if [ -z \"$DATABASE_URL\" ]; then echo \"DATABASE_URL not set. Skipping migrate dev.\"; else npx prisma migrate dev; fi",
+    "migrate:deploy": "if [ -z \"$DATABASE_URL\" ]; then echo \"DATABASE_URL not set. Skipping migrate deploy.\"; else npx prisma migrate deploy; fi"
+    ,"db:seed": "bash -lc 'if [ -z \"$DATABASE_URL\" ]; then echo \"DATABASE_URL not set. Skipping seed.\"; else ts-node --transpile-only prisma/seed.ts || node --loader ts-node/esm prisma/seed.ts || node build/prisma/seed.js; fi'"
   },
   "type": "module",
-  "engines": {
-    "node": "^18.20 || ^20.10 || >=21.0.0"
-  },
   "dependencies": {
     "@aws-sdk/client-s3": "3.879.0",
     "@aws-sdk/s3-request-presigner": "3.879.0",

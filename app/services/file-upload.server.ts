@@ -216,12 +216,7 @@ async function createFileAsset(
  * Polls Shopify's API to check if the uploaded file has been processed.
  * Files go through processing stages (UPLOADING -> PROCESSING -> READY/FAILED).
  *
- * @param admin - Shopify Admin API context
- * @param fileId - ID of the file to poll
- * @param maxAttempts - Maximum number of polling attempts (default: 10)
- * @param delayMs - Delay between polling attempts in milliseconds (default: 1000)
- * @returns Uploaded file details with URL and alt text
- * @throws Error if processing fails or times out
+ * Adds deadline-based timeout and exponential backoff for serverless safety.
  */
 async function pollFileProcessing(
   admin: AdminApiContext,
@@ -244,7 +239,19 @@ async function pollFileProcessing(
     }
   `;
 
+  const start = Date.now();
+  const deadlineMs = Math.min(
+    Number(process.env.FILE_UPLOAD_POLL_DEADLINE_MS || 25000),
+    30000,
+  );
+
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    if (Date.now() - start > deadlineMs) {
+      throw new Error(
+        `File processing exceeded deadline (${deadlineMs}ms). File ID: ${fileId}`,
+      );
+    }
+
     const response = await admin.graphql(query, {
       variables: { id: fileId },
     });
@@ -267,42 +274,18 @@ async function pollFileProcessing(
       );
     }
 
-    // Wait before next attempt
-    await new Promise((resolve) => setTimeout(resolve, delayMs));
+    const backoff = Math.min(delayMs * Math.pow(1.5, attempt), 4000);
+    await new Promise((resolve) => setTimeout(resolve, backoff));
   }
 
   throw new Error(
-    `File processing timeout after ${maxAttempts} attempts (${maxAttempts * delayMs}ms). ` +
+    `File processing timeout after ${maxAttempts} attempts. ` +
       `File ID: ${fileId}. The file may still be processing.`,
   );
 }
 
 /**
  * Main upload function - orchestrates all steps
- *
- * Orchestrates the complete 3-step file upload process:
- * 1. Create staged upload target
- * 2. Upload file to staged URL
- * 3. Create file asset in Shopify
- * 4. Poll for processing completion
- *
- * Includes validation for file size and type before upload.
- *
- * @param admin - Shopify Admin API context
- * @param file - File object to upload
- * @param altText - Optional alt text for the image
- * @returns Uploaded file details including ID and URL
- * @throws Error if validation fails or any step in the upload process fails
- *
- * @example
- * ```typescript
- * const uploadedFile = await uploadImageToShopify(
- *   admin,
- *   file,
- *   "Product image"
- * );
- * console.log(`Uploaded: ${uploadedFile.url}`);
- * ```
  */
 export async function uploadImageToShopify(
   admin: AdminApiContext,

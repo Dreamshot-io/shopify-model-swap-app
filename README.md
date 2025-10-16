@@ -57,6 +57,7 @@ Required variables in `.env`:
 - `FAL_KEY` - fal.ai API key
 - `SHOPIFY_APP_URL` - App URL for Shopify configuration
 - `SCOPES` - Comma-separated Shopify API scopes
+- `DATABASE_URL` - Postgres connection string (local: see `prd/DEV-DB-POSTGRES.md`; hosted: may require `?sslmode=require`)
 
 ## Tech Stack
 
