@@ -25,10 +25,11 @@ Migrate the Remix-based Shopify app to Vercel’s serverless platform following 
 #### Phase 1: Database & Prisma
 
 - Switch `prisma/schema.prisma` datasource to PostgreSQL via `env("DATABASE_URL")`.
-- Add `DATABASE_URL` to env types and `.env.example`.
+- Add `DATABASE_URL` to env types and provide `.env` bootstrap (`scripts/init-env.sh`).
 - Ensure Prisma client initialization is serverless-safe (singleton reuse across invocations).
-- Add `prisma generate` to build step and prepare `vercel-build` script.
-- Run `prisma migrate deploy` against Postgres during deployment.
+- Add `prisma generate` to build, `postinstall`, and `vercel-build` scripts.
+- Create initial Postgres baseline migration; archive old SQLite migrations.
+- Add migration scripts and CI workflow for `prisma migrate deploy` (with skip guard if `DATABASE_URL` is missing).
 
 Risks:
 
@@ -36,9 +37,9 @@ Risks:
 
 #### Phase 2: Runtime & Adapter
 
-- Add Vercel adapter entry using `@remix-run/vercel` Node runtime handler.
-- Add `vercel.json` rewrites routing all traffic to the Remix handler.
-- Set sensible function `maxDuration` (e.g., 30s) for Node runtime.
+- Add Vercel adapter entry using `@remix-run/node` (Remix v2 no longer requires `@remix-run/vercel`).
+- Import the server build via `virtual:remix/server-build` and set handler `mode`.
+- Add `vercel.json` rewrites routing all traffic to the Remix handler and set Node runtime/maxDuration.
 
 Risks:
 
@@ -54,25 +55,40 @@ Risks:
 
 #### Phase 4: Operational Readiness
 
-- Configure all environment variables in Vercel.
+- Configure all environment variables in Vercel (add SSL params to `DATABASE_URL` if required, e.g., `?sslmode=require`).
 - Update `shopify.app.toml` `application_url` and App Proxy URL after first deploy.
 - Set up logging/monitoring (e.g., Vercel logs, Sentry).
 - Smoke test auth, webhooks, uploads, and proxy route.
+
+Skip Guards (safety):
+
+- GitHub Action for migrations now checks `secrets.DATABASE_URL`; if not set, it skips migrate deploy.
+- Local `migrate:dev` / `migrate:deploy` scripts no-op when `DATABASE_URL` is not set.
 
 ---
 
 ### Implementation TODO (Checklist)
 
-- [ ] Switch Prisma datasource to PostgreSQL via `DATABASE_URL` in `prisma/schema.prisma`
-- [ ] Update Prisma client initialization for serverless reuse in `app/db.server.ts`
-- [ ] Add `.env.example` with all required variables and update `env.d.ts`
-- [ ] Add `postinstall` (prisma generate) and `vercel-build` scripts in `package.json`
-- [ ] Prepare `vercel.json` with rewrites and function config
-- [ ] Add Vercel Remix adapter entry (Node runtime)
-- [ ] Configure Vercel environment variables and secrets
+- [x] Switch Prisma datasource to PostgreSQL via `DATABASE_URL` in `prisma/schema.prisma`
+- [x] Update Prisma client initialization for serverless reuse in `app/db.server.ts`
+- [x] Provide env bootstrap (`scripts/init-env.sh`) and update `env.d.ts`
+- [x] Add `postinstall` (prisma generate) and `vercel-build` scripts in `package.json`
+- [x] Prepare `vercel.json` with rewrites and function config
+- [x] Add Vercel Remix adapter entry (Node runtime)
+- [x] Add GitHub Action for `migrate deploy` with skip guard for missing `DATABASE_URL`
+- [ ] Configure Vercel environment variables and secrets (incl. SSL params)
 - [ ] Update `shopify.app.toml` URLs to Vercel domain post-deploy
 - [ ] Validate and, if needed, optimize file upload flow for serverless
 - [ ] Add monitoring/logging and run readiness checks
+
+New Items:
+
+- [x] Create initial Postgres baseline migration and archive old SQLite migrations
+- [x] Add Docker Compose local Postgres and docs (`prd/DEV-DB-POSTGRES.md`)
+- [x] Add safe local migration scripts that no-op if `DATABASE_URL` missing
+- [ ] Choose pooling strategy (e.g., Neon pgbouncer or Prisma Accelerate) and update `DATABASE_URL`
+- [ ] Add seed script and sample data; document `npm run db:seed`
+- [ ] Add E2E checklist for staging validation
 
 ---
 
