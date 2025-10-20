@@ -17,6 +17,7 @@ interface MediaNode {
 }
 
 interface ImageGenerationHubProps {
+  productId: string;
   media: MediaNode[];
   selectedImages: SelectedImage[];
   generatedImages: GeneratedImage[];
@@ -31,12 +32,13 @@ interface ImageGenerationHubProps {
   onPublishFromLibrary: (url: string) => void;
   onPreviewLibrary: (url: string, base: string | null) => void;
   onRemoveFromLibrary: (url: string) => void;
-  onUpload: (files: File[]) => Promise<void>;
+  onUploadSuccess: (imageUrls: string[]) => void;
   isBusy: boolean;
   pendingAction: string | null;
 }
 
 export function ImageGenerationHub({
+  productId,
   media,
   selectedImages,
   generatedImages,
@@ -51,7 +53,7 @@ export function ImageGenerationHub({
   onPublishFromLibrary,
   onPreviewLibrary,
   onRemoveFromLibrary,
-  onUpload,
+  onUploadSuccess,
   isBusy,
   pendingAction,
 }: ImageGenerationHubProps) {
@@ -113,9 +115,10 @@ export function ImageGenerationHub({
           {selectedTab === 1 && (
             <BlockStack gap="400">
               <ImageUploader
-                onUpload={onUpload}
+                productId={productId}
+                onSuccess={onUploadSuccess}
                 maxFiles={5}
-                maxSizeMB={10}
+                maxSizeMB={20}
               />
             </BlockStack>
           )}

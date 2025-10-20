@@ -17,25 +17,40 @@ import {
   XCircleIcon,
   ClockIcon,
 } from "@shopify/polaris-icons";
+import {
+  getStagedUploadUrl,
+  uploadToStagedUrl,
+  completeUpload,
+} from "../../../utils/shopify-upload";
 
 interface ImageUploaderProps {
-  onUpload: (files: File[]) => Promise<void>;
+  productId: string;
+  onSuccess?: (imageUrls: string[]) => void;
   maxFiles?: number;
   maxSizeMB?: number;
 }
 
-type FileStatus = "pending" | "uploading" | "success" | "error";
+type FileStatus =
+  | "pending"
+  | "getting-url"
+  | "uploading"
+  | "finalizing"
+  | "success"
+  | "error";
 
 interface FileWithStatus {
   file: File;
   status: FileStatus;
+  progress: number;
   error?: string;
+  imageUrl?: string;
 }
 
 export function ImageUploader({
-  onUpload,
+  productId,
+  onSuccess,
   maxFiles = 5,
-  maxSizeMB = 10,
+  maxSizeMB = 20, // Increased to 20MB - Shopify's limit (no Vercel limit!)
 }: ImageUploaderProps) {
   const [filesWithStatus, setFilesWithStatus] = useState<FileWithStatus[]>([]);
   const [uploading, setUploading] = useState(false);
@@ -81,7 +96,11 @@ export function ImageUploader({
 
       setFilesWithStatus(prev => [
         ...prev,
-        ...acceptedFiles.map(file => ({ file, status: "pending" as FileStatus })),
+        ...acceptedFiles.map(file => ({
+          file,
+          status: "pending" as FileStatus,
+          progress: 0,
+        })),
       ]);
     },
     [filesWithStatus, maxFiles, maxSizeMB]
@@ -107,43 +126,97 @@ export function ImageUploader({
     const totalFiles = filesWithStatus.length;
     let successCount = 0;
     let errorCount = 0;
+    const uploadedUrls: string[] = [];
 
-    // Upload files sequentially with individual status tracking
+    console.log(`[UPLOAD:CLIENT] Starting batch upload of ${totalFiles} files`);
+
+    // Upload files sequentially with 3-step flow
     for (let i = 0; i < totalFiles; i++) {
-      // Mark current file as uploading
-      setFilesWithStatus(prev =>
-        prev.map((f, idx) =>
-          idx === i ? { ...f, status: "uploading" as FileStatus } : f
-        )
-      );
+      const currentFile = filesWithStatus[i];
+      console.log(`[UPLOAD:CLIENT] Processing file ${i + 1}/${totalFiles}: ${currentFile.file.name}`);
 
       try {
-        await onUpload([filesWithStatus[i].file]);
+        // Step 1: Get staged upload URL
+        setFilesWithStatus(prev =>
+          prev.map((f, idx) =>
+            idx === i ? { ...f, status: "getting-url" as FileStatus, progress: 0 } : f
+          )
+        );
+
+        const stagedTarget = await getStagedUploadUrl(currentFile.file, productId);
+        console.log(`[UPLOAD:CLIENT] ✓ Got staged URL for ${currentFile.file.name}`);
+
+        // Step 2: Upload directly to Shopify S3 (bypasses Vercel!)
+        setFilesWithStatus(prev =>
+          prev.map((f, idx) =>
+            idx === i ? { ...f, status: "uploading" as FileStatus } : f
+          )
+        );
+
+        await uploadToStagedUrl(stagedTarget, currentFile.file, (uploadProgress) => {
+          // Update per-file progress
+          setFilesWithStatus(prev =>
+            prev.map((f, idx) =>
+              idx === i ? { ...f, progress: uploadProgress.percentage } : f
+            )
+          );
+        });
+
+        console.log(`[UPLOAD:CLIENT] ✓ Direct upload complete for ${currentFile.file.name}`);
+
+        // Step 3: Finalize upload on server
+        setFilesWithStatus(prev =>
+          prev.map((f, idx) =>
+            idx === i ? { ...f, status: "finalizing" as FileStatus, progress: 100 } : f
+          )
+        );
+
+        const imageUrl = await completeUpload(
+          stagedTarget.resourceUrl,
+          currentFile.file.name,
+          productId,
+        );
+
+        console.log(`[UPLOAD:CLIENT] ✓ Upload finalized for ${currentFile.file.name}`);
 
         // Mark as success
         setFilesWithStatus(prev =>
           prev.map((f, idx) =>
-            idx === i ? { ...f, status: "success" as FileStatus } : f
+            idx === i ? { ...f, status: "success" as FileStatus, imageUrl, progress: 100 } : f
           )
         );
+
+        uploadedUrls.push(imageUrl);
         successCount++;
       } catch (err) {
         // Mark as error but continue with remaining files
         const errorMsg = err instanceof Error ? err.message : "Upload failed";
+        console.error(`[UPLOAD:CLIENT] ✗ Failed to upload ${currentFile.file.name}:`, err);
+
         setFilesWithStatus(prev =>
           prev.map((f, idx) =>
             idx === i ? { ...f, status: "error" as FileStatus, error: errorMsg } : f
           )
         );
         errorCount++;
-        console.error(`Failed to upload ${filesWithStatus[i].file.name}:`, err);
       }
 
       // Update overall progress
       setProgress(Math.round(((i + 1) / totalFiles) * 100));
+
+      // Add delay between uploads
+      if (i < totalFiles - 1) {
+        console.log(`[UPLOAD:CLIENT] Waiting 500ms before next upload...`);
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      }
     }
 
     setUploading(false);
+
+    // Notify parent of successful uploads
+    if (uploadedUrls.length > 0 && onSuccess) {
+      onSuccess(uploadedUrls);
+    }
 
     // Show summary
     if (successCount === totalFiles) {
@@ -159,7 +232,7 @@ export function ImageUploader({
       // All failed
       setError("All uploads failed. Please try again.");
     }
-  }, [filesWithStatus, onUpload]);
+  }, [filesWithStatus, productId, onSuccess]);
 
   return (
     <Card>
@@ -194,7 +267,7 @@ export function ImageUploader({
                 </Text>
 
                 <InlineStack gap="200" wrap align="center">
-                  {filesWithStatus.map(({ file, status, error: fileError }, index) => (
+                  {filesWithStatus.map(({ file, status, error: fileError, progress }, index) => (
                     <div key={`${file.name}-${index}`} style={{ position: 'relative' }}>
                       <BlockStack gap="100" align="center">
                         <div style={{ position: 'relative' }}>
@@ -211,10 +284,13 @@ export function ImageUploader({
                               right: '-8px',
                               zIndex: 1
                             }}>
-                              {status === "uploading" && (
+                              {(status === "getting-url" || status === "finalizing") && (
                                 <Badge tone="info">
                                   <Icon source={ClockIcon} />
                                 </Badge>
+                              )}
+                              {status === "uploading" && (
+                                <Badge tone="info">{progress}%</Badge>
                               )}
                               {status === "success" && (
                                 <Badge tone="success">
@@ -245,6 +321,21 @@ export function ImageUploader({
                         {status === "error" && fileError && (
                           <Text as="p" variant="bodySm" tone="critical" alignment="center">
                             {fileError}
+                          </Text>
+                        )}
+                        {status === "getting-url" && (
+                          <Text as="p" variant="bodySm" tone="subdued" alignment="center">
+                            Getting upload URL...
+                          </Text>
+                        )}
+                        {status === "uploading" && (
+                          <Text as="p" variant="bodySm" tone="subdued" alignment="center">
+                            Uploading {progress}%
+                          </Text>
+                        )}
+                        {status === "finalizing" && (
+                          <Text as="p" variant="bodySm" tone="subdued" alignment="center">
+                            Finalizing...
                           </Text>
                         )}
                       </BlockStack>

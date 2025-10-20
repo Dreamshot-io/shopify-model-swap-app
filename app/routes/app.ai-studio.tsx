@@ -12,13 +12,11 @@ import {
   Page,
   Text,
   Card,
-  BlockStack,
-  Banner,
-  Modal,
+  BlockStack, Modal,
   InlineGrid,
   InlineStack,
   TextField,
-  EmptyState,
+  EmptyState
 } from "@shopify/polaris";
 import { TitleBar, useAppBridge } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
@@ -32,6 +30,8 @@ import {
   handleSaveToLibrary,
   handleDeleteFromLibrary,
   handleUpload,
+  handleGetStagedUpload,
+  handleCompleteUpload,
 } from "../features/ai-studio/handlers/library.server";
 import {
   handlePublish,
@@ -41,11 +41,7 @@ import type {
   LibraryItem,
   GeneratedImage,
   SelectedImage,
-  BatchProcessingState,
-  GenerateImageResponse,
-  PublishImageResponse,
-  LibraryActionResponse,
-  ActionErrorResponse,
+  BatchProcessingState, ActionErrorResponse
 } from "../features/ai-studio/types";
 import { ABTestManager } from "../features/ab-testing/components/ABTestManager";
 import type { ABTestCreateRequest } from "../features/ab-testing/types";
@@ -242,6 +238,18 @@ export const action = async ({
         const uploadResult = await handleUpload(formData, admin, session.shop);
         console.log(`[ACTION:${requestId}] Upload handler completed`);
         return uploadResult;
+
+      case "getStagedUpload":
+        console.log(`[ACTION:${requestId}] Calling handleGetStagedUpload...`);
+        const stagedUploadResult = await handleGetStagedUpload(formData, admin, session.shop);
+        console.log(`[ACTION:${requestId}] GetStagedUpload handler completed`);
+        return stagedUploadResult;
+
+      case "completeUpload":
+        console.log(`[ACTION:${requestId}] Calling handleCompleteUpload...`);
+        const completeUploadResult = await handleCompleteUpload(formData, admin, session.shop);
+        console.log(`[ACTION:${requestId}] CompleteUpload handler completed`);
+        return completeUploadResult;
 
       case "createABTest": {
         const name = String(formData.get("name") || "");
@@ -977,6 +985,7 @@ export default function AIStudio() {
 
         {/* AREA 3: Image Generation Hub - New */}
         <ImageGenerationHub
+          productId={product.id}
           media={product.media?.nodes || []}
           selectedImages={selectedImages}
           generatedImages={generatedImages}
@@ -1013,158 +1022,19 @@ export default function AIStudio() {
           onRemoveFromLibrary={(url) => {
             setLibraryItemToDelete(url);
           }}
-          onUpload={async (files) => {
-            console.log(`[UPLOAD] Starting batch upload of ${files.length} files`);
-            const uploadedImages: LibraryItem[] = [];
-            const errors: string[] = [];
+          onUploadSuccess={(imageUrls) => {
+            console.log(`[UPLOAD] Successfully uploaded ${imageUrls.length} images, updating UI`);
+            // Add uploaded images to library items
+            const newLibraryItems = imageUrls.map(url => ({
+              imageUrl: url,
+              sourceUrl: null,
+            }));
+            setLibraryItems((prev) => [...newLibraryItems, ...prev]);
 
-            // Process all files, tracking successes and failures
-            for (let i = 0; i < files.length; i++) {
-              const file = files[i];
-              console.log(`[UPLOAD] Processing file ${i + 1}/${files.length}: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)}MB)`);
-
-              const formData = new FormData();
-              formData.set("intent", "upload");
-              formData.set("file", file);
-              formData.set("productId", product?.id || "");
-
-              // Retry logic with exponential backoff
-              const maxRetries = 2;
-              let uploadSuccess = false;
-
-              for (let retry = 0; retry <= maxRetries; retry++) {
-                try {
-                  console.log(`[UPLOAD] Attempt ${retry + 1}/${maxRetries + 1} for ${file.name}`);
-                  const response = await fetch(window.location.pathname, {
-                    method: "POST",
-                    body: formData,
-                  });
-
-                  // Check content-type BEFORE parsing JSON
-                  const contentType = response.headers.get("content-type");
-
-                  if (!contentType?.includes("application/json")) {
-                    console.error(
-                      `[UPLOAD] Non-JSON response for ${file.name}:`,
-                      contentType,
-                      "Status:",
-                      response.status,
-                    );
-
-                    // If this is the last retry, throw error
-                    if (retry === maxRetries) {
-                      throw new Error(
-                        "Session expired or server error. Please refresh the page.",
-                      );
-                    }
-
-                    // Wait before retry with exponential backoff
-                    await new Promise((resolve) =>
-                      setTimeout(resolve, 1000 * (retry + 1)),
-                    );
-                    continue;
-                  }
-
-                  // Now safe to parse JSON
-                  const result = await response.json();
-
-                  if (!result.ok) {
-                    if (result.needsAuth) {
-                      throw new Error(
-                        "Session expired. Please refresh the page.",
-                      );
-                    }
-                    throw new Error(result.error || "Upload failed");
-                  }
-
-                  // Add the uploaded image to our list
-                  if (result.imageUrl) {
-                    uploadedImages.push({
-                      imageUrl: result.imageUrl,
-                      sourceUrl: null,
-                    });
-                    uploadSuccess = true;
-                    console.log(`[UPLOAD] ✓ Successfully uploaded ${file.name}`);
-                    break; // Success - exit retry loop
-                  }
-                } catch (error) {
-                  const errorMsg =
-                    error instanceof Error ? error.message : "Unknown error";
-
-                  // If this is the last retry or session expired, log error
-                  if (
-                    retry === maxRetries ||
-                    errorMsg.includes("Session expired")
-                  ) {
-                    console.error(`[UPLOAD] ✗ Failed to upload ${file.name}:`, errorMsg);
-                    errors.push(`${file.name}: ${errorMsg}`);
-
-                    // If session expired, stop trying remaining files
-                    if (errorMsg.includes("Session expired")) {
-                      console.error("[UPLOAD] Session expired - stopping all uploads");
-                      break;
-                    }
-                  } else {
-                    // Wait before retry with exponential backoff
-                    console.log(
-                      `[UPLOAD] Retry ${retry + 1}/${maxRetries} for ${file.name} after error:`,
-                      errorMsg
-                    );
-                    await new Promise((resolve) =>
-                      setTimeout(resolve, 1000 * (retry + 1)),
-                    );
-                  }
-                }
-              }
-
-              // If we had errors with this file, stop processing remaining files if session expired
-              if (
-                !uploadSuccess &&
-                errors.some((e) => e.includes("Session expired"))
-              ) {
-                console.error("[UPLOAD] Stopping remaining uploads due to session expiration");
-                break;
-              }
-
-              // Add delay between uploads to prevent session token exhaustion
-              // Increased from 500ms to 1000ms for better reliability
-              if (i < files.length - 1) {
-                console.log(`[UPLOAD] Waiting 1s before next upload...`);
-                await new Promise((resolve) => setTimeout(resolve, 1000));
-              }
-            }
-
-            // Update UI with successfully uploaded images
-            if (uploadedImages.length > 0) {
-              console.log(`[UPLOAD] Updating UI with ${uploadedImages.length} uploaded images`);
-              setLibraryItems((prev) => [...uploadedImages, ...prev]);
-
-              if (uploadedImages.length === files.length) {
-                // All succeeded
-                shopify.toast.show(
-                  `Successfully uploaded ${uploadedImages.length} image${files.length > 1 ? "s" : ""}!`,
-                );
-              } else {
-                // Partial success
-                shopify.toast.show(
-                  `Uploaded ${uploadedImages.length} of ${files.length} images. ${errors.length} failed.`,
-                );
-              }
-            }
-
-            // Show errors if any
-            if (errors.length > 0) {
-              console.error(`[UPLOAD] ${errors.length} upload(s) failed:`, errors);
-              shopify.toast.show(
-                `Failed: ${errors[0]}`,
-                { isError: true },
-              );
-            }
-
-            // Only throw if ALL uploads failed (this allows partial success)
-            if (uploadedImages.length === 0 && errors.length > 0) {
-              throw new Error(errors[0]);
-            }
+            // Show success toast
+            shopify.toast.show(
+              `Successfully uploaded ${imageUrls.length} image${imageUrls.length > 1 ? "s" : ""}!`,
+            );
           }}
           isBusy={
             pendingAction === "publish" || pendingAction === "saveToLibrary"

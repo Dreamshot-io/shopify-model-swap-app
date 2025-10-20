@@ -42,12 +42,14 @@ const POLL_DELAY_MS = 1000;
  *
  * This is the first step in Shopify's 3-step file upload process.
  *
+ * EXPORTED for client-side direct upload pattern (bypasses Vercel 4.5MB limit).
+ *
  * @param admin - Shopify Admin API context
  * @param options - Upload options including filename, mime type, and file size
  * @returns Staged upload target with URL and parameters
  * @throws Error if staged upload creation fails or returns user errors
  */
-async function createStagedUpload(
+export async function createStagedUpload(
   admin: AdminApiContext,
   options: UploadOptions,
 ): Promise<StagedUploadTarget> {
@@ -285,7 +287,48 @@ async function pollFileProcessing(
 }
 
 /**
+ * Finalize Shopify upload after client has uploaded directly to S3
+ *
+ * Steps 3-4: Create file asset and poll for processing completion.
+ * Used in client-side direct upload pattern to bypass Vercel 4.5MB limit.
+ *
+ * @param admin - Shopify Admin API context
+ * @param resourceUrl - Resource URL from staged upload
+ * @param filename - Original filename
+ * @param altText - Optional alt text
+ * @returns Uploaded file info with Shopify URL
+ */
+export async function finalizeShopifyUpload(
+  admin: AdminApiContext,
+  resourceUrl: string,
+  filename: string,
+  altText?: string,
+): Promise<UploadedFile> {
+  console.log(`[file-upload] Finalizing upload for: ${filename}`);
+  console.log(`[file-upload] Resource URL: ${resourceUrl}`);
+
+  // Step 3: Create file asset
+  console.log(`[file-upload] Creating file asset: ${filename}`);
+  const fileAsset = await createFileAsset(
+    admin,
+    resourceUrl,
+    filename,
+    altText,
+  );
+
+  // Step 4: Poll for completion
+  console.log(`[file-upload] Polling for completion: ${fileAsset.id}`);
+  const uploadedFile = await pollFileProcessing(admin, fileAsset.id);
+
+  console.log(`[file-upload] Finalization complete: ${uploadedFile.url}`);
+  return uploadedFile;
+}
+
+/**
  * Main upload function - orchestrates all steps
+ *
+ * @deprecated Use createStagedUpload + client upload + finalizeShopifyUpload for files > 4.5MB
+ * This function uploads through Vercel and is limited to 4.5MB by Vercel serverless constraints.
  */
 export async function uploadImageToShopify(
   admin: AdminApiContext,
