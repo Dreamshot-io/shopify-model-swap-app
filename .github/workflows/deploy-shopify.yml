@@ -1,4 +1,4 @@
-name: Deploy Shopify App
+name: Deploy Shopify Extensions
 
 on:
   push:
@@ -7,6 +7,13 @@ on:
       - 'extensions/**'
       - 'shopify.app.toml'
       - 'shopify.app.*.toml'
+
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: 'Manuel deploy reason'
+        required: false
+        default: 'Manual deployment'
 
 jobs:
   deploy-shopify:
@@ -29,8 +36,65 @@ jobs:
         run: npm install -g @shopify/cli@latest
 
       - name: Deploy to Shopify
+        id: deploy
         env:
           SHOPIFY_CLI_PARTNERS_TOKEN: ${{ secrets.SHOPIFY_CLI_PARTNERS_TOKEN }}
           SHOPIFY_API_KEY: ${{ secrets.SHOPIFY_API_KEY }}
           COMMIT_URL: ${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}
-        run: shopify app deploy --force --source-control-url "$COMMIT_URL"
+        run: |
+          echo "🚀 Deploying Shopify extensions to production..."
+          shopify app deploy --force --source-control-url "$COMMIT_URL"
+          echo "✅ Shopify extensions deployed successfully"
+          echo "deployed=true" >> $GITHUB_OUTPUT
+
+      - name: Comment on commit (automatic deployment)
+        if: success() && github.event_name == 'push'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.repos.createCommitComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              commit_sha: context.sha,
+              body: `✅ **Shopify extensions deployed successfully**
+
+              🚀 Deployment triggered by: ${context.actor}
+              📦 Commit: ${context.sha.substring(0, 7)}
+              ⏰ Time: ${new Date().toLocaleString('es-ES', { timeZone: 'Europe/Madrid' })}
+
+              [View deployment details](${context.payload.repository.html_url}/actions/runs/${context.runId})`
+            })
+
+      - name: Create deployment summary (manual deployment)
+        if: success() && github.event_name == 'workflow_dispatch'
+        run: |
+          echo "## ✅ Shopify Extensions Deployed Successfully" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "🚀 **Deployment Type:** Manual" >> $GITHUB_STEP_SUMMARY
+          echo "👤 **Triggered by:** ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+          echo "📝 **Reason:** ${{ github.event.inputs.reason }}" >> $GITHUB_STEP_SUMMARY
+          echo "📦 **Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "⏰ **Time:** $(date)" >> $GITHUB_STEP_SUMMARY
+
+      - name: Notify on failure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const message = github.event_name === 'push'
+              ? `❌ **Shopify deployment failed**
+
+              🚨 Deployment triggered by: ${context.actor}
+              📦 Commit: ${context.sha.substring(0, 7)}
+
+              [View error details](${context.payload.repository.html_url}/actions/runs/${context.runId})`
+              : null;
+
+            if (message && github.event_name === 'push') {
+              github.rest.repos.createCommitComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                commit_sha: context.sha,
+                body: message
+              })
+            }
