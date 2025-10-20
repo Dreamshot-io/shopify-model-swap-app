@@ -87,10 +87,7 @@
 		"@graphql-codegen/client-preset": "4.7.0",
 		"@graphql-codegen/typescript-operations": "4.5.0",
 		"minimatch": "9.0.5",
-		"vite": "^6.2.2",
-		"@vercel/remix": {
-			"@remix-run/dev": "^2.16.1"
-		}
+		"vite": "^6.2.2"
 	},
 	"author": "javierjrueda"
 }
