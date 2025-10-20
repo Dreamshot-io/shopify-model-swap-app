@@ -2,7 +2,7 @@
 	"name": "dreamshot-model-swap",
 	"private": true,
 	"scripts": {
-		"build": "npx prisma generate && npx prisma migrate deploy && vite build",
+			"build": "npx prisma generate && npx prisma migrate deploy && vite build",
 		"build:script": "terser public/image-replacer.js -c -m --toplevel -o public/image-replacer.min.js",
 		"dev": "./scripts/dev.sh",
 		"dev:stable": "./scripts/dev-stable.sh",

@@ -1,11 +1,3 @@
 {
-	"buildCommand": "npm run build",
-	"outputDirectory": "build/client",
-	"framework": "remix",
-	"rewrites": [
-		{
-			"source": "/(.*)",
-			"destination": "/api/index"
-		}
-	]
+	"buildCommand": "npm run vercel-build"
 }
