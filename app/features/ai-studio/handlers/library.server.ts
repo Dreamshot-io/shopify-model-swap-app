@@ -189,21 +189,23 @@ export async function handleUpload(
   admin: AdminApiContext,
   shop: string,
 ) {
-  console.log("[UPLOAD] Handler called - shop:", shop);
+  const startTime = Date.now();
+  console.log("[UPLOAD:SERVER] Handler called - shop:", shop);
 
   const file = formData.get("file") as File;
   const productId = String(formData.get("productId") || "");
 
-  console.log("[UPLOAD] File info:", {
+  console.log("[UPLOAD:SERVER] File info:", {
     hasFile: !!file,
     size: file?.size,
+    sizeMB: file?.size ? (file.size / 1024 / 1024).toFixed(2) : "N/A",
     name: file?.name,
     type: file?.type,
     productId,
   });
 
   if (!file || !file.size) {
-    console.log("[UPLOAD] Validation failed - no file provided");
+    console.log("[UPLOAD:SERVER] ✗ Validation failed - no file provided");
     const errorResponse: ActionErrorResponse = {
       ok: false,
       error: "No file provided",
@@ -215,12 +217,15 @@ export async function handleUpload(
   }
 
   try {
+    console.log("[UPLOAD:SERVER] Step 1/4: Uploading to Shopify...");
     const uploadedFile = await uploadImageToShopify(
       admin,
       file,
       `AI Studio upload - ${new Date().toISOString()}`,
     );
+    console.log("[UPLOAD:SERVER] Step 1/4: ✓ Uploaded to Shopify:", uploadedFile.url);
 
+    console.log("[UPLOAD:SERVER] Step 2/4: Fetching current library...");
     const query = `#graphql
       query GetLibrary($id: ID!) {
         product(id: $id) {
@@ -244,14 +249,17 @@ export async function handleUpload(
     > = [];
     try {
       libraryItems = current ? JSON.parse(current) : [];
+      console.log("[UPLOAD:SERVER] Step 2/4: ✓ Current library has", libraryItems.length, "items");
     } catch {
       libraryItems = [];
+      console.log("[UPLOAD:SERVER] Step 2/4: ✓ No existing library, starting fresh");
     }
 
     libraryItems.push({
       imageUrl: uploadedFile.url,
       sourceUrl: null,
     });
+    console.log("[UPLOAD:SERVER] Step 3/4: Updating library metafield...");
 
     const setMutation = `#graphql
       mutation SetLibrary($ownerId: ID!, $value: String!) {
@@ -278,6 +286,7 @@ export async function handleUpload(
     const setJson = await setRes.json();
 
     if (setJson?.data?.metafieldsSet?.userErrors?.length > 0) {
+      console.error("[UPLOAD:SERVER] ✗ Metafield update failed:", setJson.data.metafieldsSet.userErrors);
       const errorResponse: ActionErrorResponse = {
         ok: false,
         error: setJson.data.metafieldsSet.userErrors[0].message,
@@ -288,6 +297,9 @@ export async function handleUpload(
       });
     }
 
+    console.log("[UPLOAD:SERVER] Step 3/4: ✓ Metafield updated, now has", libraryItems.length, "items");
+
+    console.log("[UPLOAD:SERVER] Step 4/4: Logging metric event...");
     try {
       await db.metricEvent.create({
         data: {
@@ -298,9 +310,13 @@ export async function handleUpload(
           imageUrl: uploadedFile.url,
         },
       });
+      console.log("[UPLOAD:SERVER] Step 4/4: ✓ Metric event logged");
     } catch (loggingError) {
-      console.warn("Failed to log upload event:", loggingError);
+      console.warn("[UPLOAD:SERVER] Step 4/4: ⚠ Failed to log upload event:", loggingError);
     }
+
+    const duration = Date.now() - startTime;
+    console.log(`[UPLOAD:SERVER] ✓ Upload complete in ${duration}ms:`, uploadedFile.url);
 
     const successResponse: LibraryActionResponse & { imageUrl: string } = {
       ok: true,
@@ -311,7 +327,8 @@ export async function handleUpload(
       headers: { "Content-Type": "application/json" },
     });
   } catch (error: any) {
-    console.error("Upload failed:", error);
+    const duration = Date.now() - startTime;
+    console.error(`[UPLOAD:SERVER] ✗ Upload failed after ${duration}ms:`, error);
     const errorResponse: ActionErrorResponse = {
       ok: false,
       error: error.message || "Upload failed",

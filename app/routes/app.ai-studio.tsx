@@ -1014,12 +1014,15 @@ export default function AIStudio() {
             setLibraryItemToDelete(url);
           }}
           onUpload={async (files) => {
+            console.log(`[UPLOAD] Starting batch upload of ${files.length} files`);
             const uploadedImages: LibraryItem[] = [];
             const errors: string[] = [];
 
             // Process all files, tracking successes and failures
             for (let i = 0; i < files.length; i++) {
               const file = files[i];
+              console.log(`[UPLOAD] Processing file ${i + 1}/${files.length}: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)}MB)`);
+
               const formData = new FormData();
               formData.set("intent", "upload");
               formData.set("file", file);
@@ -1031,6 +1034,7 @@ export default function AIStudio() {
 
               for (let retry = 0; retry <= maxRetries; retry++) {
                 try {
+                  console.log(`[UPLOAD] Attempt ${retry + 1}/${maxRetries + 1} for ${file.name}`);
                   const response = await fetch(window.location.pathname, {
                     method: "POST",
                     body: formData,
@@ -1041,7 +1045,7 @@ export default function AIStudio() {
 
                   if (!contentType?.includes("application/json")) {
                     console.error(
-                      `Upload attempt ${retry + 1}/${maxRetries + 1} - Non-JSON response:`,
+                      `[UPLOAD] Non-JSON response for ${file.name}:`,
                       contentType,
                       "Status:",
                       response.status,
@@ -1080,27 +1084,31 @@ export default function AIStudio() {
                       sourceUrl: null,
                     });
                     uploadSuccess = true;
+                    console.log(`[UPLOAD] ✓ Successfully uploaded ${file.name}`);
                     break; // Success - exit retry loop
                   }
                 } catch (error) {
                   const errorMsg =
                     error instanceof Error ? error.message : "Unknown error";
 
-                  // If this is the last retry or session expired, log error and break
+                  // If this is the last retry or session expired, log error
                   if (
                     retry === maxRetries ||
                     errorMsg.includes("Session expired")
                   ) {
+                    console.error(`[UPLOAD] ✗ Failed to upload ${file.name}:`, errorMsg);
                     errors.push(`${file.name}: ${errorMsg}`);
 
                     // If session expired, stop trying remaining files
                     if (errorMsg.includes("Session expired")) {
+                      console.error("[UPLOAD] Session expired - stopping all uploads");
                       break;
                     }
                   } else {
                     // Wait before retry with exponential backoff
                     console.log(
-                      `Retry ${retry + 1}/${maxRetries} for ${file.name}`,
+                      `[UPLOAD] Retry ${retry + 1}/${maxRetries} for ${file.name} after error:`,
+                      errorMsg
                     );
                     await new Promise((resolve) =>
                       setTimeout(resolve, 1000 * (retry + 1)),
@@ -1114,33 +1122,46 @@ export default function AIStudio() {
                 !uploadSuccess &&
                 errors.some((e) => e.includes("Session expired"))
               ) {
+                console.error("[UPLOAD] Stopping remaining uploads due to session expiration");
                 break;
               }
 
               // Add delay between uploads to prevent session token exhaustion
-              // (except for the last file)
-              if (i < files.length - 1 && uploadSuccess) {
-                await new Promise((resolve) => setTimeout(resolve, 500));
+              // Increased from 500ms to 1000ms for better reliability
+              if (i < files.length - 1) {
+                console.log(`[UPLOAD] Waiting 1s before next upload...`);
+                await new Promise((resolve) => setTimeout(resolve, 1000));
               }
             }
 
             // Update UI with successfully uploaded images
             if (uploadedImages.length > 0) {
+              console.log(`[UPLOAD] Updating UI with ${uploadedImages.length} uploaded images`);
               setLibraryItems((prev) => [...uploadedImages, ...prev]);
-              shopify.toast.show(
-                `Successfully uploaded ${uploadedImages.length} of ${files.length} image${files.length > 1 ? "s" : ""}!`,
-              );
+
+              if (uploadedImages.length === files.length) {
+                // All succeeded
+                shopify.toast.show(
+                  `Successfully uploaded ${uploadedImages.length} image${files.length > 1 ? "s" : ""}!`,
+                );
+              } else {
+                // Partial success
+                shopify.toast.show(
+                  `Uploaded ${uploadedImages.length} of ${files.length} images. ${errors.length} failed.`,
+                );
+              }
             }
 
             // Show errors if any
             if (errors.length > 0) {
+              console.error(`[UPLOAD] ${errors.length} upload(s) failed:`, errors);
               shopify.toast.show(
-                `Failed to upload ${errors.length} file${errors.length > 1 ? "s" : ""}: ${errors[0]}`,
+                `Failed: ${errors[0]}`,
                 { isError: true },
               );
             }
 
-            // If all failed, throw to show error state
+            // Only throw if ALL uploads failed (this allows partial success)
             if (uploadedImages.length === 0 && errors.length > 0) {
               throw new Error(errors[0]);
             }

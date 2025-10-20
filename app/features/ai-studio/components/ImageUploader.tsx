@@ -9,7 +9,14 @@ import {
   Thumbnail,
   ProgressBar,
   Banner,
+  Badge,
+  Icon,
 } from "@shopify/polaris";
+import {
+  CheckCircleIcon,
+  XCircleIcon,
+  ClockIcon,
+} from "@shopify/polaris-icons";
 
 interface ImageUploaderProps {
   onUpload: (files: File[]) => Promise<void>;
@@ -17,12 +24,20 @@ interface ImageUploaderProps {
   maxSizeMB?: number;
 }
 
+type FileStatus = "pending" | "uploading" | "success" | "error";
+
+interface FileWithStatus {
+  file: File;
+  status: FileStatus;
+  error?: string;
+}
+
 export function ImageUploader({
   onUpload,
   maxFiles = 5,
   maxSizeMB = 10,
 }: ImageUploaderProps) {
-  const [files, setFiles] = useState<File[]>([]);
+  const [filesWithStatus, setFilesWithStatus] = useState<FileWithStatus[]>([]);
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -31,14 +46,14 @@ export function ImageUploader({
   // Clean up object URLs when component unmounts or files change
   useEffect(() => {
     // Create new object URLs for files
-    const urls = files.map(file => URL.createObjectURL(file));
+    const urls = filesWithStatus.map(({ file }) => URL.createObjectURL(file));
     setObjectUrls(urls);
 
     // Cleanup function to revoke old object URLs
     return () => {
       urls.forEach(url => URL.revokeObjectURL(url));
     };
-  }, [files]);
+  }, [filesWithStatus]);
 
   const handleDrop = useCallback(
     (_droppedFiles: File[], acceptedFiles: File[], rejectedFiles: File[]) => {
@@ -49,7 +64,7 @@ export function ImageUploader({
         return;
       }
 
-      if (acceptedFiles.length + files.length > maxFiles) {
+      if (acceptedFiles.length + filesWithStatus.length > maxFiles) {
         setError(`Maximum ${maxFiles} files allowed`);
         return;
       }
@@ -64,48 +79,87 @@ export function ImageUploader({
         return;
       }
 
-      setFiles(prev => [...prev, ...acceptedFiles]);
+      setFilesWithStatus(prev => [
+        ...prev,
+        ...acceptedFiles.map(file => ({ file, status: "pending" as FileStatus })),
+      ]);
     },
-    [files, maxFiles, maxSizeMB]
+    [filesWithStatus, maxFiles, maxSizeMB]
   );
 
   const handleRemove = useCallback((index: number) => {
-    setFiles(prev => prev.filter((_, i) => i !== index));
+    setFilesWithStatus(prev => prev.filter((_, i) => i !== index));
     setError(null);
   }, []);
 
   const handleClearAll = useCallback(() => {
-    setFiles([]);
+    setFilesWithStatus([]);
     setError(null);
   }, []);
 
   const handleUpload = useCallback(async () => {
-    if (files.length === 0) return;
+    if (filesWithStatus.length === 0) return;
 
     setUploading(true);
     setError(null);
     setProgress(0);
 
-    try {
-      const totalFiles = files.length;
+    const totalFiles = filesWithStatus.length;
+    let successCount = 0;
+    let errorCount = 0;
 
-      // Upload files sequentially for better progress tracking
-      for (let i = 0; i < totalFiles; i++) {
-        await onUpload([files[i]]);
-        // Update progress after each file
-        setProgress(Math.round(((i + 1) / totalFiles) * 100));
+    // Upload files sequentially with individual status tracking
+    for (let i = 0; i < totalFiles; i++) {
+      // Mark current file as uploading
+      setFilesWithStatus(prev =>
+        prev.map((f, idx) =>
+          idx === i ? { ...f, status: "uploading" as FileStatus } : f
+        )
+      );
+
+      try {
+        await onUpload([filesWithStatus[i].file]);
+
+        // Mark as success
+        setFilesWithStatus(prev =>
+          prev.map((f, idx) =>
+            idx === i ? { ...f, status: "success" as FileStatus } : f
+          )
+        );
+        successCount++;
+      } catch (err) {
+        // Mark as error but continue with remaining files
+        const errorMsg = err instanceof Error ? err.message : "Upload failed";
+        setFilesWithStatus(prev =>
+          prev.map((f, idx) =>
+            idx === i ? { ...f, status: "error" as FileStatus, error: errorMsg } : f
+          )
+        );
+        errorCount++;
+        console.error(`Failed to upload ${filesWithStatus[i].file.name}:`, err);
       }
 
-      // Success - clear files and reset
-      setFiles([]);
-      setProgress(0);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Upload failed");
-      setProgress(0);
-    } finally {
-      setUploading(false);
+      // Update overall progress
+      setProgress(Math.round(((i + 1) / totalFiles) * 100));
     }
-  }, [files, onUpload]);
+
+    setUploading(false);
+
+    // Show summary
+    if (successCount === totalFiles) {
+      // All succeeded - clear files after a short delay
+      setTimeout(() => {
+        setFilesWithStatus([]);
+        setProgress(0);
+      }, 2000);
+    } else if (successCount > 0) {
+      // Partial success
+      setError(`${successCount} of ${totalFiles} files uploaded successfully. ${errorCount} failed.`);
+    } else {
+      // All failed
+      setError("All uploads failed. Please try again.");
+    }
+  }, [filesWithStatus, onUpload]);
 
   return (
     <Card>
@@ -127,7 +181,7 @@ export function ImageUploader({
           allowMultiple
           disabled={uploading}
         >
-          {files.length === 0 ? (
+          {filesWithStatus.length === 0 ? (
             <DropZone.FileUpload
               actionTitle="Add images"
               actionHint={`or drop files to upload (max ${maxFiles} images, ${maxSizeMB}MB each)`}
@@ -136,30 +190,64 @@ export function ImageUploader({
             <BlockStack gap="400" align="center">
               <BlockStack gap="300">
                 <Text as="p" variant="bodyMd" tone="subdued" alignment="center">
-                  {files.length} file{files.length !== 1 ? 's' : ''} selected
+                  {filesWithStatus.length} file{filesWithStatus.length !== 1 ? 's' : ''} selected
                 </Text>
 
                 <InlineStack gap="200" wrap align="center">
-                  {files.map((file, index) => (
+                  {filesWithStatus.map(({ file, status, error: fileError }, index) => (
                     <div key={`${file.name}-${index}`} style={{ position: 'relative' }}>
-                      <Thumbnail
-                        source={objectUrls[index] || ""}
-                        alt={file.name || "Uploaded image"}
-                        size="large"
-                      />
-                      {!uploading && (
-                        <div style={{ marginTop: '4px', textAlign: 'center' }}>
-                          <Button
-                            size="micro"
-                            variant="plain"
-                            tone="critical"
-                            onClick={() => handleRemove(index)}
-                            disabled={uploading}
-                          >
-                            Remove
-                          </Button>
+                      <BlockStack gap="100" align="center">
+                        <div style={{ position: 'relative' }}>
+                          <Thumbnail
+                            source={objectUrls[index] || ""}
+                            alt={file.name || "Uploaded image"}
+                            size="large"
+                          />
+                          {/* Status badge overlay */}
+                          {status !== "pending" && (
+                            <div style={{
+                              position: 'absolute',
+                              top: '-8px',
+                              right: '-8px',
+                              zIndex: 1
+                            }}>
+                              {status === "uploading" && (
+                                <Badge tone="info">
+                                  <Icon source={ClockIcon} />
+                                </Badge>
+                              )}
+                              {status === "success" && (
+                                <Badge tone="success">
+                                  <Icon source={CheckCircleIcon} />
+                                </Badge>
+                              )}
+                              {status === "error" && (
+                                <Badge tone="critical">
+                                  <Icon source={XCircleIcon} />
+                                </Badge>
+                              )}
+                            </div>
+                          )}
                         </div>
-                      )}
+                        {!uploading && (
+                          <div style={{ textAlign: 'center' }}>
+                            <Button
+                              size="micro"
+                              variant="plain"
+                              tone="critical"
+                              onClick={() => handleRemove(index)}
+                              disabled={uploading}
+                            >
+                              Remove
+                            </Button>
+                          </div>
+                        )}
+                        {status === "error" && fileError && (
+                          <Text as="p" variant="bodySm" tone="critical" alignment="center">
+                            {fileError}
+                          </Text>
+                        )}
+                      </BlockStack>
                     </div>
                   ))}
                 </InlineStack>
@@ -169,7 +257,7 @@ export function ImageUploader({
         </DropZone>
 
         {/* Upload button and progress bar moved OUTSIDE the DropZone */}
-        {files.length > 0 && (
+        {filesWithStatus.length > 0 && (
           <BlockStack gap="300">
             {uploading && (
               <BlockStack gap="200">
@@ -184,13 +272,13 @@ export function ImageUploader({
               <Button
                 variant="primary"
                 onClick={handleUpload}
-                disabled={files.length === 0 || uploading}
+                disabled={filesWithStatus.length === 0 || uploading}
                 loading={uploading}
               >
-                Upload {files.length.toString()} image{files.length !== 1 ? 's' : ''}
+                Upload {filesWithStatus.length.toString()} image{filesWithStatus.length !== 1 ? 's' : ''}
               </Button>
 
-              {!uploading && files.length > 0 && (
+              {!uploading && filesWithStatus.length > 0 && (
                 <Button
                   variant="plain"
                   onClick={handleClearAll}
