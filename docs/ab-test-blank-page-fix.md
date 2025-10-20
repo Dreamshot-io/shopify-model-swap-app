@@ -5,43 +5,48 @@
 After creating an A/B test successfully, the page would go blank with the following error in the browser console:
 
 ```
-app-bridge.js:1 Uncaught (in promise) Error: ?shopify-reload must be same-origin (https://app.dev.dreamshot.io !== https://app-dev.dreamshot.io)
+app-bridge.js:1 Uncaught (in promise) Error: ?shopify-reload must be same-origin (https://app.dev.dreamshot.io !== https://shopify.dreamshot.io)
 ```
 
 ## Root Cause Analysis
 
 ### Primary Issue: Improper Navigation Method
+
 The application was using `window.location.reload()` after A/B test operations (create, start, stop, delete). This is problematic in Shopify embedded apps because:
 
 1. **Shopify App Bridge Security**: App Bridge enforces strict same-origin policy for reload operations
-2. **URL Origin Mismatch**: The runtime URL (`app.dev.dreamshot.io`) didn't match the configured application URL (`app-dev.dreamshot.io`) in `shopify.app.toml`
+2. **URL Origin Mismatch**: The runtime URL (`app.dev.dreamshot.io`) didn't match the configured application URL (`shopify.dreamshot.io`) in `shopify.app.toml`
 3. **Security Validation Failure**: When App Bridge detects a URL mismatch during reload, it blocks the operation and throws an error, resulting in a blank page
 
 ### Secondary Issue: URL Configuration Inconsistency
-- Configured URL in `shopify.app.toml`: `https://app-dev.dreamshot.io`
+
+- Configured URL in `shopify.app.toml`: `https://shopify.dreamshot.io`
 - Runtime access URL: `https://app.dev.dreamshot.io`
 - The subtle difference (period vs hyphen) causes App Bridge's same-origin check to fail
 
 ## The Solution
 
 ### Code Changes
+
 Replaced `window.location.reload()` with Remix's `useRevalidator()` hook in `/app/routes/app.ai-studio.tsx`:
 
 **Before:**
+
 ```typescript
-if (data?.ok && intent === "createABTest") {
-  shopify.toast.show("A/B test created successfully! 🎉");
-  window.location.reload(); // ❌ Causes blank page
+if (data?.ok && intent === 'createABTest') {
+	shopify.toast.show('A/B test created successfully! 🎉');
+	window.location.reload(); // ❌ Causes blank page
 }
 ```
 
 **After:**
+
 ```typescript
 const revalidator = useRevalidator();
 
-if (data?.ok && intent === "createABTest") {
-  shopify.toast.show("A/B test created successfully! 🎉");
-  revalidator.revalidate(); // ✅ Proper Remix pattern
+if (data?.ok && intent === 'createABTest') {
+	shopify.toast.show('A/B test created successfully! 🎉');
+	revalidator.revalidate(); // ✅ Proper Remix pattern
 }
 ```
 
@@ -65,10 +70,10 @@ if (data?.ok && intent === "createABTest") {
 ## Files Modified
 
 - `/app/routes/app.ai-studio.tsx`
-  - Added `useRevalidator` import from `@remix-run/react`
-  - Added `revalidator` hook initialization
-  - Replaced 4 instances of `window.location.reload()` with `revalidator.revalidate()`
-  - Updated useEffect dependencies to include `revalidator`
+    - Added `useRevalidator` import from `@remix-run/react`
+    - Added `revalidator` hook initialization
+    - Replaced 4 instances of `window.location.reload()` with `revalidator.revalidate()`
+    - Updated useEffect dependencies to include `revalidator`
 
 ## Testing Checklist
 
@@ -87,9 +92,9 @@ if (data?.ok && intent === "createABTest") {
 
 1. **Never use `window.location.reload()`** in embedded Shopify apps
 2. **Always use Remix navigation patterns**:
-   - `useRevalidator()` for refreshing loader data
-   - `useNavigate()` for route changes
-   - `useFetcher()` for form submissions without navigation
+    - `useRevalidator()` for refreshing loader data
+    - `useNavigate()` for route changes
+    - `useFetcher()` for form submissions without navigation
 3. **Update CLAUDE.md** to explicitly warn against `window.location.reload()`
 4. **Add ESLint rule** to prevent `window.location.reload()` usage
 
@@ -102,8 +107,10 @@ if (data?.ok && intent === "createABTest") {
 ## Additional Notes
 
 ### URL Mismatch Issue
+
 While the fix resolves the immediate problem, there's still a URL configuration inconsistency:
-- `shopify.app.toml` has `app-dev.dreamshot.io`
+
+- `shopify.app.toml` has `shopify.dreamshot.io`
 - Runtime shows `app.dev.dreamshot.io`
 
 This should be investigated separately to ensure consistent configuration, though it's no longer blocking functionality.
@@ -115,18 +122,21 @@ Consider adding a helper hook for common revalidation patterns:
 ```typescript
 // app/hooks/useShopifyRevalidate.ts
 export function useShopifyRevalidate() {
-  const revalidator = useRevalidator();
-  const shopify = useAppBridge();
+	const revalidator = useRevalidator();
+	const shopify = useAppBridge();
 
-  return useCallback((message: string, isError = false) => {
-    shopify.toast.show(message, { isError });
-    revalidator.revalidate();
-  }, [revalidator, shopify]);
+	return useCallback(
+		(message: string, isError = false) => {
+			shopify.toast.show(message, { isError });
+			revalidator.revalidate();
+		},
+		[revalidator, shopify],
+	);
 }
 
 // Usage:
 const revalidate = useShopifyRevalidate();
-revalidate("A/B test created successfully! 🎉");
+revalidate('A/B test created successfully! 🎉');
 ```
 
 This would further simplify the code and ensure consistent patterns across the app.
