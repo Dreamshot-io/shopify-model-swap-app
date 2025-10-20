@@ -37,4 +37,4 @@ else
 fi
 
 echo "✅ Updated shopify.app.toml successfully!"
-echo "Don't forget to run: npm run deploy"
+echo "Don't forget to run: bun run deploy"

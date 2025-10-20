@@ -27,7 +27,7 @@ npm install
 Setup database:
 
 ```bash
-npm run setup
+bun run setup
 ```
 
 ## Development
@@ -35,13 +35,13 @@ npm run setup
 Standard development:
 
 ```bash
-npm run dev
+bun run dev
 ```
 
 Development with stable URL (recommended for app proxy and A/B testing):
 
 ```bash
-npm run dev:stable
+bun run dev:stable
 ```
 
 The stable URL uses ngrok to maintain a consistent tunnel URL across restarts, preventing app proxy configuration from breaking.
@@ -71,12 +71,12 @@ Required variables in `.env`:
 
 ```bash
 npm install          # Install dependencies
-npm run dev          # Start development server
-npm run dev:stable   # Start with stable ngrok URL
-npm run setup        # Setup database (Prisma generate + migrate)
-npm run build        # Build for production
-npm run deploy       # Deploy to Shopify
-npm run prisma       # Access Prisma CLI
+bun run dev          # Start development server
+bun run dev:stable   # Start with stable ngrok URL
+bun run setup        # Setup database (Prisma generate + migrate)
+bun run build        # Build for production
+bun run deploy       # Deploy to Shopify
+bun run prisma       # Access Prisma CLI
 ```
 
 ## Project Structure

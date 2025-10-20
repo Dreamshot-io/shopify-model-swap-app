@@ -114,18 +114,18 @@ Closes #123
 ### Key Directories
 
 - `app/` - Main application code (Remix convention)
-  - `features/ai-studio/` - AI image generation feature with components and types
-  - `routes/` - Remix routes (file-based routing)
-  - `services/` - Business logic services (AI providers, storage)
+    - `features/ai-studio/` - AI image generation feature with components and types
+    - `routes/` - Remix routes (file-based routing)
+    - `services/` - Business logic services (AI providers, storage)
 - `prisma/` - Database schema and migrations
 - `extensions/` - Shopify app extensions
 
 ### Service Architecture
 
 - **AI Providers** (`app/services/ai-providers.ts`): Abstracted AI service layer with provider pattern
-  - `AIProvider` interface for swappable AI services
-  - `FalAIProvider` implementation for fal.ai integration
-  - `AIProviderFactory` for provider management
+    - `AIProvider` interface for swappable AI services
+    - `FalAIProvider` implementation for fal.ai integration
+    - `AIProviderFactory` for provider management
 - **Storage Service** (`app/services/storage.server.ts`): Handles file storage operations
 - **Database** (`app/db.server.ts`): Prisma client configuration
 
@@ -135,43 +135,43 @@ Closes #123
 
 ```bash
 # Start development server (includes Shopify CLI tunnel)
-npm run dev
+bun run dev
 
 # Build the application
-npm run build
+bun run build
 
 # Run linting
-npm run lint
+bun run lint
 ```
 
 ### Database Operations
 
 ```bash
 # Setup database (generate Prisma client + run migrations)
-npm run setup
+bun run setup
 
 # Access Prisma CLI directly
-npm run prisma
+bun run prisma
 ```
 
 ### Shopify Operations
 
 ```bash
 # Deploy app to Shopify
-npm run deploy
+bun run deploy
 
 # Link app configuration
-npm run config:link
+bun run config:link
 
 # Generate app extensions
-npm run generate
+bun run generate
 ```
 
 ### Docker
 
 ```bash
 # Start in Docker container
-npm run docker-start
+bun run docker-start
 ```
 
 ## Code Style & Conventions
@@ -267,9 +267,9 @@ export function Component({ title, onAction, children }: ComponentProps) {
 ```typescript
 // ✅ Proper Remix loader pattern
 export async function loader({ request }: LoaderFunctionArgs) {
-  const { admin } = await authenticate.admin(request);
+	const { admin } = await authenticate.admin(request);
 
-  const response = await admin.graphql(`
+	const response = await admin.graphql(`
     query {
       products(first: 10) {
         nodes {
@@ -285,8 +285,8 @@ export async function loader({ request }: LoaderFunctionArgs) {
     }
   `);
 
-  const data = await response.json();
-  return json({ products: data.data.products.nodes });
+	const data = await response.json();
+	return json({ products: data.data.products.nodes });
 }
 ```
 
@@ -295,21 +295,19 @@ export async function loader({ request }: LoaderFunctionArgs) {
 ```typescript
 // ✅ Proper type definitions
 export interface GeneratedImage {
-  id: string;
-  imageUrl: string;
-  confidence: number;
-  metadata?: Record<string, any>;
+	id: string;
+	imageUrl: string;
+	confidence: number;
+	metadata?: Record<string, any>;
 }
 
-export type DraftItem =
-  | { imageUrl: string; sourceUrl?: string | null }
-  | string;
+export type DraftItem = { imageUrl: string; sourceUrl?: string | null } | string;
 
 export interface AIImageRequest {
-  sourceImageUrl: string;
-  prompt: string;
-  productId: string;
-  modelType?: "swap" | "generate" | "optimize";
+	sourceImageUrl: string;
+	prompt: string;
+	productId: string;
+	modelType?: 'swap' | 'generate' | 'optimize';
 }
 ```
 
@@ -331,13 +329,13 @@ export interface AIImageRequest {
 
 ```bash
 # Run tests
-npm run test
+bun run test
 
 # Run tests in watch mode
-npm run test:watch
+bun run test:watch
 
 # Run tests with coverage
-npm run test:coverage
+bun run test:coverage
 ```
 
 1. **Write the test first** - Define expected behavior before implementation
@@ -420,24 +418,24 @@ export class ErrorBoundary extends Component<
 ```typescript
 // ✅ Remix action error handling
 export async function action({ request }: ActionFunctionArgs) {
-  try {
-    const { admin } = await authenticate.admin(request);
-    const formData = await request.formData();
+	try {
+		const { admin } = await authenticate.admin(request);
+		const formData = await request.formData();
 
-    // Process the action
-    const result = await processImage(formData);
+		// Process the action
+		const result = await processImage(formData);
 
-    return json({ success: true, result });
-  } catch (error) {
-    console.error("Action failed:", error);
-    return json(
-      {
-        success: false,
-        error: error instanceof Error ? error.message : "Unknown error",
-      },
-      { status: 400 },
-    );
-  }
+		return json({ success: true, result });
+	} catch (error) {
+		console.error('Action failed:', error);
+		return json(
+			{
+				success: false,
+				error: error instanceof Error ? error.message : 'Unknown error',
+			},
+			{ status: 400 },
+		);
+	}
 }
 ```
 

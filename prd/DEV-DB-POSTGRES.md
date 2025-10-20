@@ -5,13 +5,13 @@ This project includes a Dockerized PostgreSQL instance for local development.
 ### Start Database
 
 ```bash
-npm run db:up
+bun run db:up
 ```
 
 Wait until the container is healthy:
 
 ```bash
-npm run db:logs
+bun run db:logs
 ```
 
 ### Connection String
@@ -25,7 +25,7 @@ postgresql://postgres:postgres@localhost:5432/dreamshot?schema=public
 ### Initialize Schema
 
 ```bash
-npm run setup
+bun run setup
 ```
 
 This runs `prisma generate` and `prisma db push` to sync your schema.
@@ -33,13 +33,13 @@ This runs `prisma generate` and `prisma db push` to sync your schema.
 ### Access psql
 
 ```bash
-npm run db:psql
+bun run db:psql
 ```
 
 ### Stop Database
 
 ```bash
-npm run db:down
+bun run db:down
 ```
 
 ### Notes

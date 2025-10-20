@@ -87,7 +87,7 @@ New Items:
 - [x] Add Docker Compose local Postgres and docs (`prd/DEV-DB-POSTGRES.md`)
 - [x] Add safe local migration scripts that no-op if `DATABASE_URL` missing
 - [ ] Choose pooling strategy (e.g., Neon pgbouncer or Prisma Accelerate) and update `DATABASE_URL`
-- [ ] Add seed script and sample data; document `npm run db:seed`
+- [ ] Add seed script and sample data; document `bun run db:seed`
 - [ ] Add E2E checklist for staging validation
 
 ---

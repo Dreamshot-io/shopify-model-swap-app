@@ -1,4 +1,4 @@
 {
-  "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "npm run vercel-build"
+	"$schema": "https://openapi.vercel.sh/vercel.json",
+	"framework": "remix"
 }

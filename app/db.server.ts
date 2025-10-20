@@ -6,7 +6,11 @@ declare global {
   var prisma: PrismaClient | undefined;
 }
 
-const prisma = globalThis.prisma ?? new PrismaClient();
+const prisma =
+  globalThis.prisma ??
+  new PrismaClient({
+    log: process.env.NODE_ENV === "development" ? ["error", "warn"] : ["error"],
+  });
 
 // In development, preserve the client across HMR; in production, cache for warm lambdas
 if (process.env.NODE_ENV !== "production") {
