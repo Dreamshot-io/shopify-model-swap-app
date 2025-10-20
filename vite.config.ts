@@ -61,7 +61,7 @@ export default defineConfig({
         v3_throwAbortReason: true,
         v3_lazyRouteDiscovery: true,
         v3_singleFetch: false,
-        v3_routeConfig: true,
+        v3_routeConfig: false,
       },
     }),
     tsconfigPaths(),

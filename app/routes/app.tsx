@@ -10,20 +10,32 @@ import { authenticate, MONTHLY_PLAN } from "../shopify.server";
 export const links = () => [{ rel: "stylesheet", href: polarisStyles }];
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const { billing } = await authenticate.admin(request);
-  if (!process.env.DISABLE_BILLING) {
-    await billing.require({
-      plans: [MONTHLY_PLAN],
-      isTest: process.env.NODE_ENV !== "production",
-      onFailure: async () =>
-        billing.request({
-          plan: MONTHLY_PLAN,
-          isTest: process.env.NODE_ENV !== "production",
-        }),
-    });
-  }
+  try {
+    console.log("[app.tsx] Loader called, URL:", request.url);
+    console.log("[app.tsx] SHOPIFY_API_KEY exists:", !!process.env.SHOPIFY_API_KEY);
+    console.log("[app.tsx] SHOPIFY_APP_URL:", process.env.SHOPIFY_APP_URL);
 
-  return { apiKey: process.env.SHOPIFY_API_KEY || "" };
+    const { billing } = await authenticate.admin(request);
+    console.log("[app.tsx] Authentication successful");
+
+    if (!process.env.DISABLE_BILLING) {
+      await billing.require({
+        plans: [MONTHLY_PLAN],
+        isTest: process.env.NODE_ENV !== "production",
+        onFailure: async () =>
+          billing.request({
+            plan: MONTHLY_PLAN,
+            isTest: process.env.NODE_ENV !== "production",
+          }),
+      });
+      console.log("[app.tsx] Billing check passed");
+    }
+
+    return { apiKey: process.env.SHOPIFY_API_KEY || "" };
+  } catch (error) {
+    console.error("[app.tsx] Loader error:", error);
+    throw error;
+  }
 };
 
 export default function App() {

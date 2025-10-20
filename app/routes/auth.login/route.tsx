@@ -20,13 +20,30 @@ import { loginErrorMessage } from "./error.server";
 export const links = () => [{ rel: "stylesheet", href: polarisStyles }];
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const errors = loginErrorMessage(await login(request));
+  const url = new URL(request.url);
+  console.log("[auth.login] Login page accessed");
+  console.log("[auth.login] URL:", request.url);
+  console.log("[auth.login] Shop param:", url.searchParams.get("shop"));
+
+  const loginResult = await login(request);
+  console.log("[auth.login] Login result:", loginResult);
+
+  const errors = loginErrorMessage(loginResult);
+  console.log("[auth.login] Errors:", errors);
 
   return { errors, polarisTranslations };
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
-  const errors = loginErrorMessage(await login(request));
+  const formData = await request.formData();
+  const shop = formData.get("shop");
+  console.log("[auth.login] Login form submitted");
+  console.log("[auth.login] Shop from form:", shop);
+
+  const loginResult = await login(request);
+  console.log("[auth.login] Login action result:", loginResult);
+
+  const errors = loginErrorMessage(loginResult);
 
   return {
     errors,
