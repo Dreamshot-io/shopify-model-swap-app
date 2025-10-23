@@ -74,6 +74,61 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       return json({ variant: null }, { headers: corsHeaders });
     }
 
+    const sanitizeImages = (raw: string): string[] => {
+      if (!raw) return [];
+
+      try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          return Array.from(
+            new Set(parsed.filter((url): url is string => typeof url === "string" && url.trim().length > 0)),
+          ).slice(0, 6);
+        }
+
+        if (typeof parsed === "string" && parsed.trim().length > 0) {
+          return [parsed.trim()];
+        }
+      } catch (error) {
+        if (raw.trim().length > 0) {
+          return [raw.trim()];
+        }
+      }
+
+      return [];
+    };
+
+    const variantImageMap = new Map<string, string[]>();
+    for (const variant of activeTest.variants) {
+      variantImageMap.set(variant.variant, sanitizeImages(variant.imageUrls));
+    }
+
+    const pickImagesForVariant = (variant: string): string[] => {
+      const baseImages = variantImageMap.get(variant) ?? [];
+      if (!baseImages.length) return baseImages;
+
+      const otherVariant = variant === "A" ? "B" : "A";
+      const otherImages = variantImageMap.get(otherVariant) ?? [];
+
+      if (!otherImages.length) {
+        return baseImages;
+      }
+
+      const uniqueImages = baseImages.filter((url) => !otherImages.includes(url));
+
+      if (!uniqueImages.length) {
+        console.warn(
+          "[variant] Variant",
+          variant,
+          "shares all images with",
+          otherVariant,
+          "- returning full set",
+        );
+        return baseImages;
+      }
+
+      return uniqueImages;
+    };
+
     let selectedVariant: string;
     let existingEvent = null;
 
@@ -125,13 +180,25 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     }
 
     // Parse image URLs
-    let imageUrls: string[];
-    try {
-      imageUrls = JSON.parse(variantData.imageUrls);
-      console.log("[variant] Parsed image URLs:", imageUrls.length, "images");
-    } catch (parseError) {
-      console.error("[variant] Failed to parse imageUrls:", parseError);
-      imageUrls = [variantData.imageUrls]; // Fallback to single URL
+    let imageUrls = pickImagesForVariant(selectedVariant);
+
+    if (!imageUrls.length) {
+      console.warn("[variant] Variant", selectedVariant, "has no usable images; searching for fallback variant");
+
+      const fallbackEntry = Array.from(variantImageMap.entries()).find(([, images]) => images.length > 0);
+
+      if (fallbackEntry) {
+        const [fallbackVariant] = fallbackEntry;
+        selectedVariant = fallbackVariant;
+        imageUrls = pickImagesForVariant(fallbackVariant);
+        console.warn(
+          "[variant] Falling back to variant",
+          fallbackVariant,
+          "with",
+          imageUrls.length,
+          "images",
+        );
+      }
     }
 
 
