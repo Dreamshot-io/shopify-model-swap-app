@@ -196,6 +196,10 @@ export const action = async ({
     const productId = String(formData.get("productId") || "");
 
     console.log(`[ACTION:${requestId}] Intent: ${intent}, ProductId: ${productId}`);
+    
+    // Debug: Log all form data entries
+    const formDataEntries = Array.from(formData.entries());
+    console.log(`[ACTION:${requestId}] FormData entries:`, formDataEntries);
 
     // Wrap authentication in try-catch to catch redirect responses
     let admin;
