@@ -16,19 +16,22 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
     // In development, allow unauthenticated requests for testing
     // In production, always require App Proxy authentication
-    let corsHeaders = {};
+    let corsHeaders: Record<string, string> = {
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "GET, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type",
+    };
 
-    if (isDevelopment) {
-      // Allow CORS for development testing
-      corsHeaders = {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "GET, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type",
-      };
-    } else {
-      // Authenticate App Proxy request in production
-      const { cors } = await authenticate.public.appProxy(request);
-      corsHeaders = cors.headers;
+    if (!isDevelopment) {
+      try {
+        const { cors } = await authenticate.public.appProxy(request);
+        corsHeaders = {
+          ...cors.headers,
+          ...corsHeaders,
+        };
+      } catch (authError) {
+        console.warn("[script] App proxy authentication failed, serving script without Shopify headers", authError);
+      }
     }
 
     // Use minified version in production, regular version in development for debugging
@@ -53,7 +56,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         ...corsHeaders,
         "Content-Type": "application/javascript; charset=utf-8",
         "Cache-Control": "public, max-age=300, s-maxage=300", // 5 minute cache
-        "Access-Control-Allow-Origin": "*", // Allow cross-origin for storefronts
         "X-Content-Type-Options": "nosniff", // Security header
         "X-Script-Size": `${Buffer.byteLength(script, 'utf8')} bytes`, // Track size
       },
@@ -66,6 +68,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         status: 500,
         headers: {
           "Content-Type": "application/javascript; charset=utf-8",
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Methods": "GET, OPTIONS",
+          "Access-Control-Allow-Headers": "Content-Type",
         },
       }
     );
