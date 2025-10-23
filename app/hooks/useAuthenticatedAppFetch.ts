@@ -10,6 +10,13 @@ export function useAuthenticatedAppFetch() {
   const shopify = useAppBridge();
 
   return useMemo(() => {
+    // SSR guard - window is not available during server-side rendering
+    if (typeof window === 'undefined') {
+      return async () => {
+        throw new Error('useAuthenticatedAppFetch can only be used on the client side');
+      };
+    }
+
     const appOrigin = (window.ENV && window.ENV.SHOPIFY_APP_URL) || window.location.origin;
 
     return async (input: string | URL, init?: RequestInit) => {
