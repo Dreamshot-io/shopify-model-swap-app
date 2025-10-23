@@ -70,14 +70,21 @@ export function ABTestCreator({
       return;
     }
 
-    // Convert Maps to sorted arrays based on selection order
     const sortedAImages = Array.from(variantAImages.entries())
       .sort((a, b) => a[1] - b[1])
-      .map(([url]) => url);
+      .map(([url]) => url)
+      .slice(0, 6);
 
-    const sortedBImages = Array.from(variantBImages.entries())
+    const filteredBEntries = Array.from(variantBImages.entries())
       .sort((a, b) => a[1] - b[1])
-      .map(([url]) => url);
+      .filter(([url]) => !sortedAImages.includes(url));
+
+    const sortedBImages = filteredBEntries.map(([url]) => url).slice(0, 6);
+
+    if (sortedAImages.length === 0 || sortedBImages.length === 0) {
+      alert("Each variant must contain at least one unique image (max 6 per variant)");
+      return;
+    }
 
     onTestCreate({
       name: testName,
@@ -88,8 +95,17 @@ export function ABTestCreator({
     });
   };
 
+  const variantASelection = Array.from(variantAImages.entries())
+    .sort((a, b) => a[1] - b[1])
+    .map(([url]) => url);
+
+  const variantBSelection = Array.from(variantBImages.entries())
+    .sort((a, b) => a[1] - b[1])
+    .filter(([url]) => !variantASelection.includes(url))
+    .map(([url]) => url);
+
   const isValid =
-    testName && variantAImages.size > 0 && variantBImages.size > 0;
+    testName && variantASelection.length > 0 && variantBSelection.length > 0;
 
   return (
     <Card>

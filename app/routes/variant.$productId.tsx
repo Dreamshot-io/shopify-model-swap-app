@@ -134,6 +134,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       imageUrls = [variantData.imageUrls]; // Fallback to single URL
     }
 
+
     // Track impression if this is a new session (but not for forced variants)
     if (!existingEvent && !forcedVariant) {
       try {
