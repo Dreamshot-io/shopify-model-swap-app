@@ -41,7 +41,7 @@ export function useAuthenticatedAppFetch() {
           headers: {
             // Only set Accept if not already set and not sending FormData
             ...(init?.headers || {}),
-            ...(init?.body instanceof FormData 
+            ...(init?.body instanceof FormData
               ? {} // Don't override headers for FormData - let browser set Content-Type
               : { Accept: init?.headers?.Accept ?? "application/json" }
             ),

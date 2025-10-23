@@ -134,7 +134,7 @@ export async function getStagedUploadUrl(
     productId: formData.get("productId"),
   });
 
-  const response = await authenticatedFetch("/app/ai-studio", {
+  const response = await authenticatedFetch("/app/api/ai-studio/get-staged-upload", {
     method: "POST",
     body: formData,
     // Don't set Content-Type header - let browser set it with boundary for FormData
@@ -177,7 +177,7 @@ export async function completeUpload(
   formData.set("filename", filename);
   formData.set("productId", productId);
 
-  const response = await authenticatedFetch("/app/ai-studio", {
+  const response = await authenticatedFetch("/app/api/ai-studio/complete-upload", {
     method: "POST",
     body: formData,
   });
