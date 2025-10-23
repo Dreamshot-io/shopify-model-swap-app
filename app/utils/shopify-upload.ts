@@ -137,6 +137,7 @@ export async function getStagedUploadUrl(
   const response = await authenticatedFetch("/app/ai-studio", {
     method: "POST",
     body: formData,
+    // Don't set Content-Type header - let browser set it with boundary for FormData
   });
 
   if (!response.ok) {
