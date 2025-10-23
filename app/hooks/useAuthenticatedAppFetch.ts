@@ -20,14 +20,34 @@ export function useAuthenticatedAppFetch() {
 
       const absoluteUrl = new URL(target.toString(), appOrigin).toString();
 
-      // In App Bridge 4.x, global fetch is automatically authenticated
-      return fetch(absoluteUrl, {
-        ...init,
-        headers: {
-          ...(init?.headers || {}),
-          Accept: init?.headers?.Accept ?? "application/json",
-        },
+      console.log("[AUTH_FETCH] Making request:", {
+        target: target.toString(),
+        absoluteUrl,
+        appOrigin,
+        hasENV: !!(window.ENV && window.ENV.SHOPIFY_APP_URL),
       });
+
+      try {
+        // In App Bridge 4.x, global fetch is automatically authenticated
+        const response = await fetch(absoluteUrl, {
+          ...init,
+          headers: {
+            ...(init?.headers || {}),
+            Accept: init?.headers?.Accept ?? "application/json",
+          },
+        });
+
+        console.log("[AUTH_FETCH] Response:", {
+          status: response.status,
+          statusText: response.statusText,
+          ok: response.ok,
+        });
+
+        return response;
+      } catch (error) {
+        console.error("[AUTH_FETCH] Request failed:", error);
+        throw error;
+      }
     };
   }, [shopify]);
 }
