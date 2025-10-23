@@ -72,6 +72,13 @@ export async function createStagedUpload(
     }
   `;
 
+  console.log("[CREATE_STAGED_UPLOAD] Requesting staged upload:", {
+    filename: options.filename,
+    mimeType: options.mimeType,
+    fileSize: options.fileSize,
+    fileSizeMB: (options.fileSize / 1024 / 1024).toFixed(2),
+  });
+
   const response = await admin.graphql(mutation, {
     variables: {
       input: [
@@ -87,9 +94,19 @@ export async function createStagedUpload(
   });
 
   const result = await response.json();
+  
+  console.log("[CREATE_STAGED_UPLOAD] GraphQL response:", {
+    hasData: !!result.data,
+    hasStagedUploadsCreate: !!result.data?.stagedUploadsCreate,
+    hasUserErrors: !!result.data?.stagedUploadsCreate?.userErrors?.length,
+    hasStagedTargets: !!result.data?.stagedUploadsCreate?.stagedTargets?.length,
+    userErrors: result.data?.stagedUploadsCreate?.userErrors,
+    stagedTargets: result.data?.stagedUploadsCreate?.stagedTargets,
+  });
 
   if (result.data?.stagedUploadsCreate?.userErrors?.length > 0) {
     const error = result.data.stagedUploadsCreate.userErrors[0];
+    console.error("[CREATE_STAGED_UPLOAD] User error:", error);
     throw new Error(
       `Failed to create staged upload: ${error.message} (${error.field})`,
     );
@@ -98,10 +115,17 @@ export async function createStagedUpload(
   const stagedTarget = result.data?.stagedUploadsCreate?.stagedTargets?.[0];
 
   if (!stagedTarget) {
+    console.error("[CREATE_STAGED_UPLOAD] No staged target returned:", result);
     throw new Error(
       "Failed to create staged upload: No staged target returned",
     );
   }
+
+  console.log("[CREATE_STAGED_UPLOAD] ✓ Success:", {
+    url: stagedTarget.url,
+    resourceUrl: stagedTarget.resourceUrl,
+    paramCount: stagedTarget.parameters.length,
+  });
 
   return stagedTarget;
 }
