@@ -111,6 +111,7 @@ export async function uploadToStagedUrl(
 export async function getStagedUploadUrl(
   file: File,
   productId: string,
+  authenticatedFetch: (input: string, init?: RequestInit) => Promise<Response>,
 ): Promise<StagedUploadTarget> {
   console.log("[SHOPIFY_UPLOAD] Requesting staged upload URL:", {
     filename: file.name,
@@ -125,7 +126,7 @@ export async function getStagedUploadUrl(
   formData.set("fileSize", file.size.toString());
   formData.set("productId", productId);
 
-  const response = await fetch(window.location.pathname, {
+  const response = await authenticatedFetch("/app/ai-studio", {
     method: "POST",
     body: formData,
   });
@@ -157,6 +158,7 @@ export async function completeUpload(
   resourceUrl: string,
   filename: string,
   productId: string,
+  authenticatedFetch: (input: string, init?: RequestInit) => Promise<Response>,
 ): Promise<string> {
   console.log("[SHOPIFY_UPLOAD] Notifying server of upload completion");
 
@@ -166,7 +168,7 @@ export async function completeUpload(
   formData.set("filename", filename);
   formData.set("productId", productId);
 
-  const response = await fetch(window.location.pathname, {
+  const response = await authenticatedFetch("/app/ai-studio", {
     method: "POST",
     body: formData,
   });

@@ -37,6 +37,7 @@ import {
   handlePublish,
   handleDeleteFromProduct,
 } from "../features/ai-studio/handlers/product-media.server";
+import { useAuthenticatedAppFetch } from "../hooks/useAuthenticatedAppFetch";
 import type {
   LibraryItem,
   GeneratedImage,
@@ -380,6 +381,7 @@ export default function AIStudio() {
   const revalidator = useRevalidator();
   const shopify = useAppBridge();
   const fetcher = useFetcher<typeof action>();
+  const authenticatedAppFetch = useAuthenticatedAppFetch();
   const [searchQuery, setSearchQuery] = useState("");
 
   // State management
@@ -499,15 +501,46 @@ export default function AIStudio() {
         fd.set("sourceImageUrl", image.url);
         fd.set("prompt", prompt);
         fd.set("productId", product?.id || "");
-        fd.set("intent", "generate");
 
-        // Wait for the generation to complete
-        const response = await fetch(window.location.pathname, {
+        console.log(`[BATCH ${i + 1}/${selectedImages.length}] Starting generation for:`, image.url.substring(0, 50) + "...");
+
+        // DEBUG: Test if API routes work at all
+        if (i === 0) {
+          try {
+            console.log("[DEBUG] Testing /api/test endpoint...");
+            const testRes = await authenticatedAppFetch("/api/test", {
+              method: "POST",
+            });
+            console.log("[DEBUG] Test response:", testRes.status, await testRes.text());
+          } catch (e) {
+            console.error("[DEBUG] Test failed:", e);
+          }
+        }
+
+        // Get session token for authenticated request
+        const response = await authenticatedAppFetch("/api/generate", {
           method: "POST",
           body: fd,
         });
 
+        console.log(`[BATCH ${i + 1}] Response status: ${response.status}, content-type: ${response.headers.get("content-type")}`);
+
+        // Check if response is JSON before parsing
+        const contentType = response.headers.get("content-type");
+        if (!contentType || !contentType.includes("application/json")) {
+          // Check if it's an auth redirect (typically 401 or 302)
+          if (response.status === 401 || response.status === 302) {
+            throw new Error("Session expired. Please reload the page.");
+          }
+          throw new Error(`Server error (${response.status}). Please try again.`);
+        }
+
         const result = await response.json();
+
+        // Check for auth error in JSON response
+        if (!result.ok && result.needsAuth) {
+          throw new Error("Session expired. Please reload the page.");
+        }
 
         if (result.ok && result.result) {
           // Add successful result - ensure proper structure

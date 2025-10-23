@@ -31,7 +31,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       console.log("[app.tsx] Billing check passed");
     }
 
-    return { apiKey: process.env.SHOPIFY_API_KEY || "" };
+    return { apiKey: process.env.SHOPIFY_API_KEY || "", appUrl: process.env.SHOPIFY_APP_URL || "" };
   } catch (error) {
     console.error("[app.tsx] Loader error:", error);
     throw error;
@@ -39,10 +39,17 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 };
 
 export default function App() {
-  const { apiKey } = useLoaderData<typeof loader>();
+  const { apiKey, appUrl } = useLoaderData<typeof loader>();
 
   return (
     <AppProvider isEmbeddedApp apiKey={apiKey}>
+      <script
+        dangerouslySetInnerHTML={{
+          __html: `window.ENV = ${JSON.stringify({
+            SHOPIFY_APP_URL: appUrl,
+          })};`,
+        }}
+      />
       <NavMenu>
         <Link to="/app" rel="home">
           Home

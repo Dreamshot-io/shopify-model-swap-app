@@ -337,12 +337,20 @@
       if (gallery && gallery.images.length > 0) {
         debugLog('Using gallery-based approach with', gallery.images.length, 'images');
 
+        gallery.images.forEach(img => {
+          const wrapper = img.parentElement;
+          if (wrapper && wrapper !== gallery.container) {
+            wrapper.setAttribute('data-ab-gallery-wrapper', 'true');
+          }
+        });
+
         // Filter to only visible images
         const visibleImages = gallery.images.filter(img => isImageVisible(img));
         debugLog('Visible images in gallery:', visibleImages.length);
 
         // PHASE 2: Replace first N images (where N = imageUrls.length)
         visibleImages.forEach((img, index) => {
+          const parentWrapper = img.closest('[data-ab-gallery-wrapper]') || img.parentElement;
           if (index < imageUrls.length) {
             const wasVisible = isImageVisible(img);
             replaceImageSrc(img, imageUrls[index]);
@@ -350,8 +358,7 @@
             if (wasVisible) visibleReplaced++;
             debugLog('Replaced gallery image', index, 'visible:', wasVisible);
           } else {
-            // PHASE 3: Hide remaining images
-            hideImage(img);
+            hideImage(parentWrapper || img);
             hidden++;
             debugLog('Hiding extra gallery image', index);
           }
@@ -469,13 +476,13 @@
   // Fetch variant assignment from app proxy
   async function fetchVariant(productId, attempt = 1) {
     const sessionId = getSessionId();
-    
+
     // Check for forced variant in URL (for testing: ?variant=a or ?variant=b)
     const urlParams = new URLSearchParams(window.location.search);
     const forcedVariant = urlParams.get('variant');
-    
+
     let url = APP_PROXY_BASE + '/variant/' + encodeURIComponent(productId) + '?session=' + sessionId;
-    
+
     // Add forced variant parameter if present
     if (forcedVariant && (forcedVariant.toLowerCase() === 'a' || forcedVariant.toLowerCase() === 'b')) {
       url += '&force=' + forcedVariant.toUpperCase();

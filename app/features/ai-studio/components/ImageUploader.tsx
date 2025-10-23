@@ -1,27 +1,28 @@
 import { useState, useCallback, useEffect } from "react";
 import {
-  Card,
-  Text,
-  Button,
-  BlockStack,
-  InlineStack,
-  DropZone,
-  Thumbnail,
-  ProgressBar,
-  Banner,
-  Badge,
-  Icon,
+    Card,
+    Text,
+    Button,
+    BlockStack,
+    InlineStack,
+    DropZone,
+    Thumbnail,
+    ProgressBar,
+    Banner,
+    Badge,
+    Icon,
 } from "@shopify/polaris";
 import {
-  CheckCircleIcon,
-  XCircleIcon,
-  ClockIcon,
+    CheckCircleIcon,
+    XCircleIcon,
+    ClockIcon,
 } from "@shopify/polaris-icons";
 import {
-  getStagedUploadUrl,
-  uploadToStagedUrl,
-  completeUpload,
+    getStagedUploadUrl,
+    uploadToStagedUrl,
+    completeUpload,
 } from "../../../utils/shopify-upload";
+import { useAuthenticatedAppFetch } from "../../../hooks/useAuthenticatedAppFetch";
 
 interface ImageUploaderProps {
   productId: string;
@@ -57,6 +58,7 @@ export function ImageUploader({
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [objectUrls, setObjectUrls] = useState<string[]>([]);
+  const authenticatedAppFetch = useAuthenticatedAppFetch();
 
   // Clean up object URLs when component unmounts or files change
   useEffect(() => {
@@ -143,7 +145,11 @@ export function ImageUploader({
           )
         );
 
-        const stagedTarget = await getStagedUploadUrl(currentFile.file, productId);
+        const stagedTarget = await getStagedUploadUrl(
+          currentFile.file,
+          productId,
+          authenticatedAppFetch,
+        );
         console.log(`[UPLOAD:CLIENT] ✓ Got staged URL for ${currentFile.file.name}`);
 
         // Step 2: Upload directly to Shopify S3 (bypasses Vercel!)
@@ -175,6 +181,7 @@ export function ImageUploader({
           stagedTarget.resourceUrl,
           currentFile.file.name,
           productId,
+          authenticatedAppFetch,
         );
 
         console.log(`[UPLOAD:CLIENT] ✓ Upload finalized for ${currentFile.file.name}`);
@@ -232,7 +239,7 @@ export function ImageUploader({
       // All failed
       setError("All uploads failed. Please try again.");
     }
-  }, [filesWithStatus, productId, onSuccess]);
+  }, [filesWithStatus, productId, onSuccess, authenticatedAppFetch]);
 
   return (
     <Card>
