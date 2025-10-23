@@ -242,9 +242,24 @@ export const action = async ({
 
       case "getStagedUpload":
         console.log(`[ACTION:${requestId}] Calling handleGetStagedUpload...`);
-        const stagedUploadResult = await handleGetStagedUpload(formData, admin, session.shop);
-        console.log(`[ACTION:${requestId}] GetStagedUpload handler completed`);
-        return stagedUploadResult;
+        try {
+          const stagedUploadResult = await handleGetStagedUpload(formData, admin, session.shop);
+          console.log(`[ACTION:${requestId}] GetStagedUpload handler completed`);
+          return stagedUploadResult;
+        } catch (stagedUploadError: any) {
+          console.error(`[ACTION:${requestId}] GetStagedUpload failed:`, stagedUploadError);
+          return json(
+            {
+              ok: false,
+              error: `Failed to create staged upload: ${stagedUploadError.message}`,
+              debug: process.env.NODE_ENV === "development" ? {
+                message: stagedUploadError.message,
+                stack: stagedUploadError.stack,
+              } : undefined,
+            },
+            { status: 500, headers: { "Content-Type": "application/json" } }
+          );
+        }
 
       case "completeUpload":
         console.log(`[ACTION:${requestId}] Calling handleCompleteUpload...`);
