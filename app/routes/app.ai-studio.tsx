@@ -177,6 +177,10 @@ export const action = async ({
       console.log(`[ACTION:${requestId}] Parsing formData...`);
       formData = await request.formData();
       console.log(`[ACTION:${requestId}] FormData parsed successfully`);
+      
+      // Debug form data contents
+      const formDataEntries = Array.from(formData.entries());
+      console.log(`[ACTION:${requestId}] FormData entries:`, formDataEntries);
     } catch (formError) {
       console.error(`[ACTION:${requestId}] Failed to parse formData:`, formError);
       return json(

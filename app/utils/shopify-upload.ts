@@ -126,6 +126,14 @@ export async function getStagedUploadUrl(
   formData.set("fileSize", file.size.toString());
   formData.set("productId", productId);
 
+  console.log("[SHOPIFY_UPLOAD] Sending request with FormData:", {
+    intent: formData.get("intent"),
+    filename: formData.get("filename"),
+    mimeType: formData.get("mimeType"),
+    fileSize: formData.get("fileSize"),
+    productId: formData.get("productId"),
+  });
+
   const response = await authenticatedFetch("/app/ai-studio", {
     method: "POST",
     body: formData,

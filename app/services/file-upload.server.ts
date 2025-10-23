@@ -94,7 +94,7 @@ export async function createStagedUpload(
   });
 
   const result = await response.json();
-  
+
   console.log("[CREATE_STAGED_UPLOAD] GraphQL response:", {
     hasData: !!result.data,
     hasStagedUploadsCreate: !!result.data?.stagedUploadsCreate,
