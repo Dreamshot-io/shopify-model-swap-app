@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, jest } from "@jest/globals";
 import { handleUpload, handleSaveToLibrary, handleDeleteFromLibrary } from "../handlers/library.server";
+import { EventType } from "@prisma/client";
 import type { AdminApiContext } from "@shopify/shopify-app-remix/server";
 import db from "../../../db.server";
 
@@ -86,7 +87,7 @@ describe("library.server handlers", () => {
         data: {
           id: expect.any(String),
           shop: testShop,
-          type: "UPLOADED",
+          type: EventType.UPLOADED,
           productId: testProductId,
           imageUrl: "https://cdn.shopify.com/uploaded-test.jpg",
         },
@@ -150,7 +151,7 @@ describe("library.server handlers", () => {
         data: {
           id: expect.any(String),
           shop: testShop,
-          type: "UPLOADED",
+          type: EventType.UPLOADED,
           productId: testProductId,
           imageUrl: "https://cdn.shopify.com/image.webp",
         },
@@ -388,7 +389,7 @@ describe("library.server handlers", () => {
         data: {
           id: expect.any(String),
           shop: testShop,
-          type: "LIBRARY_SAVED",
+          type: EventType.LIBRARY_SAVED,
           productId: testProductId,
           imageUrl: "https://generated.jpg",
         },
@@ -480,7 +481,7 @@ describe("library.server handlers", () => {
         data: {
           id: expect.any(String),
           shop: testShop,
-          type: "LIBRARY_DELETED",
+          type: EventType.LIBRARY_DELETED,
           productId: testProductId,
           imageUrl: "https://to-delete.jpg",
         },
@@ -552,7 +553,7 @@ describe("library.server handlers", () => {
 
       // Verify UPLOADED is a valid EventType
       const uploadCall = (db.metricEvent.create as jest.Mock).mock.calls[0];
-      expect(uploadCall[0].data.type).toBe("UPLOADED");
+      expect(uploadCall[0].data.type).toBe(EventType.UPLOADED);
 
       // Test LIBRARY_SAVED event type
       jest.clearAllMocks();
@@ -568,7 +569,7 @@ describe("library.server handlers", () => {
 
       // Verify LIBRARY_SAVED is a valid EventType
       const saveCall = (db.metricEvent.create as jest.Mock).mock.calls[0];
-      expect(saveCall[0].data.type).toBe("LIBRARY_SAVED");
+      expect(saveCall[0].data.type).toBe(EventType.LIBRARY_SAVED);
 
       // Test LIBRARY_DELETED event type
       jest.clearAllMocks();
@@ -589,7 +590,7 @@ describe("library.server handlers", () => {
 
       // Verify LIBRARY_DELETED is a valid EventType
       const deleteCall = (db.metricEvent.create as jest.Mock).mock.calls[0];
-      expect(deleteCall[0].data.type).toBe("LIBRARY_DELETED");
+      expect(deleteCall[0].data.type).toBe(EventType.LIBRARY_DELETED);
     });
   });
 });

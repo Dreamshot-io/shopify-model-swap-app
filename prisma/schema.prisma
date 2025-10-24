@@ -27,6 +27,9 @@ enum EventType {
   DRAFT_SAVED
   DRAFT_DELETED
   PUBLISHED
+  LIBRARY_SAVED
+  LIBRARY_DELETED
+  UPLOADED
 }
 
 model Session {

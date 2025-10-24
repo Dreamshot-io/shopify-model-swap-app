@@ -1,0 +1,102 @@
+generator client {
+   provider = "prisma-client-js"
+}
+
+datasource db {
+   provider  = "postgresql"
+   url       = env("DATABASE_URL")
+   directUrl = env("DIRECT_URL")
+}
+
+enum ABTestStatus {
+   DRAFT
+   RUNNING
+   PAUSED
+   COMPLETED
+   ARCHIVED
+}
+
+enum ABTestEventType {
+   IMPRESSION
+   ADD_TO_CART
+   PURCHASE
+}
+
+enum EventType {
+   GENERATED
+   DRAFT_SAVED
+   DRAFT_DELETED
+   PUBLISHED
+}
+
+model Session {
+   id            String    @id
+   shop          String
+   state         String
+   isOnline      Boolean   @default(false)
+   scope         String?
+   expires       DateTime?
+   accessToken   String
+   userId        BigInt?
+   firstName     String?
+   lastName      String?
+   email         String?
+   accountOwner  Boolean   @default(false)
+   locale        String?
+   collaborator  Boolean?  @default(false)
+   emailVerified Boolean?  @default(false)
+}
+
+model MetricEvent {
+   id        String    @id @default(cuid())
+   shop      String
+   type      EventType
+   productId String?
+   imageUrl  String?
+   createdAt DateTime  @default(now())
+}
+
+model ABTest {
+   id           String          @id @default(cuid())
+   shop         String
+   productId    String
+   name         String
+   status       ABTestStatus    @default(DRAFT)
+   trafficSplit Int             @default(50)
+   startDate    DateTime?
+   endDate      DateTime?
+   variants     ABTestVariant[]
+   events       ABTestEvent[]
+   createdAt    DateTime        @default(now())
+   updatedAt    DateTime        @updatedAt
+
+   @@index([shop, status])
+   @@index([shop, productId])
+   @@index([status, startDate])
+}
+
+model ABTestVariant {
+   id        String @id @default(cuid())
+   testId    String
+   variant   String
+   imageUrls String
+   test      ABTest @relation(fields: [testId], references: [id], onDelete: Cascade)
+
+   @@index([testId, variant])
+}
+
+model ABTestEvent {
+   id        String          @id @default(cuid())
+   testId    String
+   sessionId String
+   variant   String
+   eventType ABTestEventType
+   productId String
+   revenue   Decimal?
+   createdAt DateTime        @default(now())
+   test      ABTest          @relation(fields: [testId], references: [id], onDelete: Cascade)
+
+   @@index([testId, sessionId])
+   @@index([testId, eventType])
+   @@index([testId, createdAt])
+}

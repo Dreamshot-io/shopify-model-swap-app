@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, jest } from "@jest/globals";
 import { uploadImageToShopify } from "../../services/file-upload.server";
 import { handleUpload } from "../handlers/library.server";
+import { EventType } from "@prisma/client";
 import type { AdminApiContext } from "@shopify/shopify-app-remix/server";
 import db from "../../../db.server";
 
@@ -563,7 +564,7 @@ describe("Image Upload Integration Tests", () => {
         data: {
           id: expect.any(String),
           shop: "test-shop.myshopify.com",
-          type: "UPLOADED",
+          type: EventType.UPLOADED,
           productId: "gid://shopify/Product/123",
           imageUrl: "https://cdn.shopify.com/test.jpg",
         },
@@ -670,7 +671,7 @@ describe("Image Upload Integration Tests", () => {
       // Verify event was logged
       expect(db.metricEvent.create).toHaveBeenCalledWith({
         data: expect.objectContaining({
-          type: "UPLOADED",
+          type: EventType.UPLOADED,
           imageUrl: "https://cdn.shopify.com/s/files/product.jpg",
         }),
       });
@@ -761,7 +762,7 @@ describe("Image Upload Integration Tests", () => {
       // Verify UPLOADED event for WebP
       expect(db.metricEvent.create).toHaveBeenCalledWith({
         data: expect.objectContaining({
-          type: "UPLOADED",
+          type: EventType.UPLOADED,
           imageUrl: "https://cdn.shopify.com/modern.webp",
         }),
       });
@@ -925,7 +926,7 @@ describe("Image Upload Integration Tests", () => {
         // Verify event is logged for each file type
         expect(db.metricEvent.create).toHaveBeenCalledWith({
           data: expect.objectContaining({
-            type: "UPLOADED",
+            type: EventType.UPLOADED,
             imageUrl: `https://cdn.shopify.com/${fileInfo.name}`,
           }),
         });
@@ -1003,7 +1004,7 @@ describe("Image Upload Integration Tests", () => {
 
       // The critical test: UPLOADED must be a valid EventType in Prisma schema
       const eventCall = (db.metricEvent.create as jest.Mock).mock.calls[0];
-      expect(eventCall[0].data.type).toBe("UPLOADED");
+      expect(eventCall[0].data.type).toBe(EventType.UPLOADED);
 
       // If this test passes, it confirms the Prisma schema includes UPLOADED in EventType enum
     });
