@@ -339,12 +339,22 @@
 	}
 
 	// Replace images with intelligent detection + fallback selectors
-	function replaceImages(imageUrls) {
+	function replaceImages(imageUrls, variantId) {
 		if (!imageUrls || !imageUrls.length) return false;
+
+		if (DEBUG_MODE) {
+			console.group('[A/B Test Debug] replaceImages');
+			console.debug('Variant ID:', variantId);
+			console.debug('Incoming image URLs:', imageUrls);
+		}
 
 		// Re-entry guard: prevent infinite loops from MutationObserver
 		if (isReplacingImages) {
 			debugLog('Skipping replaceImages - already in progress');
+			if (DEBUG_MODE) {
+				console.debug('replaceImages exiting early because another run is active');
+				console.groupEnd();
+			}
 			return false;
 		}
 
@@ -352,6 +362,10 @@
 		const urlKey = imageUrls.join('|');
 		if (processedImageUrls.has(urlKey)) {
 			debugLog('Skipping replaceImages - already processed these URLs');
+			if (DEBUG_MODE) {
+				console.debug('URL key already processed; returning success');
+				console.groupEnd();
+			}
 			return true; // Return true since we successfully processed them before
 		}
 
@@ -359,8 +373,17 @@
 			img => img.src,
 		);
 
+		if (DEBUG_MODE) {
+			console.debug('Currently visible variant images:', currentVisible);
+			console.debug('Current URL key:', urlKey);
+			console.debug('Processed URL keys:', Array.from(processedImageUrls));
+		}
+
 		if (currentVisible.join('|') !== urlKey) {
 			debugLog('Detected variant change; clearing previous processed URLs');
+			if (DEBUG_MODE) {
+				console.debug('Variant switch detected, clearing processedImageUrls cache');
+			}
 			processedImageUrls.clear();
 		}
 
@@ -376,7 +399,7 @@
 			const gallery = findGalleryContainer();
 
 			if (gallery && gallery.images.length > 0) {
-				debugLog('Using gallery-based approach with', gallery.images.length, 'images');
+				displayGalleryDebugInfo(gallery);
 
 				gallery.images.forEach(img => {
 					const wrapper = img.parentElement;
@@ -387,6 +410,7 @@
 
 				// Filter to only visible images
 				const visibleImages = gallery.images.filter(img => isImageVisible(img));
+				displayVisibleImagesDebugInfo(visibleImages);
 				debugLog('Visible images in gallery:', visibleImages.length);
 
 				// PHASE 2: Replace first N images (where N = imageUrls.length)
@@ -394,64 +418,48 @@
 					const parentWrapper = img.closest('[data-ab-gallery-wrapper]') || img.parentElement;
 					if (index < imageUrls.length) {
 						const wasVisible = isImageVisible(img);
+						logReplacement(img, imageUrls[index], index);
 						replaceImageSrc(img, imageUrls[index]);
 						replaced++;
 						if (wasVisible) visibleReplaced++;
-						debugLog('Replaced gallery image', index, 'visible:', wasVisible);
 					} else {
 						hideImage(parentWrapper || img);
+						reportHiddenImage(img, index);
 						hidden++;
-						debugLog('Hiding extra gallery image', index);
 					}
 				});
 
 				// Also handle hidden images that might become visible later
-				const hiddenImages = gallery.images.filter(img => !isImageVisible(img));
-				hiddenImages.forEach(img => {
-					if (!img.dataset.abTestReplaced) {
-						hideImage(img);
-					}
-				});
+				handleHiddenImages(gallery.images);
 			} else {
 				// Fallback: Use intelligent scoring
 				debugLog('Using intelligent scoring approach (no gallery container found)');
+				if (DEBUG_MODE) {
+					console.debug('No gallery found; falling back to scoring heuristic');
+				}
 				const productImages = findProductImages();
+				displayVisibleImagesDebugInfo(productImages);
 
 				// Replace first N images
 				productImages.forEach((img, index) => {
 					if (index < imageUrls.length) {
 						const wasVisible = isImageVisible(img);
+						logReplacement(img, imageUrls[index], index);
 						replaceImageSrc(img, imageUrls[index]);
 						replaced++;
 						if (wasVisible) visibleReplaced++;
-						debugLog('Replaced image (scoring)', index, 'visible:', wasVisible);
 					} else {
 						// Hide extra images beyond variant count
 						hideImage(img);
+						reportHiddenImage(img, index);
 						hidden++;
-						debugLog('Hiding extra image (scoring)', index);
 					}
 				});
 			}
 
 			// Report results
-			console.log('[A/B Test] Replacement summary:', {
-				replaced: replaced,
-				visible: visibleReplaced,
-				hidden: hidden,
-				expected: imageUrls.length,
-			});
-
-			const containers = document.querySelectorAll('[data-ab-gallery-wrapper]');
-			containers.forEach(container => {
-				const imgs = Array.from(container.querySelectorAll('img'));
-				const hasVariantImage = imgs.some(img => img.dataset.abTestReplaced === 'true');
-				if (!hasVariantImage) {
-					container.style.display = 'none';
-					container.dataset.abTestHidden = 'true';
-					debugLog('Hiding gallery wrapper with no variant images');
-				}
-			});
+			reportReplacementSummary(replaced, visibleReplaced, hidden, imageUrls.length);
+			hideEmptyWrappers();
 
 			// Handle lazy-loaded images that might appear later
 			if (replaced > 0) {
@@ -463,7 +471,91 @@
 		} finally {
 			// Always reset the flag, even if an error occurs
 			isReplacingImages = false;
+			if (DEBUG_MODE) {
+				console.groupEnd();
+			}
 		}
+	}
+
+	function displayGalleryDebugInfo(gallery) {
+		if (!DEBUG_MODE) return;
+		console.debug('[A/B Test Debug] Gallery container located', {
+			selectorAttempted: gallery.container?.className,
+			totalImages: gallery.images.length,
+			firstFive: gallery.images.slice(0, 5).map((img) => img.src),
+		});
+	}
+
+	function displayVisibleImagesDebugInfo(images) {
+		if (!DEBUG_MODE) return;
+		console.debug('[A/B Test Debug] Candidate images after visibility filter', images.map((img) => ({
+			src: img.src,
+			visible: isImageVisible(img),
+		})));
+	}
+
+	function logReplacement(img, newSrc, index) {
+		debugLog('Replacing image', index, 'with', newSrc);
+		if (DEBUG_MODE) {
+			console.debug('[A/B Test Debug] Image details before replace', {
+				originalSrc: img.src,
+				index,
+				classes: img.className,
+				parentClasses: img.parentElement?.className,
+			});
+		}
+	}
+
+	function reportHiddenImage(img, index) {
+		debugLog('Hiding image index', index);
+		if (DEBUG_MODE) {
+			console.debug('[A/B Test Debug] Hidden image details', {
+				src: img.src,
+				index,
+				classes: img.className,
+				parentClasses: img.parentElement?.className,
+			});
+		}
+	}
+
+	function handleHiddenImages(images) {
+		const hiddenImages = images.filter((img) => !isImageVisible(img));
+		if (DEBUG_MODE && hiddenImages.length) {
+			console.debug('[A/B Test Debug] Hidden images to process', hiddenImages.map((img) => img.src));
+		}
+		hiddenImages.forEach((img) => {
+			if (!img.dataset.abTestReplaced) {
+				hideImage(img);
+				if (DEBUG_MODE) {
+					console.debug('[A/B Test Debug] Lazy image forced hidden', img.src);
+				}
+			}
+		});
+	}
+
+	function reportReplacementSummary(replaced, visibleReplaced, hidden, expected) {
+		console.log('[A/B Test] Replacement summary:', {
+			replaced,
+			visible: visibleReplaced,
+			hidden,
+			expected,
+		});
+	}
+
+	function hideEmptyWrappers() {
+		const containers = document.querySelectorAll('[data-ab-gallery-wrapper]');
+		containers.forEach((container) => {
+			const imgs = Array.from(container.querySelectorAll('img'));
+			const hasVariantImage = imgs.some((img) => img.dataset.abTestReplaced === 'true');
+			if (!hasVariantImage) {
+				container.style.display = 'none';
+				container.dataset.abTestHidden = 'true';
+				debugLog('Hiding gallery wrapper with no variant images');
+				if (DEBUG_MODE) {
+					console.debug('[A/B Test Debug] Wrapper hidden because no active images remain', container);
+				}
+			}
+		});
 	}
 
 	// Observe for lazy-loaded images
@@ -603,8 +695,11 @@
 					'Images:',
 					data.imageUrls.length,
 				);
+				if (DEBUG_MODE) {
+					console.debug('[A/B Test Debug] Variant payload', data);
+				}
 
-				const success = replaceImages(data.imageUrls);
+				const success = replaceImages(data.imageUrls, data.variant);
 
 				if (success) {
 					// Store test information for tracking (Web Pixels will use this)
@@ -653,7 +748,7 @@
 					if (productId === data.productId) {
 						fetchVariant(productId).then(function (variantData) {
 							if (variantData && variantData.imageUrls) {
-								replaceImages(variantData.imageUrls);
+								replaceImages(variantData.imageUrls, variantData.variant);
 							}
 						});
 					}
