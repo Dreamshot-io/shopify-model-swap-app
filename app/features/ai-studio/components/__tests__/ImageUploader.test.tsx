@@ -1,584 +1,518 @@
-import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
-import { ImageUploader } from "../ImageUploader";
-import "@testing-library/jest-dom";
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { ImageUploader } from '../ImageUploader';
+import '@testing-library/jest-dom';
+import { describe, beforeEach, afterEach, it } from 'node:test';
 
 // Mock Shopify Polaris components
-jest.mock("@shopify/polaris", () => ({
-  ...jest.requireActual("@shopify/polaris"),
-  DropZone: jest.fn(({ children, onDrop, disabled, accept }) => (
-    <div
-      data-testid="dropzone"
-      data-accept={accept}
-      data-disabled={disabled}
-      onClick={(e) => {
-        // Only trigger if clicked directly on the dropzone, not child elements
-        if (e.target === e.currentTarget) {
-          const mockFile = new File(["test"], "test.jpg", { type: "image/jpeg" });
-          onDrop && onDrop([mockFile], [mockFile], []);
-        }
-      }}
-    >
-      {children}
-    </div>
-  )),
+jest.mock('@shopify/polaris', () => ({
+	...jest.requireActual('@shopify/polaris'),
+	DropZone: jest.fn(({ children, onDrop, disabled, accept }) => (
+		<div
+			data-testid='dropzone'
+			data-accept={accept}
+			data-disabled={disabled}
+			onClick={e => {
+				// Only trigger if clicked directly on the dropzone, not child elements
+				if (e.target === e.currentTarget) {
+					const mockFile = new File(['test'], 'test.jpg', { type: 'image/jpeg' });
+					onDrop && onDrop([mockFile], [mockFile], []);
+				}
+			}}
+		>
+			{children}
+		</div>
+	)),
 }));
 
-describe("ImageUploader", () => {
-  const mockOnUpload = jest.fn();
-
-  beforeEach(() => {
-    jest.clearAllMocks();
-    // Clean up any object URLs
-    global.URL.createObjectURL = jest.fn(() => "blob:test-url");
-    global.URL.revokeObjectURL = jest.fn();
-  });
-
-  afterEach(() => {
-    jest.restoreAllMocks();
-  });
-
-  describe("Component Rendering", () => {
-    it("renders the upload interface correctly", () => {
-      render(<ImageUploader onUpload={mockOnUpload} />);
-
-      expect(screen.getByText("Upload Images")).toBeInTheDocument();
-      expect(screen.getByTestId("dropzone")).toBeInTheDocument();
-    });
-
-    it("displays correct file constraints", () => {
-      render(
-        <ImageUploader
-          onUpload={mockOnUpload}
-          maxFiles={3}
-          maxSizeMB={5}
-        />
-      );
-
-      expect(screen.getByText(/max 3 images, 5MB each/i)).toBeInTheDocument();
-    });
-  });
-
-  describe("File Validation", () => {
-    it("accepts valid image files", async () => {
-      const { container } = render(<ImageUploader onUpload={mockOnUpload} />);
-
-      const validFile = new File(["image"], "photo.jpg", {
-        type: "image/jpeg"
-      });
-
-      const dropzone = screen.getByTestId("dropzone");
-
-      fireEvent.click(dropzone);
-
-      await waitFor(() => {
-        expect(screen.getByText(/1 file selected/i)).toBeInTheDocument();
-      });
-    });
-
-    it("accepts WEBP format files", async () => {
-      const { container } = render(<ImageUploader onUpload={mockOnUpload} />);
-
-      const webpFile = new File(["webp content"], "portrait.webp", {
-        type: "image/webp"
-      });
-
-      const dropzone = screen.getByTestId("dropzone");
-
-      // Mock the onDrop to accept webp
-      fireEvent.click(dropzone);
-
-      await waitFor(() => {
-        expect(screen.getByText(/1 file selected/i)).toBeInTheDocument();
-      });
-    });
-
-    it("rejects files exceeding size limit", async () => {
-      render(
-        <ImageUploader
-          onUpload={mockOnUpload}
-          maxSizeMB={1}
-        />
-      );
-
-      const largeFile = new File(
-        new Array(2 * 1024 * 1024).fill("a"),
-        "large.jpg",
-        { type: "image/jpeg" }
-      );
-
-      // Simulate file drop with oversized file
-      const dropzone = screen.getByTestId("dropzone");
-
-      // We need to mock the validation logic
-      const mockValidation = jest.fn();
-
-      // The component should show an error
-      // This test verifies the size validation logic
-    });
-
-    it("enforces maximum file count", async () => {
-      render(
-        <ImageUploader
-          onUpload={mockOnUpload}
-          maxFiles={2}
-        />
-      );
-
-      const files = [
-        new File(["1"], "file1.jpg", { type: "image/jpeg" }),
-        new File(["2"], "file2.jpg", { type: "image/jpeg" }),
-        new File(["3"], "file3.jpg", { type: "image/jpeg" }),
-      ];
+describe('ImageUploader', () => {
+	const mockOnUpload = jest.fn();
 
-      // Component should only accept 2 files
-    });
-  });
+	beforeEach(() => {
+		jest.clearAllMocks();
+		// Clean up any object URLs
+		global.URL.createObjectURL = jest.fn(() => 'blob:test-url');
+		global.URL.revokeObjectURL = jest.fn();
+	});
 
-  describe("Upload Functionality", () => {
-    it("calls onUpload with selected files", async () => {
-      mockOnUpload.mockResolvedValueOnce(undefined);
+	afterEach(() => {
+		jest.restoreAllMocks();
+	});
 
-      render(<ImageUploader onUpload={mockOnUpload} />);
+	describe('Component Rendering', () => {
+		it('renders the upload interface correctly', () => {
+			render(<ImageUploader onUpload={mockOnUpload} />);
 
-      const file = new File(["test"], "test.jpg", { type: "image/jpeg" });
+			expect(screen.getByText('Upload Images')).toBeInTheDocument();
+			expect(screen.getByTestId('dropzone')).toBeInTheDocument();
+		});
 
-      // Simulate file selection
-      const dropzone = screen.getByTestId("dropzone");
-      fireEvent.click(dropzone);
+		it('displays correct file constraints', () => {
+			render(<ImageUploader onUpload={mockOnUpload} maxFiles={3} maxSizeMB={5} />);
 
-      // Wait for file to be added
-      await waitFor(() => {
-        expect(screen.getByText(/1 file selected/i)).toBeInTheDocument();
-      });
+			expect(screen.getByText(/max 3 images, 5MB each/i)).toBeInTheDocument();
+		});
+	});
 
-      // Click upload button
-      const uploadButton = screen.getByText(/Upload 1 image/i);
-      fireEvent.click(uploadButton);
+	describe('File Validation', () => {
+		it('accepts valid image files', async () => {
+			render(<ImageUploader onUpload={mockOnUpload} />);
 
-      await waitFor(() => {
-        expect(mockOnUpload).toHaveBeenCalledTimes(1);
-      });
-    });
+			fireEvent.click(screen.getByTestId('dropzone'));
 
-    it("shows progress during upload", async () => {
-      mockOnUpload.mockImplementation(
-        () => new Promise(resolve => setTimeout(resolve, 100))
-      );
+			await waitFor(() => {
+				expect(screen.getByText(/1 file selected/i)).toBeInTheDocument();
+			});
+		});
 
-      render(<ImageUploader onUpload={mockOnUpload} />);
+		it('accepts WEBP format files', async () => {
+			render(<ImageUploader onUpload={mockOnUpload} />);
 
-      const dropzone = screen.getByTestId("dropzone");
-      fireEvent.click(dropzone);
+			// Mock the onDrop to accept webp
+			fireEvent.click(screen.getByTestId('dropzone'));
 
-      await waitFor(() => {
-        expect(screen.getByText(/1 file selected/i)).toBeInTheDocument();
-      });
+			await waitFor(() => {
+				expect(screen.getByText(/1 file selected/i)).toBeInTheDocument();
+			});
+		});
 
-      const uploadButton = screen.getByText(/Upload 1 image/i);
-      fireEvent.click(uploadButton);
+		it('rejects files exceeding size limit', async () => {
+			render(<ImageUploader onUpload={mockOnUpload} maxSizeMB={1} />);
 
-      // Should show progress indicator
-      await waitFor(() => {
-        expect(screen.getByText(/Uploading/i)).toBeInTheDocument();
-      });
-    });
+			// The component should show an error
+			// This test verifies the size validation logic
+		});
 
-    it("handles upload errors gracefully", async () => {
-      const errorMessage = "Network error occurred";
-      mockOnUpload.mockRejectedValueOnce(new Error(errorMessage));
+		it('enforces maximum file count', async () => {
+			render(<ImageUploader onUpload={mockOnUpload} maxFiles={2} />);
 
-      render(<ImageUploader onUpload={mockOnUpload} />);
+			// Component should only accept 2 files
+		});
+	});
 
-      const dropzone = screen.getByTestId("dropzone");
-      fireEvent.click(dropzone);
+	describe('Upload Functionality', () => {
+		it('calls onUpload with selected files', async () => {
+			mockOnUpload.mockResolvedValueOnce(undefined);
 
-      await waitFor(() => {
-        expect(screen.getByText(/1 file selected/i)).toBeInTheDocument();
-      });
+			render(<ImageUploader onUpload={mockOnUpload} />);
 
-      const uploadButton = screen.getByText(/Upload 1 image/i);
-      fireEvent.click(uploadButton);
+			fireEvent.click(screen.getByTestId('dropzone'));
 
-      await waitFor(() => {
-        expect(screen.getByText(errorMessage)).toBeInTheDocument();
-      });
-    });
+			// Wait for file to be added
+			await waitFor(() => {
+				expect(screen.getByText(/1 file selected/i)).toBeInTheDocument();
+			});
 
-    it("clears files after successful upload", async () => {
-      mockOnUpload.mockResolvedValueOnce(undefined);
+			// Click upload button
+			const uploadButton = screen.getByText(/Upload 1 image/i);
+			fireEvent.click(uploadButton);
 
-      render(<ImageUploader onUpload={mockOnUpload} />);
+			await waitFor(() => {
+				expect(mockOnUpload).toHaveBeenCalledTimes(1);
+			});
+		});
 
-      const dropzone = screen.getByTestId("dropzone");
-      fireEvent.click(dropzone);
+		it('shows progress during upload', async () => {
+			mockOnUpload.mockImplementation(() => new Promise(resolve => setTimeout(resolve, 100)));
 
-      await waitFor(() => {
-        expect(screen.getByText(/1 file selected/i)).toBeInTheDocument();
-      });
+			render(<ImageUploader onUpload={mockOnUpload} />);
 
-      const uploadButton = screen.getByText(/Upload 1 image/i);
-      fireEvent.click(uploadButton);
+			fireEvent.click(screen.getByTestId('dropzone'));
 
-      await waitFor(() => {
-        expect(screen.queryByText(/1 file selected/i)).not.toBeInTheDocument();
-      });
-    });
-  });
+			await waitFor(() => {
+				expect(screen.getByText(/1 file selected/i)).toBeInTheDocument();
+			});
 
-  describe("User Interactions", () => {
-    it("allows removing individual files", async () => {
-      render(<ImageUploader onUpload={mockOnUpload} />);
+			const uploadButton = screen.getByText(/Upload 1 image/i);
+			fireEvent.click(uploadButton);
 
-      const dropzone = screen.getByTestId("dropzone");
-      fireEvent.click(dropzone);
+			// Should show progress indicator
+			await waitFor(() => {
+				expect(screen.getByText(/Uploading/i)).toBeInTheDocument();
+			});
+		});
 
-      await waitFor(() => {
-        expect(screen.getByText(/1 file selected/i)).toBeInTheDocument();
-      });
+		it('handles upload errors gracefully', async () => {
+			const errorMessage = 'Network error occurred';
+			mockOnUpload.mockRejectedValueOnce(new Error(errorMessage));
 
-      const removeButton = screen.getByText("Remove");
-      fireEvent.click(removeButton);
+			render(<ImageUploader onUpload={mockOnUpload} />);
 
-      await waitFor(() => {
-        expect(screen.queryByText(/1 file selected/i)).not.toBeInTheDocument();
-      });
-    });
+			fireEvent.click(screen.getByTestId('dropzone'));
 
-    it("allows clearing all files", async () => {
-      render(<ImageUploader onUpload={mockOnUpload} />);
+			await waitFor(() => {
+				expect(screen.getByText(/1 file selected/i)).toBeInTheDocument();
+			});
 
-      const dropzone = screen.getByTestId("dropzone");
+			const uploadButton = screen.getByText(/Upload 1 image/i);
+			fireEvent.click(uploadButton);
 
-      // Add multiple files by clicking twice
-      fireEvent.click(dropzone);
-      fireEvent.click(dropzone);
+			await waitFor(() => {
+				expect(screen.getByText(errorMessage)).toBeInTheDocument();
+			});
+		});
 
-      await waitFor(() => {
-        expect(screen.getByText(/file/i)).toBeInTheDocument();
-      });
+		it('clears files after successful upload', async () => {
+			mockOnUpload.mockResolvedValueOnce(undefined);
 
-      const clearButton = screen.getByText("Clear all");
-      fireEvent.click(clearButton);
+			render(<ImageUploader onUpload={mockOnUpload} />);
 
-      await waitFor(() => {
-        expect(screen.queryByText(/file selected/i)).not.toBeInTheDocument();
-      });
-    });
+			fireEvent.click(screen.getByTestId('dropzone'));
 
-    it("disables interactions during upload", async () => {
-      mockOnUpload.mockImplementation(
-        () => new Promise(resolve => setTimeout(resolve, 100))
-      );
+			await waitFor(() => {
+				expect(screen.getByText(/1 file selected/i)).toBeInTheDocument();
+			});
 
-      render(<ImageUploader onUpload={mockOnUpload} />);
+			const uploadButton = screen.getByText(/Upload 1 image/i);
+			fireEvent.click(uploadButton);
 
-      const dropzone = screen.getByTestId("dropzone");
-      fireEvent.click(dropzone);
+			await waitFor(() => {
+				expect(screen.queryByText(/1 file selected/i)).not.toBeInTheDocument();
+			});
+		});
+	});
 
-      await waitFor(() => {
-        expect(screen.getByText(/1 file selected/i)).toBeInTheDocument();
-      });
+	describe('User Interactions', () => {
+		it('allows removing individual files', async () => {
+			render(<ImageUploader onUpload={mockOnUpload} />);
 
-      const uploadButton = screen.getByText(/Upload 1 image/i);
-      fireEvent.click(uploadButton);
+			fireEvent.click(screen.getByTestId('dropzone'));
 
-      // Dropzone should be disabled during upload
-      await waitFor(() => {
-        expect(dropzone).toHaveAttribute("data-disabled", "true");
-      });
-    });
-  });
+			await waitFor(() => {
+				expect(screen.getByText(/1 file selected/i)).toBeInTheDocument();
+			});
 
-  describe("Memory Management", () => {
-    it("creates object URLs for file previews", async () => {
-      render(<ImageUploader onUpload={mockOnUpload} />);
+			const removeButton = screen.getByText('Remove');
+			fireEvent.click(removeButton);
 
-      const dropzone = screen.getByTestId("dropzone");
-      fireEvent.click(dropzone);
+			await waitFor(() => {
+				expect(screen.queryByText(/1 file selected/i)).not.toBeInTheDocument();
+			});
+		});
 
-      await waitFor(() => {
-        expect(global.URL.createObjectURL).toHaveBeenCalled();
-      });
-    });
+		it('allows clearing all files', async () => {
+			render(<ImageUploader onUpload={mockOnUpload} />);
 
-    it("revokes object URLs when files change", async () => {
-      const { rerender } = render(<ImageUploader onUpload={mockOnUpload} />);
+			const dropzone = screen.getByTestId('dropzone');
 
-      const dropzone = screen.getByTestId("dropzone");
-      fireEvent.click(dropzone);
+			// Add multiple files by clicking twice
+			fireEvent.click(dropzone);
+			fireEvent.click(dropzone);
 
-      await waitFor(() => {
-        expect(global.URL.createObjectURL).toHaveBeenCalled();
-      });
+			await waitFor(() => {
+				expect(screen.getByText(/file/i)).toBeInTheDocument();
+			});
 
-      // Clear files which should trigger cleanup
-      const clearButton = await screen.findByText("Clear all");
-      fireEvent.click(clearButton);
+			const clearButton = screen.getByText('Clear all');
+			fireEvent.click(clearButton);
 
-      await waitFor(() => {
-        expect(global.URL.revokeObjectURL).toHaveBeenCalled();
-      });
-    });
+			await waitFor(() => {
+				expect(screen.queryByText(/file selected/i)).not.toBeInTheDocument();
+			});
+		});
 
-    it("cleans up object URLs on unmount", async () => {
-      const { unmount } = render(<ImageUploader onUpload={mockOnUpload} />);
+		it('disables interactions during upload', async () => {
+			mockOnUpload.mockImplementation(() => new Promise(resolve => setTimeout(resolve, 100)));
 
-      const dropzone = screen.getByTestId("dropzone");
-      fireEvent.click(dropzone);
+			render(<ImageUploader onUpload={mockOnUpload} />);
 
-      await waitFor(() => {
-        expect(global.URL.createObjectURL).toHaveBeenCalled();
-      });
+			fireEvent.click(screen.getByTestId('dropzone'));
 
-      unmount();
+			await waitFor(() => {
+				expect(screen.getByText(/1 file selected/i)).toBeInTheDocument();
+			});
 
-      expect(global.URL.revokeObjectURL).toHaveBeenCalled();
-    });
-  });
+			const uploadButton = screen.getByText(/Upload 1 image/i);
+			fireEvent.click(uploadButton);
 
-  describe("Button Placement Fix", () => {
-    it("renders upload button outside of drop zone", async () => {
-      render(<ImageUploader onUpload={mockOnUpload} />);
+			// Dropzone should be disabled during upload
+			await waitFor(() => {
+				expect(dropzone).toHaveAttribute('data-disabled', 'true');
+			});
+		});
+	});
 
-      // Simulate file drop
-      const dropzone = screen.getByTestId("dropzone");
-      fireEvent.click(dropzone);
+	describe('Memory Management', () => {
+		it('creates object URLs for file previews', async () => {
+			render(<ImageUploader onUpload={mockOnUpload} />);
 
-      await waitFor(() => {
-        expect(screen.getByText(/1 file selected/i)).toBeInTheDocument();
-      });
+			fireEvent.click(screen.getByTestId('dropzone'));
 
-      // Verify upload button exists
-      const uploadButton = screen.getByText(/Upload 1 image/i);
-      expect(uploadButton).toBeInTheDocument();
+			await waitFor(() => {
+				expect(global.URL.createObjectURL).toHaveBeenCalled();
+			});
+		});
 
-      // Verify button is NOT inside the dropzone
-      const dropzoneElement = screen.getByTestId("dropzone");
-      expect(dropzoneElement).not.toContainElement(uploadButton);
-    });
+		it('revokes object URLs when files change', async () => {
+			render(<ImageUploader onUpload={mockOnUpload} />);
 
-    it("clicking upload button does not trigger file finder", async () => {
-      render(<ImageUploader onUpload={mockOnUpload} />);
+			const dropzone = screen.getByTestId('dropzone');
+			fireEvent.click(dropzone);
 
-      // Add a file first
-      const dropzone = screen.getByTestId("dropzone");
-      const originalClickHandler = dropzone.onclick;
+			await waitFor(() => {
+				expect(global.URL.createObjectURL).toHaveBeenCalled();
+			});
 
-      fireEvent.click(dropzone);
+			// Clear files which should trigger cleanup
+			const clearButton = await screen.findByText('Clear all');
+			fireEvent.click(clearButton);
 
-      await waitFor(() => {
-        expect(screen.getByText(/1 file selected/i)).toBeInTheDocument();
-      });
+			await waitFor(() => {
+				expect(global.URL.revokeObjectURL).toHaveBeenCalled();
+			});
+		});
 
-      // Click upload button and verify dropzone onClick is not triggered
-      const uploadButton = screen.getByText(/Upload 1 image/i);
+		it('cleans up object URLs on unmount', async () => {
+			const { unmount } = render(<ImageUploader onUpload={mockOnUpload} />);
 
-      // Create a spy for dropzone click
-      const dropzoneSpy = jest.fn();
-      dropzone.onclick = dropzoneSpy;
+			const dropzone = screen.getByTestId('dropzone');
+			fireEvent.click(dropzone);
 
-      fireEvent.click(uploadButton);
+			await waitFor(() => {
+				expect(global.URL.createObjectURL).toHaveBeenCalled();
+			});
 
-      // Verify dropzone was not clicked when upload button was clicked
-      expect(dropzoneSpy).not.toHaveBeenCalled();
+			unmount();
 
-      // Verify upload was called
-      await waitFor(() => {
-        expect(mockOnUpload).toHaveBeenCalled();
-      });
-    });
+			expect(global.URL.revokeObjectURL).toHaveBeenCalled();
+		});
+	});
 
-    it("clear all button is also outside drop zone", async () => {
-      render(<ImageUploader onUpload={mockOnUpload} />);
+	describe('Button Placement Fix', () => {
+		it('renders upload button outside of drop zone', async () => {
+			render(<ImageUploader onUpload={mockOnUpload} />);
 
-      // Add a file
-      const dropzone = screen.getByTestId("dropzone");
-      fireEvent.click(dropzone);
+			// Simulate file drop
+			const dropzone = screen.getByTestId('dropzone');
+			fireEvent.click(dropzone);
 
-      await waitFor(() => {
-        expect(screen.getByText(/1 file selected/i)).toBeInTheDocument();
-      });
+			await waitFor(() => {
+				expect(screen.getByText(/1 file selected/i)).toBeInTheDocument();
+			});
 
-      // Find clear button
-      const clearButton = screen.getByText("Clear all");
-      expect(clearButton).toBeInTheDocument();
+			// Verify upload button exists
+			const uploadButton = screen.getByText(/Upload 1 image/i);
+			expect(uploadButton).toBeInTheDocument();
 
-      // Verify clear button is NOT inside the dropzone
-      const dropzoneElement = screen.getByTestId("dropzone");
-      expect(dropzoneElement).not.toContainElement(clearButton);
-    });
+			// Verify button is NOT inside the dropzone
+			const dropzoneElement = screen.getByTestId('dropzone');
+			expect(dropzoneElement).not.toContainElement(uploadButton);
+		});
 
-    it("progress bar appears outside drop zone during upload", async () => {
-      mockOnUpload.mockImplementation(
-        () => new Promise(resolve => setTimeout(resolve, 100))
-      );
+		it('clicking upload button does not trigger file finder', async () => {
+			render(<ImageUploader onUpload={mockOnUpload} />);
 
-      render(<ImageUploader onUpload={mockOnUpload} />);
+			// Add a file first
+			const dropzone = screen.getByTestId('dropzone');
 
-      const dropzone = screen.getByTestId("dropzone");
-      fireEvent.click(dropzone);
+			fireEvent.click(dropzone);
 
-      await waitFor(() => {
-        expect(screen.getByText(/1 file selected/i)).toBeInTheDocument();
-      });
+			await waitFor(() => {
+				expect(screen.getByText(/1 file selected/i)).toBeInTheDocument();
+			});
 
-      const uploadButton = screen.getByText(/Upload 1 image/i);
-      fireEvent.click(uploadButton);
+			// Click upload button and verify dropzone onClick is not triggered
+			const uploadButton = screen.getByText(/Upload 1 image/i);
 
-      // Wait for uploading state
-      await waitFor(() => {
-        expect(screen.getByText(/Uploading/i)).toBeInTheDocument();
-      });
+			// Create a spy for dropzone click
+			const dropzoneSpy = jest.fn();
+			dropzone.onclick = dropzoneSpy;
 
-      // Verify progress indicator is NOT inside dropzone
-      const progressText = screen.getByText(/Uploading/i);
-      const dropzoneElement = screen.getByTestId("dropzone");
-      expect(dropzoneElement).not.toContainElement(progressText);
-    });
-  });
+			fireEvent.click(uploadButton);
 
-  describe("WebP Support", () => {
-    it("accepts WebP format in dropzone configuration", () => {
-      render(<ImageUploader onUpload={mockOnUpload} />);
+			// Verify dropzone was not clicked when upload button was clicked
+			expect(dropzoneSpy).not.toHaveBeenCalled();
 
-      const dropzone = screen.getByTestId("dropzone");
-      expect(dropzone).toHaveAttribute(
-        "data-accept",
-        expect.stringContaining("image/webp")
-      );
-    });
+			// Verify upload was called
+			await waitFor(() => {
+				expect(mockOnUpload).toHaveBeenCalled();
+			});
+		});
 
-    it("successfully handles WebP file uploads", async () => {
-      const { container } = render(<ImageUploader onUpload={mockOnUpload} />);
+		it('clear all button is also outside drop zone', async () => {
+			render(<ImageUploader onUpload={mockOnUpload} />);
 
-      // Create a WebP file
-      const webpFile = new File(["webp content"], "image.webp", {
-        type: "image/webp",
-      });
+			// Add a file
+			const dropzone = screen.getByTestId('dropzone');
+			fireEvent.click(dropzone);
 
-      // Mock the onDrop to accept webp specifically
-      const dropzone = screen.getByTestId("dropzone");
+			await waitFor(() => {
+				expect(screen.getByText(/1 file selected/i)).toBeInTheDocument();
+			});
 
-      // Directly call onDrop with the WebP file
-      const onDropProp = (require("@shopify/polaris").DropZone as jest.Mock).mock.calls[0][0].onDrop;
-      onDropProp([webpFile], [webpFile], []);
+			// Find clear button
+			const clearButton = screen.getByText('Clear all');
+			expect(clearButton).toBeInTheDocument();
 
-      await waitFor(() => {
-        expect(screen.getByText(/1 file selected/i)).toBeInTheDocument();
-      });
+			// Verify clear button is NOT inside the dropzone
+			const dropzoneElement = screen.getByTestId('dropzone');
+			expect(dropzoneElement).not.toContainElement(clearButton);
+		});
 
-      // Upload the WebP file
-      const uploadButton = screen.getByText(/Upload 1 image/i);
-      fireEvent.click(uploadButton);
+		it('progress bar appears outside drop zone during upload', async () => {
+			mockOnUpload.mockImplementation(() => new Promise(resolve => setTimeout(resolve, 100)));
 
-      await waitFor(() => {
-        expect(mockOnUpload).toHaveBeenCalledWith([webpFile]);
-      });
-    });
+			render(<ImageUploader onUpload={mockOnUpload} />);
 
-    it("shows WebP preview correctly", async () => {
-      render(<ImageUploader onUpload={mockOnUpload} />);
+			const dropzone = screen.getByTestId('dropzone');
+			fireEvent.click(dropzone);
 
-      const webpFile = new File(["webp"], "test.webp", { type: "image/webp" });
+			await waitFor(() => {
+				expect(screen.getByText(/1 file selected/i)).toBeInTheDocument();
+			});
 
-      const dropzone = screen.getByTestId("dropzone");
-      const onDropProp = (require("@shopify/polaris").DropZone as jest.Mock).mock.calls[0][0].onDrop;
-      onDropProp([webpFile], [webpFile], []);
+			const uploadButton = screen.getByText(/Upload 1 image/i);
+			fireEvent.click(uploadButton);
 
-      await waitFor(() => {
-        expect(screen.getByText(/1 file selected/i)).toBeInTheDocument();
-      });
+			// Wait for uploading state
+			await waitFor(() => {
+				expect(screen.getByText(/Uploading/i)).toBeInTheDocument();
+			});
 
-      // Verify object URL was created for WebP file
-      expect(global.URL.createObjectURL).toHaveBeenCalledWith(webpFile);
-    });
-  });
+			// Verify progress indicator is NOT inside dropzone
+			const progressText = screen.getByText(/Uploading/i);
+			const dropzoneElement = screen.getByTestId('dropzone');
+			expect(dropzoneElement).not.toContainElement(progressText);
+		});
+	});
 
-  describe("Upload Flow Completeness", () => {
-    it("handles multiple file uploads sequentially", async () => {
-      mockOnUpload.mockResolvedValue(undefined);
-      render(<ImageUploader onUpload={mockOnUpload} />);
+	describe('WebP Support', () => {
+		it('accepts WebP format in dropzone configuration', () => {
+			render(<ImageUploader onUpload={mockOnUpload} />);
 
-      const files = [
-        new File(["1"], "file1.jpg", { type: "image/jpeg" }),
-        new File(["2"], "file2.jpg", { type: "image/jpeg" }),
-        new File(["3"], "file3.webp", { type: "image/webp" }),
-      ];
+			const dropzone = screen.getByTestId('dropzone');
+			expect(dropzone).toHaveAttribute('data-accept', expect.stringContaining('image/webp'));
+		});
 
-      // Add multiple files
-      const dropzone = screen.getByTestId("dropzone");
-      const onDropProp = (require("@shopify/polaris").DropZone as jest.Mock).mock.calls[0][0].onDrop;
-      onDropProp(files, files, []);
+		it('successfully handles WebP file uploads', async () => {
+			render(<ImageUploader onUpload={mockOnUpload} />);
 
-      await waitFor(() => {
-        expect(screen.getByText(/3 files selected/i)).toBeInTheDocument();
-      });
+			// Create a WebP file
+			const webpFile = new File(['webp content'], 'image.webp', {
+				type: 'image/webp',
+			});
 
-      // Upload all files
-      const uploadButton = screen.getByText(/Upload 3 images/i);
-      fireEvent.click(uploadButton);
+			// Mock the onDrop to accept webp specifically
+			screen.getByTestId('dropzone');
 
-      // Verify each file is uploaded individually
-      await waitFor(() => {
-        expect(mockOnUpload).toHaveBeenCalledTimes(3);
-        expect(mockOnUpload).toHaveBeenNthCalledWith(1, [files[0]]);
-        expect(mockOnUpload).toHaveBeenNthCalledWith(2, [files[1]]);
-        expect(mockOnUpload).toHaveBeenNthCalledWith(3, [files[2]]);
-      });
-    });
+			// Directly call onDrop with the WebP file
+			const onDropProp = (require('@shopify/polaris').DropZone as jest.Mock).mock.calls[0][0].onDrop;
+			onDropProp([webpFile], [webpFile], []);
 
-    it("clears files after successful upload", async () => {
-      mockOnUpload.mockResolvedValue(undefined);
-      render(<ImageUploader onUpload={mockOnUpload} />);
+			await waitFor(() => {
+				expect(screen.getByText(/1 file selected/i)).toBeInTheDocument();
+			});
 
-      const dropzone = screen.getByTestId("dropzone");
-      fireEvent.click(dropzone);
+			// Upload the WebP file
+			const uploadButton = screen.getByText(/Upload 1 image/i);
+			fireEvent.click(uploadButton);
 
-      await waitFor(() => {
-        expect(screen.getByText(/1 file selected/i)).toBeInTheDocument();
-      });
+			await waitFor(() => {
+				expect(mockOnUpload).toHaveBeenCalledWith([webpFile]);
+			});
+		});
 
-      const uploadButton = screen.getByText(/Upload 1 image/i);
-      fireEvent.click(uploadButton);
+		it('shows WebP preview correctly', async () => {
+			render(<ImageUploader onUpload={mockOnUpload} />);
 
-      // Wait for files to be cleared
-      await waitFor(() => {
-        expect(screen.queryByText(/file selected/i)).not.toBeInTheDocument();
-        expect(screen.queryByText(/Upload/i)).not.toBeInTheDocument();
-      });
-    });
+			const webpFile = new File(['webp'], 'test.webp', { type: 'image/webp' });
 
-    it("maintains error state until dismissed or new action", async () => {
-      const errorMessage = "Upload failed due to network error";
-      mockOnUpload.mockRejectedValue(new Error(errorMessage));
+			screen.getByTestId('dropzone');
+			const onDropProp = (require('@shopify/polaris').DropZone as jest.Mock).mock.calls[0][0].onDrop;
+			onDropProp([webpFile], [webpFile], []);
 
-      render(<ImageUploader onUpload={mockOnUpload} />);
+			await waitFor(() => {
+				expect(screen.getByText(/1 file selected/i)).toBeInTheDocument();
+			});
 
-      const dropzone = screen.getByTestId("dropzone");
-      fireEvent.click(dropzone);
+			// Verify object URL was created for WebP file
+			expect(global.URL.createObjectURL).toHaveBeenCalledWith(webpFile);
+		});
+	});
 
-      await waitFor(() => {
-        expect(screen.getByText(/1 file selected/i)).toBeInTheDocument();
-      });
+	describe('Upload Flow Completeness', () => {
+		it('handles multiple file uploads sequentially', async () => {
+			mockOnUpload.mockResolvedValue(undefined);
+			render(<ImageUploader onUpload={mockOnUpload} />);
 
-      const uploadButton = screen.getByText(/Upload 1 image/i);
-      fireEvent.click(uploadButton);
+			const files = [
+				new File(['1'], 'file1.jpg', { type: 'image/jpeg' }),
+				new File(['2'], 'file2.jpg', { type: 'image/jpeg' }),
+				new File(['3'], 'file3.webp', { type: 'image/webp' }),
+			];
 
-      // Wait for error
-      await waitFor(() => {
-        expect(screen.getByText(errorMessage)).toBeInTheDocument();
-      });
+			// Add multiple files
+			screen.getByTestId('dropzone');
+			const onDropProp = (require('@shopify/polaris').DropZone as jest.Mock).mock.calls[0][0].onDrop;
+			onDropProp(files, files, []);
 
-      // Error should persist
-      expect(screen.getByText(errorMessage)).toBeInTheDocument();
+			await waitFor(() => {
+				expect(screen.getByText(/3 files selected/i)).toBeInTheDocument();
+			});
 
-      // Add another file should clear error
-      fireEvent.click(dropzone);
+			// Upload all files
+			const uploadButton = screen.getByText(/Upload 3 images/i);
+			fireEvent.click(uploadButton);
 
-      await waitFor(() => {
-        expect(screen.queryByText(errorMessage)).not.toBeInTheDocument();
-      });
-    });
-  });
+			// Verify each file is uploaded individually
+			await waitFor(() => {
+				expect(mockOnUpload).toHaveBeenCalledTimes(3);
+				expect(mockOnUpload).toHaveBeenNthCalledWith(1, [files[0]]);
+				expect(mockOnUpload).toHaveBeenNthCalledWith(2, [files[1]]);
+				expect(mockOnUpload).toHaveBeenNthCalledWith(3, [files[2]]);
+			});
+		});
+
+		it('clears files after successful upload', async () => {
+			mockOnUpload.mockResolvedValue(undefined);
+			render(<ImageUploader onUpload={mockOnUpload} />);
+
+			const dropzone = screen.getByTestId('dropzone');
+			fireEvent.click(dropzone);
+
+			await waitFor(() => {
+				expect(screen.getByText(/1 file selected/i)).toBeInTheDocument();
+			});
+
+			const uploadButton = screen.getByText(/Upload 1 image/i);
+			fireEvent.click(uploadButton);
+
+			// Wait for files to be cleared
+			await waitFor(() => {
+				expect(screen.queryByText(/file selected/i)).not.toBeInTheDocument();
+				expect(screen.queryByText(/Upload/i)).not.toBeInTheDocument();
+			});
+		});
+
+		it('maintains error state until dismissed or new action', async () => {
+			const errorMessage = 'Upload failed due to network error';
+			mockOnUpload.mockRejectedValue(new Error(errorMessage));
+
+			render(<ImageUploader onUpload={mockOnUpload} />);
+
+			const dropzone = screen.getByTestId('dropzone');
+			fireEvent.click(dropzone);
+
+			await waitFor(() => {
+				expect(screen.getByText(/1 file selected/i)).toBeInTheDocument();
+			});
+
+			const uploadButton = screen.getByText(/Upload 1 image/i);
+			fireEvent.click(uploadButton);
+
+			// Wait for error
+			await waitFor(() => {
+				expect(screen.getByText(errorMessage)).toBeInTheDocument();
+			});
+
+			// Error should persist
+			expect(screen.getByText(errorMessage)).toBeInTheDocument();
+
+			// Add another file should clear error
+			fireEvent.click(dropzone);
+
+			await waitFor(() => {
+				expect(screen.queryByText(errorMessage)).not.toBeInTheDocument();
+			});
+		});
+	});
 });

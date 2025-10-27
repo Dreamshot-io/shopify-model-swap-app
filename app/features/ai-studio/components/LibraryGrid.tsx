@@ -29,7 +29,7 @@ export function LibraryGrid({
                   <div>
                     <img
                       src={url}
-                      alt="Library image"
+                      alt="Library variant"
                       style={{
                         width: "100%",
                         height: "auto",

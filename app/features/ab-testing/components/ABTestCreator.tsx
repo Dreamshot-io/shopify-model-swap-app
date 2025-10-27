@@ -297,7 +297,7 @@ export function ABTestCreator({
                           >
                             <img
                               src={imageUrl}
-                              alt={`Image ${index + 1}`}
+                              alt={selectedVariant === "A" ? `Variant A option ${index + 1}` : `Variant B option ${index + 1}`}
                               style={{
                                 maxWidth: "100%",
                                 maxHeight: "180px",

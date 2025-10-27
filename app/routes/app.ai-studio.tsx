@@ -2,21 +2,21 @@ import { useEffect, useState } from "react";
 import type { LoaderFunctionArgs, ActionFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import {
-  useLoaderData,
-  useSearchParams,
-  useFetcher,
-  useNavigate,
-  useRevalidator,
+    useLoaderData,
+    useSearchParams,
+    useFetcher,
+    useNavigate,
+    useRevalidator,
 } from "@remix-run/react";
 import {
-  Page,
-  Text,
-  Card,
-  BlockStack, Modal,
-  InlineGrid,
-  InlineStack,
-  TextField,
-  EmptyState
+    Page,
+    Text,
+    Card,
+    BlockStack, Modal,
+    InlineGrid,
+    InlineStack,
+    TextField,
+    EmptyState
 } from "@shopify/polaris";
 import { TitleBar, useAppBridge } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
@@ -27,22 +27,22 @@ import { ImageGenerationHub } from "../features/ai-studio/components/ImageGenera
 import { ProductGallery } from "../features/ai-studio/components/ProductGallery";
 import { handleGenerate } from "../features/ai-studio/handlers/generation.server";
 import {
-  handleSaveToLibrary,
-  handleDeleteFromLibrary,
-  handleUpload,
-  handleGetStagedUpload,
-  handleCompleteUpload,
+    handleSaveToLibrary,
+    handleDeleteFromLibrary,
+    handleUpload,
+    handleGetStagedUpload,
+    handleCompleteUpload,
 } from "../features/ai-studio/handlers/library.server";
 import {
-  handlePublish,
-  handleDeleteFromProduct,
+    handlePublish,
+    handleDeleteFromProduct,
 } from "../features/ai-studio/handlers/product-media.server";
 import { useAuthenticatedAppFetch } from "../hooks/useAuthenticatedAppFetch";
 import type {
-  LibraryItem,
-  GeneratedImage,
-  SelectedImage,
-  BatchProcessingState, ActionErrorResponse
+    LibraryItem,
+    GeneratedImage,
+    SelectedImage,
+    BatchProcessingState, ActionErrorResponse
 } from "../features/ai-studio/types";
 import { ABTestManager } from "../features/ab-testing/components/ABTestManager";
 import type { ABTestCreateRequest } from "../features/ab-testing/types";
@@ -725,14 +725,7 @@ export default function AIStudio() {
       shopify.toast.show("A/B test deleted successfully");
       revalidator.revalidate();
     }
-  }, [
-    fetcher.data,
-    pendingAction,
-    shopify,
-    batchProcessingState.isProcessing,
-    fetcher.formData,
-    revalidator,
-  ]);
+  }, [fetcher.data, pendingAction, shopify, batchProcessingState.isProcessing, revalidator]);
 
   const handlePublishImage = async (image: any) => {
     const fd = new FormData();

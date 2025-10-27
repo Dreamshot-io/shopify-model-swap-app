@@ -1,14 +1,14 @@
 import { useState } from "react";
 import {
-  Card,
-  Text,
-  BlockStack,
-  InlineGrid,
-  Button,
-  Modal,
-  InlineStack,
-  EmptyState,
-  Badge,
+    Card,
+    Text,
+    BlockStack,
+    InlineGrid,
+    Button,
+    Modal,
+    InlineStack,
+    EmptyState,
+    Badge,
 } from "@shopify/polaris";
 import { DeleteIcon } from "@shopify/polaris-icons";
 import type { LibraryItem } from "../types";
@@ -190,7 +190,7 @@ export function ProductGallery({
                 >
                   <img
                     src={url}
-                    alt="Library image"
+                    alt="Stored library variant"
                     style={{
                       width: "100%",
                       height: "auto",

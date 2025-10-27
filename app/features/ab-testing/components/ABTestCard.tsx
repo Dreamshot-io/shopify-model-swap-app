@@ -1,18 +1,17 @@
 import {
-  Card,
-  Text,
-  Button,
-  BlockStack,
-  InlineStack,
-  Badge,
-  Grid,
-  ProgressBar,
-  Collapsible,
-  Icon,
+    Card,
+    Text,
+    Button,
+    BlockStack,
+    InlineStack,
+    Badge,
+    Grid,
+    ProgressBar,
+    Collapsible,
 } from "@shopify/polaris";
 import { ChevronDownIcon, ChevronUpIcon } from "@shopify/polaris-icons";
 import { useState } from "react";
-import type { ABTest, ABTestStats, SerializedABTest } from "../types";
+import type { ABTestStats, SerializedABTest } from "../types";
 
 interface ABTestCardProps {
   test: SerializedABTest;

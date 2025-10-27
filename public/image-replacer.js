@@ -14,7 +14,13 @@
 	// Configuration
 	const APP_PROXY_BASE = '/apps/model-swap';
 	const SESSION_STORAGE_KEY = 'ab_test_session';
+	const SESSION_METADATA_KEY = 'ab_test_session_meta';
+	const SESSION_TTL_MS = 1000 * 60 * 60 * 12; // 12 hours
 	const ACTIVE_TEST_KEY = 'ab_test_active';
+	const CART_ATC_KEY_PREFIX = 'ab_test_atc_sent_';
+	const CART_FALLBACK_SENT_FLAG = 'ab_test_atc_fallback_sent';
+	const CART_ATTRIBUTE_SYNC_PREFIX = 'ab_test_cart_attr_synced_';
+	const AB_PROPERTY_KEY = 'ModelSwapAB';
 	const MAX_RETRY_ATTEMPTS = 3;
 	const RETRY_DELAY = 100;
 
@@ -25,17 +31,238 @@
 	// Log script initialization
 	console.log('[A/B Test] Script loaded and initialized', DEBUG_MODE ? '(debug mode ON)' : '');
 
+	function getActiveTestData() {
+		const testDataRaw = sessionStorage.getItem(ACTIVE_TEST_KEY);
+		if (!testDataRaw) return null;
+		try {
+			const parsed = JSON.parse(testDataRaw);
+			if (
+				parsed &&
+				typeof parsed.testId === 'string' &&
+				typeof parsed.productId === 'string' &&
+				(parsed.variant === 'A' || parsed.variant === 'B')
+			) {
+				return parsed;
+			}
+		} catch (error) {
+			debugLog('Failed to parse active test payload', error);
+		}
+		return null;
+	}
+
+	async function persistCartMetadata(activeTest) {
+		if (!activeTest || !activeTest.testId || !activeTest.variant) {
+			return false;
+		}
+
+		const sessionId = getSessionId();
+		const metadata = {
+			testId: activeTest.testId,
+			variant: activeTest.variant,
+			productId: activeTest.productId,
+			sessionId,
+			assignedAt: new Date().toISOString(),
+		};
+
+		try {
+			const payload = {
+				attributes: {
+					[AB_PROPERTY_KEY]: JSON.stringify(metadata),
+				},
+			};
+
+			const response = await fetch('/cart/update.js', {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+					Accept: 'application/json',
+				},
+				credentials: 'include',
+				body: JSON.stringify(payload),
+			});
+
+			debugLog('Cart metadata persisted', metadata, 'status:', response.status);
+			return response.ok;
+		} catch (error) {
+			console.error('[A/B Test] Failed to persist cart metadata', error);
+			return false;
+		}
+	}
+
 	// Generate or retrieve session ID
 	function getSessionId() {
+		const now = Date.now();
 		let sessionId = localStorage.getItem(SESSION_STORAGE_KEY);
-		if (!sessionId) {
-			sessionId = 'session_' + Math.random().toString(36).substr(2, 16) + Date.now().toString(36);
-			localStorage.setItem(SESSION_STORAGE_KEY, sessionId);
-			debugLog('New session ID created:', sessionId);
-		} else {
-			debugLog('Existing session ID:', sessionId);
+		let metadataRaw = localStorage.getItem(SESSION_METADATA_KEY);
+		let metadata;
+
+		if (metadataRaw) {
+			try {
+				metadata = JSON.parse(metadataRaw);
+			} catch (error) {
+				debugLog('Failed to parse session metadata, resetting');
+				metadata = null;
+			}
 		}
+
+		if (metadata && metadata.id && metadata.createdAt) {
+			const age = now - Number(metadata.createdAt);
+			if (age < SESSION_TTL_MS) {
+				sessionId = metadata.id;
+				if (!sessionId) {
+					debugLog('Metadata missing session id, regenerating');
+				}
+			} else {
+				debugLog('Session TTL exceeded, rotating session ID');
+				sessionId = null;
+			}
+		} else if (sessionId) {
+			metadata = { id: sessionId, createdAt: now };
+		}
+
+		if (!sessionId) {
+			sessionId = 'session_' + Math.random().toString(36).substr(2, 16) + now.toString(36);
+			metadata = { id: sessionId, createdAt: now };
+			debugLog('New session ID created:', sessionId, 'at', new Date(now).toISOString());
+		}
+
+		localStorage.setItem(SESSION_STORAGE_KEY, sessionId);
+		try {
+			localStorage.setItem(SESSION_METADATA_KEY, JSON.stringify(metadata));
+		} catch (error) {
+			debugLog('Unable to persist session metadata:', error);
+		}
+
 		return sessionId;
+	}
+
+	async function sendTrackingEvent(eventType, payload = {}) {
+		const activeTest = getActiveTestData();
+		if (!activeTest) {
+			return false;
+		}
+
+		if (typeof payload !== 'object' || payload === null) {
+			return false;
+		}
+
+	const syncKey = CART_ATTRIBUTE_SYNC_PREFIX + activeTest.testId + '_' + activeTest.variant;
+
+	if (!payload.skipCartAttach && !sessionStorage.getItem(syncKey)) {
+		try {
+			persistCartMetadata(activeTest);
+			sessionStorage.setItem(syncKey, '1');
+		} catch (error) {
+			debugLog('Failed to persist cart metadata', error);
+		}
+	}
+
+		const sessionId = getSessionId();
+		const url = APP_PROXY_BASE + '/track';
+		const body = {
+			testId: activeTest.testId,
+			sessionId,
+			eventType,
+			productId: activeTest.productId,
+			variant: activeTest.variant,
+			...payload,
+		};
+
+		try {
+			await fetch(url, {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+				},
+				body: JSON.stringify(body),
+			});
+			return true;
+		} catch (error) {
+			console.error('[A/B Test] Theme tracking failed:', eventType, error);
+			return false;
+		}
+	}
+
+	let isCartFallbackInitialized = false;
+
+	function initAddToCartFallback() {
+		if (isCartFallbackInitialized) return;
+		isCartFallbackInitialized = true;
+
+		const CART_ENDPOINT_REGEX = /\/cart\/(add|update)/;
+		const TRACK_ENDPOINT_REGEX = /\/apps\/model-swap\/track/;
+
+		function shouldMonitorRequest(resource) {
+			if (!resource) return false;
+			const url = typeof resource === 'string' ? resource : resource.url || '';
+			return CART_ENDPOINT_REGEX.test(url) && !TRACK_ENDPOINT_REGEX.test(url);
+		}
+
+		function handleSuccessfulCartMutation(source) {
+			const activeTest = getActiveTestData();
+			if (!activeTest) return;
+			const dedupeKey = CART_ATC_KEY_PREFIX + activeTest.testId + '_' + activeTest.variant;
+			if (sessionStorage.getItem(dedupeKey) === 'true') {
+				debugLog('ATC fallback already sent for this session/test');
+				return;
+			}
+			sessionStorage.setItem(dedupeKey, 'true');
+			sessionStorage.setItem(CART_FALLBACK_SENT_FLAG, source);
+			sendTrackingEvent('ADD_TO_CART').then((success) => {
+				if (success) {
+					console.log('[A/B Test] Fallback add to cart tracked via', source);
+				} else {
+					sessionStorage.removeItem(dedupeKey);
+				}
+			});
+		}
+
+		if (window.fetch) {
+			const originalFetch = window.fetch;
+			window.fetch = function (input, init) {
+				const args = arguments;
+				const shouldTrack = shouldMonitorRequest(input);
+				return originalFetch.apply(this, args).then(function (response) {
+					try {
+						if (shouldTrack && response && response.ok) {
+							response
+								.clone()
+								.text()
+								.catch(function () {
+									return '';
+								})
+								.finally(function () {
+									handleSuccessfulCartMutation('fetch');
+								});
+						}
+					} catch (error) {
+						debugLog('Fetch fallback handler error', error);
+					}
+					return response;
+				});
+			};
+		}
+
+		if (window.XMLHttpRequest) {
+			const send = window.XMLHttpRequest.prototype.send;
+			window.XMLHttpRequest.prototype.send = function () {
+				try {
+					this.addEventListener('load', function () {
+						try {
+							const url = this.responseURL || '';
+							if (CART_ENDPOINT_REGEX.test(url) && this.status >= 200 && this.status < 300) {
+								handleSuccessfulCartMutation('xhr');
+							}
+						} catch (error) {
+							debugLog('XHR fallback handler error', error);
+						}
+					});
+				} catch (error) {
+					debugLog('Failed to attach XHR fallback', error);
+				}
+				return send.apply(this, arguments);
+			};
+		}
 	}
 
 	// Detect product ID using multiple strategies
@@ -279,16 +506,16 @@
 		let parent = img.parentElement;
 		let depth = 0;
 		while (parent && depth < 3) {
-			const classList = parent.className || '';
+			const parentClass = parent.className || '';
 
 			if (
 				/media-item|slide|photo-item|image-item|gallery-item|product__media-item|product-media-item|product__media|product__image|main-product-image/i.test(
-					classList,
+					parentClass,
 				)
 			) {
 				parent.style.display = 'none';
 				parent.dataset.abTestHidden = 'true';
-				debugLog('Hiding parent container:', classList);
+				debugLog('Hiding parent container:', parentClass);
 				break;
 			}
 
@@ -308,10 +535,10 @@
 	function replaceImageSrc(img, newSrc) {
 		if (!img) return;
 
-		// Store original source
-		if (!img.dataset.originalSrc) {
-			img.dataset.originalSrc = img.src;
-		}
+	// Store original source
+	if (!img.dataset.originalSrc) {
+		img.dataset.originalSrc = img.src;
+	}
 
 		// Replace image source
 		img.src = newSrc;
@@ -637,13 +864,14 @@
 
 		debugLog('Fetching variant from:', url, 'Attempt:', attempt);
 
-		try {
-			const response = await fetch(url, {
-				method: 'GET',
-				headers: {
-					Accept: 'application/json',
-				},
-			});
+	try {
+		const response = await fetch(url, {
+			method: 'GET',
+			headers: {
+				Accept: 'application/json',
+				'X-AB-Session': sessionId.substring(0, 32),
+			},
+		});
 
 			debugLog('Response status:', response.status);
 

@@ -25,14 +25,14 @@ export function GeneratedImagesGrid({
           {images.map((image, index) => {
             // Ensure we have a unique key, fallback to index if id is missing
             const imageKey = image.id || `generated-${index}`;
-            
+
             return (
               <Card key={imageKey}>
                 <BlockStack gap="300">
                   <div>
                     <img
                       src={image.imageUrl}
-                      alt="Generated image"
+                      alt={`Generated variant ${index + 1}`}
                       style={{
                         width: "100%",
                         height: "auto",

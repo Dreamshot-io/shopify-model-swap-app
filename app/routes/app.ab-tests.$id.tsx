@@ -12,11 +12,9 @@ import {
   Grid,
   Badge,
   ProgressBar,
-  InlineStack,
-  Thumbnail,
-  DataTable,
+  InlineStack, DataTable,
   Button,
-  Modal,
+  Modal
 } from "@shopify/polaris";
 import { TitleBar } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
@@ -38,7 +36,9 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     },
     include: {
       variants: true,
-      events: true,
+      events: {
+        orderBy: { createdAt: "asc" },
+      },
     },
   });
 
@@ -46,12 +46,24 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     throw new Response("Test not found", { status: 404 });
   }
 
-  return json({ abTest });
+  const serialized = {
+    ...abTest,
+    createdAt: abTest.createdAt.toISOString(),
+    updatedAt: abTest.updatedAt.toISOString(),
+    startDate: abTest.startDate?.toISOString() ?? null,
+    endDate: abTest.endDate?.toISOString() ?? null,
+    events: abTest.events.map((event) => ({
+      ...event,
+      createdAt: event.createdAt.toISOString(),
+    })),
+  };
+
+  return json({ abTest: serialized });
 };
 
 export default function ABTestDetails() {
   const { abTest } = useLoaderData<typeof loader>();
-  const stats = calculateStatistics(abTest.events as any);
+  const stats = calculateStatistics(abTest.events);
   const [previewVariant, setPreviewVariant] = useState<{
     variant: "A" | "B";
     images: string[];
@@ -222,7 +234,7 @@ export default function ABTestDetails() {
                                 >
                                   <img
                                     src={url}
-                                    alt={`Variant A image ${index + 1}`}
+                                    alt={`Variant A option ${index + 1}`}
                                     style={{
                                       width: "100%",
                                       height: "100%",
@@ -289,7 +301,7 @@ export default function ABTestDetails() {
                                 >
                                   <img
                                     src={url}
-                                    alt={`Variant B image ${index + 1}`}
+                                    alt={`Variant B option ${index + 1}`}
                                     style={{
                                       width: "100%",
                                       height: "100%",

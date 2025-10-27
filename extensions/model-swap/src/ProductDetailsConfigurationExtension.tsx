@@ -1,8 +1,8 @@
 import {
-  reactExtension,
-  useApi,
-  BlockStack,
-  Button,
+    reactExtension,
+    useApi,
+    BlockStack,
+    Button,
 } from "@shopify/ui-extensions-react/admin";
 import { useState, useEffect } from "react";
 
@@ -13,8 +13,6 @@ export default reactExtension("admin.product-details.block.render", () => (
 
 function App() {
   const {
-    extension: { target },
-    i18n,
     navigation,
   } = useApi<"admin.product-details.block.render">();
   const product = useProduct();
