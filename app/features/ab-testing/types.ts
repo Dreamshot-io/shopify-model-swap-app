@@ -22,6 +22,7 @@ export interface ABTestEvent {
   eventType: ABTestEventType;
   productId: string;
   revenue?: number;
+  orderId?: string;
   createdAt: Date;
 }
 
@@ -80,6 +81,7 @@ export interface TrackingEvent {
   eventType: ABTestEventType;
   productId: string;
   revenue?: number;
+  orderId?: string;
 }
 
 // Serialized types for Remix loaders (Dates become strings after json() serialization)

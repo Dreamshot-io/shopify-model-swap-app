@@ -3,23 +3,24 @@ import type { LoaderFunctionArgs, ActionFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import { useLoaderData, useFetcher } from "@remix-run/react";
 import {
-  Page,
-  Layout,
-  Text,
-  Card,
-  Button,
-  BlockStack,
-  Banner,
-  DataTable,
-  Badge,
-  Modal,
-  FormLayout,
-  TextField,
-  InlineStack,
+    Page,
+    Layout,
+    Text,
+    Card,
+    Button,
+    BlockStack,
+    Banner,
+    DataTable,
+    Badge,
+    Modal,
+    FormLayout,
+    TextField,
+    InlineStack,
 } from "@shopify/polaris";
 import { TitleBar, useAppBridge } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
+import { calculateStatistics } from "../features/ab-testing/utils/statistics";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session } = await authenticate.admin(request);
@@ -28,12 +29,22 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     where: { shop: session.shop },
     include: {
       variants: true,
-      events: true,
+      events: {
+        orderBy: { createdAt: "asc" },
+      },
     },
     orderBy: { createdAt: "desc" },
   });
 
-  return json({ abTests });
+  const serialized = abTests.map((test) => ({
+    ...test,
+    events: test.events.map((event) => ({
+      ...event,
+      createdAt: event.createdAt.toISOString(),
+    })),
+  }));
+
+  return json({ abTests: serialized });
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
@@ -254,7 +265,7 @@ export default function ABTests() {
     } else if (data && !data.ok) {
       shopify.toast.show((data as any).error, { isError: true });
     }
-  }, [fetcher.data, shopify]);
+  }, [fetcher.data]);
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -273,55 +284,14 @@ export default function ABTests() {
     }
   };
 
-  const calculateStats = (test: any) => {
-    const variantAEvents = test.events.filter((e: any) => e.variant === "A");
-    const variantBEvents = test.events.filter((e: any) => e.variant === "B");
-
-    const variantAImpressions = variantAEvents.filter(
-      (e: any) => e.eventType === "IMPRESSION",
-    ).length;
-    const variantBImpressions = variantBEvents.filter(
-      (e: any) => e.eventType === "IMPRESSION",
-    ).length;
-
-    const variantAConversions = variantAEvents.filter(
-      (e: any) => e.eventType === "ADD_TO_CART",
-    ).length;
-    const variantBConversions = variantBEvents.filter(
-      (e: any) => e.eventType === "ADD_TO_CART",
-    ).length;
-
-    const variantARate =
-      variantAImpressions > 0
-        ? ((variantAConversions / variantAImpressions) * 100).toFixed(2)
-        : "0";
-    const variantBRate =
-      variantBImpressions > 0
-        ? ((variantBConversions / variantBImpressions) * 100).toFixed(2)
-        : "0";
-
-    return {
-      variantA: {
-        impressions: variantAImpressions,
-        conversions: variantAConversions,
-        rate: variantARate,
-      },
-      variantB: {
-        impressions: variantBImpressions,
-        conversions: variantBConversions,
-        rate: variantBRate,
-      },
-    };
-  };
-
   const rows = abTests.map((test) => {
-    const stats = calculateStats(test);
+    const stats = calculateStatistics(test.events);
     return [
       test.name,
       test.productId,
       getStatusBadge(test.status),
-      `${stats.variantA.impressions} / ${stats.variantA.rate}%`,
-      `${stats.variantB.impressions} / ${stats.variantB.rate}%`,
+      `${stats.variantA.impressions.toLocaleString()} / ${stats.variantA.addToCarts.toLocaleString()} / ${stats.variantA.purchases.toLocaleString()} / ${stats.variantA.ratePercent}% / $${stats.variantA.revenue.toFixed(2)}`,
+      `${stats.variantB.impressions.toLocaleString()} / ${stats.variantB.addToCarts.toLocaleString()} / ${stats.variantB.purchases.toLocaleString()} / ${stats.variantB.ratePercent}% / $${stats.variantB.revenue.toFixed(2)}`,
       <InlineStack key={test.id} gap="200">
         {test.status === "DRAFT" && (
           <Button

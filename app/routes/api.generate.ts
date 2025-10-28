@@ -19,8 +19,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
     // Parse form data
     const formData = await request.formData();
-    const sourceImageUrl = String(formData.get("sourceImageUrl") || "");
-    const prompt = String(formData.get("prompt") || "");
     const productId = String(formData.get("productId") || "");
 
     console.log(`[API.GENERATE:${requestId}] Generating for product: ${productId}`);

@@ -1,5 +1,4 @@
 import { useMemo } from "react";
-import { useAppBridge } from "@shopify/app-bridge-react";
 
 /**
  * Hook that returns a fetch wrapper tied to the embedded Shopify session.
@@ -7,8 +6,6 @@ import { useAppBridge } from "@shopify/app-bridge-react";
  * We just need to ensure requests are routed to the app origin.
  */
 export function useAuthenticatedAppFetch() {
-  const shopify = useAppBridge();
-
   return useMemo(() => {
     // SSR guard - window is not available during server-side rendering
     if (typeof window === 'undefined') {
@@ -60,5 +57,5 @@ export function useAuthenticatedAppFetch() {
         throw error;
       }
     };
-  }, [shopify]);
+  }, []);
 }

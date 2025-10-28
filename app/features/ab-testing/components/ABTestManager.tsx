@@ -1,18 +1,16 @@
 import { useState, useCallback } from "react";
 import {
-  Card,
-  Text,
-  Button,
-  BlockStack,
-  InlineStack,
-  Banner,
-  EmptyState,
-  Badge,
+    Card,
+    Text,
+    Button,
+    BlockStack,
+    InlineStack,
+    Banner,
+    EmptyState,
+    Badge,
 } from "@shopify/polaris";
 import { ABTestCreator } from "./ABTestCreator";
-import { ABTestCard } from "./ABTestCard";
-import { ABTestSummary } from "./ABTestSummary";
-import type { ABTest, ABTestStats, ABTestCreateRequest, SerializedABTest } from "../types";
+import type { ABTestCreateRequest, SerializedABTest } from "../types";
 import { calculateStatistics } from "../utils/statistics";
 
 interface ABTestManagerProps {

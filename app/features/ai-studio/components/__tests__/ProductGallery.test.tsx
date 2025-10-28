@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { ProductGallery } from "../ProductGallery";
 import "@testing-library/jest-dom";
 
@@ -413,7 +413,6 @@ describe("ProductGallery", () => {
         />
       );
 
-      const webpImage = screen.getByRole("img", { name: /Library image/i });
       const images = screen.getAllByRole("img");
 
       // Find the WebP image

@@ -1,4 +1,4 @@
-import { Box, Text, InlineStack, Button } from "@shopify/polaris";
+import { Text, InlineStack, Button } from "@shopify/polaris";
 import type { SelectedImage, LibraryItem, GeneratedImage } from "../types";
 
 type MediaNode = {
@@ -21,7 +21,7 @@ export function ImageSelector({
   onSelect: (image: SelectedImage) => void;
   onClearSelection: () => void;
 }) {
-  const isSelected = (url: string) => 
+  const isSelected = (url: string) =>
     selectedImages.some(img => img.url === url);
 
   const getSelectionNumber = (url: string) => {
@@ -62,16 +62,16 @@ export function ImageSelector({
       <img
         src={url}
         alt={altText || (isAIGenerated ? "AI generated image" : "Product image")}
-        style={{ 
-          width: "100%", 
-          height: "auto", 
+        style={{
+          width: "100%",
+          height: "auto",
           minHeight: "120px",
           maxHeight: "200px",
-          objectFit: "cover", 
-          display: "block" 
+          objectFit: "cover",
+          display: "block"
         }}
       />
-      
+
       {/* AI Generated tag */}
       {isAIGenerated && (
         <div
@@ -79,7 +79,7 @@ export function ImageSelector({
             position: "absolute",
             top: "6px",
             right: "6px",
-            backgroundColor: aiType === 'session' 
+            backgroundColor: aiType === 'session'
               ? "rgba(255, 99, 71, 0.9)"    // Tomato red for session images
               : "rgba(138, 43, 226, 0.9)",  // Purple for library images
             color: "white",
@@ -97,7 +97,7 @@ export function ImageSelector({
           {aiType === 'session' ? 'NEW' : 'AI'}
         </div>
       )}
-      
+
       {/* Selection number badge */}
       {isSelected(url) && (
         <div
@@ -124,7 +124,7 @@ export function ImageSelector({
           {getSelectionNumber(url)}
         </div>
       )}
-      
+
       {/* Selection overlay */}
       {isSelected(url) && (
         <div
@@ -175,8 +175,8 @@ export function ImageSelector({
           </Button>
         )}
       </InlineStack>
-      
-      <div 
+
+      <div
         style={{
           display: "flex",
           gap: "16px",
@@ -196,9 +196,9 @@ export function ImageSelector({
             false
           );
         })}
-        
+
         {/* Generated images from current session (AI Generated) */}
-        {generatedImagesList.map((item) => 
+        {generatedImagesList.map((item) =>
           renderImageItem(
             item.id,
             item.url,
@@ -207,9 +207,9 @@ export function ImageSelector({
             'session'
           )
         )}
-        
+
         {/* Library images (AI Generated) */}
-        {libraryImages.map((item) => 
+        {libraryImages.map((item) =>
           renderImageItem(
             item.id,
             item.url,

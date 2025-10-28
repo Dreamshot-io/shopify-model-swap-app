@@ -2,5 +2,7 @@ node_modules
 build
 public/build
 shopify-app-remix
+public/**/*.min.js
+extensions/**/dist
 */*.yml
 .shopify

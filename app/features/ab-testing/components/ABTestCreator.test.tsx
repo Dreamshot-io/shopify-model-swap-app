@@ -1,7 +1,5 @@
-import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { ABTestCreator } from './ABTestCreator';
-import type { ABTestCreateRequest } from '../types';
 
 describe('ABTestCreator - Selection Order Preservation', () => {
   const mockOnTestCreate = jest.fn();

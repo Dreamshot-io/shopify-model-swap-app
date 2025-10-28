@@ -21,13 +21,15 @@ interface ABTestData {
  */
 register(({ analytics, browser, settings }) => {
   const APP_PROXY_BASE = '/apps/model-swap';
+  const IMPRESSION_SYNC_PREFIX = 'ab_test_impression_synced_';
 
   // Utility: Track event to backend
   async function trackEvent(
     testId: string,
     eventType: string,
     productId: string,
-    revenue?: number
+    revenue?: number,
+    variant?: 'A' | 'B'
   ): Promise<void> {
     const sessionId = browser.localStorage.getItem('ab_test_session');
 
@@ -48,10 +50,40 @@ register(({ analytics, browser, settings }) => {
           eventType,
           productId,
           revenue,
+          variant,
         }),
       });
     } catch (error) {
       console.error('[A/B Test] Failed to track event:', error);
+    }
+  }
+
+  async function ensureImpressionSync(): Promise<void> {
+    const testDataStr = browser.sessionStorage.getItem('ab_test_active');
+
+    if (!testDataStr) {
+      return;
+    }
+
+    try {
+      const testData: ABTestData = JSON.parse(testDataStr);
+
+      if (!testData?.testId || (testData.variant !== 'A' && testData.variant !== 'B')) {
+        return;
+      }
+
+      const syncKey = `${IMPRESSION_SYNC_PREFIX}${testData.testId}`;
+      const alreadySynced = browser.sessionStorage.getItem(syncKey);
+
+      if (alreadySynced === testData.variant) {
+        return;
+      }
+
+      await trackEvent(testData.testId, 'IMPRESSION', testData.productId, undefined, testData.variant);
+      browser.sessionStorage.setItem(syncKey, testData.variant);
+      console.log('[A/B Test] Synced impression fallback for test:', testData.testId);
+    } catch (error) {
+      console.error('[A/B Test] Error syncing impression fallback:', error);
     }
   }
 
@@ -95,8 +127,12 @@ register(({ analytics, browser, settings }) => {
 
       // Clean up
       browser.sessionStorage.removeItem('ab_test_active');
+      browser.sessionStorage.removeItem(`${IMPRESSION_SYNC_PREFIX}${testData.testId}`);
     } catch (error) {
       console.error('[A/B Test] Error tracking purchase:', error);
     }
   });
+
+  // Fallback for impressions using web pixel analytics events
+  analytics.subscribe('product_viewed', ensureImpressionSync);
 });
