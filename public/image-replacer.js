@@ -197,23 +197,58 @@
 				keepalive: eventType === 'ADD_TO_CART',
 				body: requestPayload,
 			});
-			console.log('[A/B Test] Fetch response:', response.status, response.statusText);
+			console.log('[A/B Test] Fetch response:', response.status, response.statusText, response.headers.get('content-type'));
+
 			if (!response.ok) {
-				const errorText = await response.text().catch(() => 'Unable to read error');
-				console.error('[A/B Test] Tracking failed:', response.status, errorText);
+				let errorText = '';
+				try {
+					const contentType = response.headers.get('content-type');
+					if (contentType && contentType.includes('application/json')) {
+						const errorJson = await response.json();
+						errorText = JSON.stringify(errorJson, null, 2);
+					} else {
+						errorText = await response.text();
+					}
+				} catch (parseError) {
+					errorText = 'Unable to read error response';
+				}
+				console.error('[A/B Test] Tracking failed:', {
+					status: response.status,
+					statusText: response.statusText,
+					url: url,
+					error: errorText,
+					body: body
+				});
 				return false;
 			}
-			const responseData = await response.json().catch(() => null);
+
+			let responseData = null;
+			try {
+				const contentType = response.headers.get('content-type');
+				if (contentType && contentType.includes('application/json')) {
+					responseData = await response.json();
+				} else {
+					responseData = await response.text();
+				}
+			} catch (parseError) {
+				console.warn('[A/B Test] Could not parse response:', parseError);
+			}
 			console.log('[A/B Test] Tracking response:', responseData);
 			return true;
 		} catch (error) {
-			console.error('[A/B Test] Theme tracking failed:', eventType, error);
+			console.error('[A/B Test] Theme tracking failed:', {
+				eventType,
+				error: error instanceof Error ? error.message : String(error),
+				stack: error instanceof Error ? error.stack : undefined,
+				url: url
+			});
 			return false;
 		}
 	}
 
 	let isCartFallbackInitialized = false;
 	let lastManualAddToCartTimestamp = 0;
+	let addToCartTrackingInProgress = false;
 
 	function initAddToCartFallback() {
 		if (isCartFallbackInitialized) return;
@@ -317,6 +352,13 @@
 
 	function recordManualAddToCart(source) {
 		console.log('[A/B Test] recordManualAddToCart called with source:', source);
+
+		// Prevent multiple simultaneous requests
+		if (addToCartTrackingInProgress) {
+			console.warn('[A/B Test] Add to cart tracking already in progress, skipping', source);
+			return;
+		}
+
 		const now = Date.now();
 		if (now - lastManualAddToCartTimestamp < ADD_TO_CART_THROTTLE_MS) {
 			console.warn('[A/B Test] Manual add to cart throttled', source);
@@ -325,14 +367,18 @@
 		}
 
 		lastManualAddToCartTimestamp = now;
+		addToCartTrackingInProgress = true;
+
 		console.log('[A/B Test] Calling sendTrackingEvent for ADD_TO_CART');
 		sendTrackingEvent('ADD_TO_CART', {
 			source,
 			skipCartAttach: true,
 		}).then((success) => {
 			console.log('[A/B Test] sendTrackingEvent result:', success);
+			addToCartTrackingInProgress = false;
 		}).catch((error) => {
 			console.error('[A/B Test] sendTrackingEvent error:', error);
+			addToCartTrackingInProgress = false;
 		});
 	}
 

@@ -4,7 +4,14 @@ import { authenticate } from "../shopify.server";
 import db from "../db.server";
 
 export const action = async ({ request }: ActionFunctionArgs) => {
+  console.log("[track] ===== REQUEST RECEIVED =====", {
+    method: request.method,
+    url: request.url,
+    headers: Object.fromEntries(request.headers.entries()),
+  });
+
   if (request.method !== "POST") {
+    console.log("[track] Method not allowed:", request.method);
     return json({ error: "Method not allowed" }, { status: 405 });
   }
 
@@ -12,12 +19,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   let sessionShop: string | undefined;
 
   try {
+    console.log("[track] Attempting authentication...");
     // CRITICAL: Add proper authentication with HMAC validation
     const { session, cors } = await authenticate.public.appProxy(request);
     sessionShop = session?.shop;
     corsHeaders = cors?.headers || {};
 
-    console.log("[track] Request received for shop:", sessionShop);
+    console.log("[track] Authentication successful, shop:", sessionShop);
 
     let body;
     try {
@@ -187,24 +195,43 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       { headers: corsHeaders }
     );
   } catch (error) {
-    console.error("[track] Error tracking A/B test event:", error);
+    console.error("[track] ===== ERROR OCCURRED =====");
+    console.error("[track] Error type:", error instanceof Error ? error.constructor.name : typeof error);
+    console.error("[track] Error message:", error instanceof Error ? error.message : String(error));
     console.error("[track] Error stack:", error instanceof Error ? error.stack : "No stack");
     console.error("[track] Error details:", {
       name: error instanceof Error ? error.name : typeof error,
       message: error instanceof Error ? error.message : String(error),
       shop: sessionShop,
+      hasCorsHeaders: Object.keys(corsHeaders).length > 0,
     });
 
     // Handle authentication errors
-    if (error instanceof Error && error.message.includes("authenticate")) {
+    if (error instanceof Error && (
+      error.message.includes("authenticate") ||
+      error.message.includes("HMAC") ||
+      error.message.includes("signature")
+    )) {
+      console.error("[track] Authentication error detected");
       return json(
-        { error: "Authentication failed" },
+        { error: "Authentication failed", details: error.message },
         { status: 401, headers: corsHeaders }
       );
     }
 
+    // Handle Response errors (from Remix/Shopify auth)
+    if (error instanceof Response) {
+      console.error("[track] Response error:", error.status, error.statusText);
+      return error;
+    }
+
+    console.error("[track] Returning 500 error response");
     return json(
-      { error: "Internal server error", message: error instanceof Error ? error.message : String(error) },
+      {
+        error: "Internal server error",
+        message: error instanceof Error ? error.message : String(error),
+        type: error instanceof Error ? error.constructor.name : typeof error,
+      },
       { status: 500, headers: corsHeaders }
     );
   }
