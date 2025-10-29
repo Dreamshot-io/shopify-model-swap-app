@@ -34,21 +34,14 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       }
     }
 
-    // Use minified version in production, regular version in development for debugging
-    const scriptFileName = isDevelopment ? "image-replacer.js" : "image-replacer.min.js";
-    const scriptPath = join(process.cwd(), "public", scriptFileName);
+    // Serve the canonical script to avoid stale minified bundles
+    const scriptPath = join(process.cwd(), "public", "image-replacer.js");
 
-    // Fallback to non-minified if minified doesn't exist
-    const fallbackPath = join(process.cwd(), "public", "image-replacer.js");
-
-    let script: string;
-    if (existsSync(scriptPath)) {
-      script = readFileSync(scriptPath, "utf-8");
-    } else if (existsSync(fallbackPath)) {
-      script = readFileSync(fallbackPath, "utf-8");
-    } else {
+    if (!existsSync(scriptPath)) {
       throw new Error("No image replacer script found");
     }
+
+    const script = readFileSync(scriptPath, "utf-8");
 
     // Return the script with proper headers
     return new Response(script, {

@@ -146,16 +146,17 @@
 			return false;
 		}
 
-	const syncKey = CART_ATTRIBUTE_SYNC_PREFIX + activeTest.testId + '_' + activeTest.variant;
+		const { skipCartAttach = false, ...extraPayload } = payload;
+		const syncKey = CART_ATTRIBUTE_SYNC_PREFIX + activeTest.testId + '_' + activeTest.variant;
 
-	if (!payload.skipCartAttach && !sessionStorage.getItem(syncKey)) {
-		try {
-			persistCartMetadata(activeTest);
-			sessionStorage.setItem(syncKey, '1');
-		} catch (error) {
-			debugLog('Failed to persist cart metadata', error);
+		if (!skipCartAttach && !sessionStorage.getItem(syncKey)) {
+			try {
+				persistCartMetadata(activeTest);
+				sessionStorage.setItem(syncKey, '1');
+			} catch (error) {
+				debugLog('Failed to persist cart metadata', error);
+			}
 		}
-	}
 
 		const sessionId = getSessionId();
 		const url = APP_PROXY_BASE + '/track';
@@ -165,8 +166,20 @@
 			eventType,
 			productId: activeTest.productId,
 			variant: activeTest.variant,
-			...payload,
+			...extraPayload,
 		};
+		const requestPayload = JSON.stringify(body);
+
+		if (eventType === 'ADD_TO_CART' && typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
+			try {
+				const beaconSent = navigator.sendBeacon(url, new Blob([requestPayload], { type: 'application/json' }));
+				if (beaconSent) {
+					return true;
+				}
+			} catch (error) {
+				debugLog('sendBeacon failed, falling back to fetch', error);
+			}
+		}
 
 		try {
 			await fetch(url, {
@@ -174,7 +187,8 @@
 				headers: {
 					'Content-Type': 'application/json',
 				},
-				body: JSON.stringify(body),
+				keepalive: eventType === 'ADD_TO_CART',
+				body: requestPayload,
 			});
 			return true;
 		} catch (error) {
@@ -184,6 +198,7 @@
 	}
 
 	let isCartFallbackInitialized = false;
+	let lastManualAddToCartTimestamp = 0;
 
 	function initAddToCartFallback() {
 		if (isCartFallbackInitialized) return;
@@ -263,6 +278,100 @@
 				return send.apply(this, arguments);
 			};
 		}
+	}
+
+	const ADD_TO_CART_BUTTON_SELECTORS = [
+		'button[name="add"]',
+		'button[data-add-to-cart]',
+		'button[data-action="add-to-cart"]',
+		'[data-add-to-cart]',
+		'.add-to-cart',
+		'.add-to-cart-button',
+		'.product-form__submit',
+		'.product-form__cart-submit',
+		'#AddToCart',
+		'#ProductSubmitButton',
+	];
+
+	const ADD_TO_CART_THROTTLE_MS = 500;
+
+	function recordManualAddToCart(source) {
+		const now = Date.now();
+		if (now - lastManualAddToCartTimestamp < ADD_TO_CART_THROTTLE_MS) {
+			debugLog('Manual add to cart throttled', source);
+			return;
+		}
+
+		lastManualAddToCartTimestamp = now;
+		sendTrackingEvent('ADD_TO_CART', {
+			source,
+			skipCartAttach: true,
+		});
+	}
+
+	function wireAddToCartTracking() {
+		try {
+			const forms = document.querySelectorAll('form[action*="/cart/add"]');
+			forms.forEach((form) => {
+				if (form.dataset.abAtcBound === 'true') {
+					return;
+				}
+				form.dataset.abAtcBound = 'true';
+				form.addEventListener('submit', function () {
+					recordManualAddToCart('form-submit');
+				});
+			});
+
+			const buttons = document.querySelectorAll(ADD_TO_CART_BUTTON_SELECTORS.join(', '));
+			buttons.forEach((button) => {
+				if (button.dataset.abAtcBound === 'true') {
+					return;
+				}
+				button.dataset.abAtcBound = 'true';
+				button.addEventListener('click', function () {
+					// Defer slightly to allow theme scripts to process click handlers first
+					setTimeout(function () {
+						recordManualAddToCart('button-click');
+					}, 0);
+				});
+			});
+		} catch (error) {
+			debugLog('Failed to wire add to cart tracking', error);
+		}
+	}
+
+	let addToCartMutationObserver = null;
+
+	function monitorAddToCartElements() {
+		if (!window.MutationObserver || addToCartMutationObserver) {
+			return;
+		}
+
+		addToCartMutationObserver = new MutationObserver(function (mutations) {
+			let shouldRewire = false;
+			for (const mutation of mutations) {
+				if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
+					shouldRewire = true;
+					break;
+				}
+			}
+
+			if (shouldRewire) {
+				wireAddToCartTracking();
+			}
+		});
+
+		addToCartMutationObserver.observe(document.body, {
+			childList: true,
+			subtree: true,
+		});
+
+		setTimeout(function () {
+			if (addToCartMutationObserver) {
+				addToCartMutationObserver.disconnect();
+				addToCartMutationObserver = null;
+			}
+		}, 5000);
 	}
 
 	// Detect product ID using multiple strategies
@@ -818,10 +927,13 @@
 				if (hasNewImages) break;
 			}
 
-			if (!hasNewImages) {
-				debugLog('No new images detected, skipping');
-				return;
-			}
+		if (!hasNewImages) {
+			debugLog('No new images detected, skipping');
+			return;
+		}
+
+		wireAddToCartTracking();
+		monitorAddToCartElements();
 
 			triggerCount++;
 			debugLog('Observer detected new images, trigger count:', triggerCount);
@@ -905,6 +1017,10 @@
 			return;
 		}
 
+		initAddToCartFallback();
+		wireAddToCartTracking();
+		monitorAddToCartElements();
+
 		const productId = getProductId();
 		if (!productId) {
 			// Error already logged in getProductId()
@@ -941,6 +1057,8 @@
 					);
 
 					console.log('[A/B Test] ✅ Visible images replaced successfully');
+					wireAddToCartTracking();
+					monitorAddToCartElements();
 				} else {
 					console.warn('[A/B Test] ⚠️ Failed to replace visible images');
 					console.warn('[A/B Test] This may indicate theme compatibility issues');
@@ -975,9 +1093,11 @@
 					const productId = getProductId();
 					if (productId === data.productId) {
 						fetchVariant(productId).then(function (variantData) {
-							if (variantData && variantData.imageUrls) {
-								replaceImages(variantData.imageUrls, variantData.variant);
-							}
+						if (variantData && variantData.imageUrls) {
+							replaceImages(variantData.imageUrls, variantData.variant);
+							wireAddToCartTracking();
+							monitorAddToCartElements();
+						}
 						});
 					}
 				}, 100);
