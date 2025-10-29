@@ -139,10 +139,12 @@
 	async function sendTrackingEvent(eventType, payload = {}) {
 		const activeTest = getActiveTestData();
 		if (!activeTest) {
+			console.warn('[A/B Test] Cannot track', eventType, '- no active test data');
 			return false;
 		}
 
 		if (typeof payload !== 'object' || payload === null) {
+			console.warn('[A/B Test] Invalid payload for', eventType);
 			return false;
 		}
 
@@ -170,19 +172,24 @@
 		};
 		const requestPayload = JSON.stringify(body);
 
+		console.log('[A/B Test] Sending tracking event:', eventType, 'to', url, body);
+
 		if (eventType === 'ADD_TO_CART' && typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
 			try {
 				const beaconSent = navigator.sendBeacon(url, new Blob([requestPayload], { type: 'application/json' }));
+				console.log('[A/B Test] sendBeacon result:', beaconSent);
 				if (beaconSent) {
+					console.log('[A/B Test] Event tracked via sendBeacon');
 					return true;
 				}
 			} catch (error) {
+				console.error('[A/B Test] sendBeacon failed, falling back to fetch', error);
 				debugLog('sendBeacon failed, falling back to fetch', error);
 			}
 		}
 
 		try {
-			await fetch(url, {
+			const response = await fetch(url, {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json',
@@ -190,6 +197,14 @@
 				keepalive: eventType === 'ADD_TO_CART',
 				body: requestPayload,
 			});
+			console.log('[A/B Test] Fetch response:', response.status, response.statusText);
+			if (!response.ok) {
+				const errorText = await response.text().catch(() => 'Unable to read error');
+				console.error('[A/B Test] Tracking failed:', response.status, errorText);
+				return false;
+			}
+			const responseData = await response.json().catch(() => null);
+			console.log('[A/B Test] Tracking response:', responseData);
 			return true;
 		} catch (error) {
 			console.error('[A/B Test] Theme tracking failed:', eventType, error);
@@ -285,6 +300,11 @@
 		'button[data-add-to-cart]',
 		'button[data-action="add-to-cart"]',
 		'[data-add-to-cart]',
+		'[ref="addToCartButton"]',
+		'button[ref="addToCartButton"]',
+		'[id*="add-to-cart"]',
+		'button[id*="add-to-cart"]',
+		'[id^="BuyButtons-ProductSubmitButton"]',
 		'.add-to-cart',
 		'.add-to-cart-button',
 		'.product-form__submit',
@@ -296,39 +316,62 @@
 	const ADD_TO_CART_THROTTLE_MS = 500;
 
 	function recordManualAddToCart(source) {
+		console.log('[A/B Test] recordManualAddToCart called with source:', source);
 		const now = Date.now();
 		if (now - lastManualAddToCartTimestamp < ADD_TO_CART_THROTTLE_MS) {
+			console.warn('[A/B Test] Manual add to cart throttled', source);
 			debugLog('Manual add to cart throttled', source);
 			return;
 		}
 
 		lastManualAddToCartTimestamp = now;
+		console.log('[A/B Test] Calling sendTrackingEvent for ADD_TO_CART');
 		sendTrackingEvent('ADD_TO_CART', {
 			source,
 			skipCartAttach: true,
+		}).then((success) => {
+			console.log('[A/B Test] sendTrackingEvent result:', success);
+		}).catch((error) => {
+			console.error('[A/B Test] sendTrackingEvent error:', error);
 		});
 	}
 
 	function wireAddToCartTracking() {
 		try {
 			const forms = document.querySelectorAll('form[action*="/cart/add"]');
+			debugLog('Found', forms.length, 'cart forms');
 			forms.forEach((form) => {
 				if (form.dataset.abAtcBound === 'true') {
 					return;
 				}
 				form.dataset.abAtcBound = 'true';
 				form.addEventListener('submit', function () {
+					console.log('[A/B Test] Form submit detected');
 					recordManualAddToCart('form-submit');
 				});
 			});
 
 			const buttons = document.querySelectorAll(ADD_TO_CART_BUTTON_SELECTORS.join(', '));
+			debugLog('Found', buttons.length, 'add-to-cart buttons');
+			if (buttons.length > 0) {
+				console.log('[A/B Test] Add-to-cart buttons detected:', Array.from(buttons).map(b => ({
+					id: b.id,
+					class: b.className,
+					name: b.name,
+					ref: b.getAttribute('ref')
+				})));
+			}
 			buttons.forEach((button) => {
 				if (button.dataset.abAtcBound === 'true') {
 					return;
 				}
 				button.dataset.abAtcBound = 'true';
-				button.addEventListener('click', function () {
+				button.addEventListener('click', function (e) {
+					console.log('[A/B Test] Button click detected:', {
+						id: button.id,
+						class: button.className,
+						name: button.name
+					});
 					// Defer slightly to allow theme scripts to process click handlers first
 					setTimeout(function () {
 						recordManualAddToCart('button-click');
@@ -336,6 +379,7 @@
 				});
 			});
 		} catch (error) {
+			console.error('[A/B Test] Failed to wire add to cart tracking', error);
 			debugLog('Failed to wire add to cart tracking', error);
 		}
 	}
