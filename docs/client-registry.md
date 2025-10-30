@@ -6,9 +6,9 @@
 
 ## Current Clients
 
-| Client Slug | Shop Domain | Partner App ID | Config File | Status | Deployed | Notes                    |
-| ----------- | ----------- | -------------- | ----------- | ------ | -------- | ------------------------ |
-| -           | -           | -              | -           | -      | -        | No clients onboarded yet |
+| Client Slug | Shop Domain | Partner App ID | Config File             | Status | Deployed   | Notes                                                                    |
+| ----------- | ----------- | -------------- | ----------------------- | ------ | ---------- | ------------------------------------------------------------------------ |
+| pummba      | TBD         | 292388569089   | shopify.app.pummba.toml | active | 2025-10-30 | Config linked, app deployed. Client ID: 21acdb3d10eb24f87b02129c68b89328 |
 
 ## Client Configuration Template
 

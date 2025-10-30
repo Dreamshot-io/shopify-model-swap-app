@@ -1,0 +1,67 @@
+# Shopify App Configuration for Pummba Client
+# Generated from shopify.app.template.toml
+#
+# NEXT STEPS:
+# 1. Create app in Partner Dashboard → Get client_id and client_secret
+# 2. Set environment variables:
+#    - CLIENT_PUMMBA_ID=<client_id_from_partner_dashboard>
+#    - CLIENT_PUMMBA_SECRET=<client_secret_from_partner_dashboard>
+# 3. Replace ${CLIENT_PUMMBA_ID} below with actual client_id or reference env var
+# 4. Link config: shopify app config link --config shopify.app.pummba.toml
+# 5. Test installation on Pummba's Shopify store
+
+# Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
+
+# REQUIRED: Unique client_id from Shopify Partner Dashboard (Custom distribution app)
+# Partner App ID: 292388569089
+client_id = "21acdb3d10eb24f87b02129c68b89328"
+
+# App name identifying this client
+name = "dreamshot-model-swap-pummba"
+
+# Shared backend URL (same for all clients)
+application_url = "https://shopify.dreamshot.io"
+
+embedded = true
+handle = "dreamshot-model-swap-pummba"
+
+[build]
+automatically_update_urls_on_dev = false
+
+[webhooks]
+api_version = "2025-07"
+
+  [[webhooks.subscriptions]]
+  topics = [ "app/scopes_update" ]
+  uri = "/webhooks/app/scopes_update"
+
+  [[webhooks.subscriptions]]
+  topics = [ "app/uninstalled" ]
+  uri = "/webhooks/app/uninstalled"
+
+  [[webhooks.subscriptions]]
+  topics = [ "app_subscriptions/update" ]
+  uri = "/webhooks/app/subscriptions_update"
+
+  [[webhooks.subscriptions]]
+  topics = [ "orders/paid" ]
+  uri = "/webhooks/orders-paid"
+
+[access_scopes]
+# Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
+scopes = "write_files,write_products,read_orders"
+
+[auth]
+redirect_urls = [
+  "https://shopify.dreamshot.io/auth/callback",
+  "https://shopify.dreamshot.io/auth/shopify/callback",
+  "https://shopify.dreamshot.io/api/auth/callback"
+]
+
+[app_proxy]
+url = "https://shopify.dreamshot.io"
+subpath = "model-swap"
+prefix = "apps"
+
+[pos]
+embedded = false

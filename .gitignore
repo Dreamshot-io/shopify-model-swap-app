@@ -25,4 +25,5 @@ database.sqlite
 .shopify/*
 .shopify.lock
 .vercel
+.vercel*
 .env*.local

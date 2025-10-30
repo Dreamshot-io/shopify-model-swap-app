@@ -32,6 +32,12 @@ export const clientCredentialMap: Record<string, ClientConfig> = {
 	//   clientKey: 'CLIENTE_A',
 	//   appName: 'Cliente A Model Swap',
 	// },
+	//
+	// TODO: Add Pummba client when shop domain is known:
+	// 'pummba.myshopify.com': {
+	//   clientKey: 'CLIENT_PUMMBA',
+	//   appName: 'Pummba Model Swap',
+	// },
 };
 
 /**
