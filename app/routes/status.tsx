@@ -20,18 +20,29 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
 	console.log('[status] Environment check:', envCheck);
 
-	return new Response(
-		JSON.stringify({
-			status: 'ok',
-			timestamp: new Date().toISOString(),
-			environment: envCheck,
-			message: 'App is running on Vercel',
-		}),
-		{
-			headers: {
-				'Content-Type': 'application/json',
-				'Cache-Control': 'no-store, no-cache, must-revalidate',
-			},
+	// Try to extract shop domain from request (optional, for future multi-client support)
+	let shopDomain: string | null = null;
+	try {
+		const url = new URL(request.url);
+		shopDomain = url.searchParams.get('shop') || null;
+	} catch {
+		// Ignore if URL parsing fails
+	}
+
+	const response = {
+		status: 'ok',
+		timestamp: new Date().toISOString(),
+		environment: envCheck,
+		message: 'App is running on Vercel',
+		...(shopDomain && { shopDomain }), // Include shop if present
+	};
+
+	console.log('[status] Response:', { ...response, environment: envCheck });
+
+	return new Response(JSON.stringify(response), {
+		headers: {
+			'Content-Type': 'application/json',
+			'Cache-Control': 'no-store, no-cache, must-revalidate',
 		},
-	);
+	});
 };

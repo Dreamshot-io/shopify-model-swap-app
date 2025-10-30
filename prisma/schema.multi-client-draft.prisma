@@ -1,0 +1,31 @@
+// DRAFT: Future Prisma schema additions for multi-client support
+// DO NOT RUN MIGRATIONS YET - This is a planning document only
+//
+// When implementing multi-client support, review this schema and:
+// 1. Add ShopClientApp model to main schema.prisma
+// 2. Create migration: npx prisma migrate dev --name add_multi_client_support
+// 3. Update shopify.server.ts to use new credential lookup logic
+
+model ShopClientApp {
+   id           String   @id @default(cuid())
+   shopDomain   String   @unique
+   clientSlug   String
+   clientId     String
+   clientSecret String   @map("client_secret") // Should be encrypted at rest
+   accessToken  String?  @map("access_token") // Should be encrypted at rest
+   scopes       String?
+   installedAt  DateTime @default(now())
+   updatedAt    DateTime @updatedAt
+
+   // Index for faster lookups by client and shop
+   @@index([clientSlug, shopDomain])
+   // Index for OAuth flow lookups
+   @@index([shopDomain])
+}
+
+// Notes:
+// - This model stores per-shop app credentials and access tokens
+// - clientSlug matches the slug used in shopify.app.<slug>.toml files
+// - clientId/clientSecret should be encrypted using your encryption library
+// - accessToken is optional (only set after successful OAuth)
+// - Relationship with Session model via shopDomain (existing Sessions table already has shop field)

@@ -92,6 +92,29 @@ prisma/              # Database schema and migrations
 extensions/          # Shopify app extensions
 ```
 
+## Multi-Client Configuration (Future)
+
+The codebase includes preparation for multi-client Shopify app configuration management. This enables serving multiple Shopify Plus clients from a single backend deployment.
+
+**Status:** Preparation phase complete - Ready for implementation
+
+**Key Files:**
+
+- `shopify.app.template.toml` - Template for client-specific configs
+- `app/config/client-credentials.template.ts` - Credential mapping (to be populated)
+- `scripts/list-shopify-configs.sh` - List available configurations
+- `scripts/verify-shopify-config.sh` - Verify current config
+- `scripts/use-shopify-config.sh` - Switch between client configs
+
+**Documentation:**
+
+- [PRD: Multi-Client Configuration](./prd/PRD-Multi-Client-Shopify-App-Configuration.md)
+- [Multi-Client Onboarding Guide](./docs/multi-client-onboarding.md)
+- [Multi-Client Troubleshooting](./docs/multi-client-troubleshooting.md)
+- [Client Registry](./docs/client-registry.md)
+
+**Note:** Current implementation uses single-client configuration. Multi-client support is prepared but not yet active.
+
 ## Resources
 
 - [Shopify App Remix Docs](https://shopify.dev/docs/api/shopify-app-remix)

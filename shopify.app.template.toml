@@ -1,0 +1,64 @@
+# Template for multi-client Shopify app configuration
+# Copy this file to shopify.app.<client-slug>.toml and replace placeholders
+#
+# Usage:
+#   1. cp shopify.app.template.toml shopify.app.cliente-a.toml
+#   2. Replace ${CLIENT_SLUG_ID} with actual client_id from Partner Dashboard
+#   3. Replace ${CLIENT_SLUG_SECRET} with actual client_secret (stored in env vars)
+#   4. Verify all ${SHOPIFY_APP_URL} references point to shared backend
+#   5. Commit the new config file (secrets should reference env vars, not hardcoded values)
+
+# Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
+
+# REQUIRED: Unique client_id from Shopify Partner Dashboard (per client app)
+client_id = "${CLIENT_SLUG_ID}"
+
+# REQUIRED: App name (should identify the client)
+name = "dreamshot-model-swap-${CLIENT_SLUG}"
+
+# REQUIRED: Shared backend URL (same for all clients)
+application_url = "${SHOPIFY_APP_URL}"
+
+embedded = true
+handle = "dreamshot-model-swap-${CLIENT_SLUG}"
+
+[build]
+automatically_update_urls_on_dev = false
+
+[webhooks]
+api_version = "2025-07"
+
+  [[webhooks.subscriptions]]
+  topics = [ "app/scopes_update" ]
+  uri = "/webhooks/app/scopes_update"
+
+  [[webhooks.subscriptions]]
+  topics = [ "app/uninstalled" ]
+  uri = "/webhooks/app/uninstalled"
+
+  [[webhooks.subscriptions]]
+  topics = [ "app_subscriptions/update" ]
+  uri = "/webhooks/app/subscriptions_update"
+
+  [[webhooks.subscriptions]]
+  topics = [ "orders/paid" ]
+  uri = "/webhooks/orders-paid"
+
+[access_scopes]
+# Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
+scopes = "write_files,write_products,read_orders"
+
+[auth]
+redirect_urls = [
+  "${SHOPIFY_APP_URL}/auth/callback",
+  "${SHOPIFY_APP_URL}/auth/shopify/callback",
+  "${SHOPIFY_APP_URL}/api/auth/callback"
+]
+
+[app_proxy]
+url = "${SHOPIFY_APP_URL}"
+subpath = "model-swap"
+prefix = "apps"
+
+[pos]
+embedded = false
