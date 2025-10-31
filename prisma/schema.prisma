@@ -55,8 +55,12 @@ model MetricEvent {
   shop      String
   type      EventType
   productId String?
+  variantId String? // Shopify variant ID (gid://shopify/ProductVariant/...)
   imageUrl  String?
   createdAt DateTime  @default(now())
+
+  // Performance index for variant queries
+  @@index([shop, productId, variantId])
 }
 
 model ABTest {
@@ -66,6 +70,7 @@ model ABTest {
   name         String
   status       ABTestStatus    @default(DRAFT)
   trafficSplit Int             @default(50)
+  variantScope String?         @default("PRODUCT") // "PRODUCT" or "VARIANT"
   startDate    DateTime?
   endDate      DateTime?
   variants     ABTestVariant[]
@@ -80,11 +85,12 @@ model ABTest {
 }
 
 model ABTestVariant {
-  id        String @id @default(cuid())
-  testId    String
-  variant   String // "A" or "B"
-  imageUrls String // JSON array stored as string
-  test      ABTest @relation(fields: [testId], references: [id], onDelete: Cascade)
+  id               String  @id @default(cuid())
+  testId           String
+  variant          String  // "A" or "B" (test group, not product variant)
+  imageUrls        String  // JSON array stored as string
+  shopifyVariantId String? // Optional: Link to actual Shopify product variant
+  test             ABTest  @relation(fields: [testId], references: [id], onDelete: Cascade)
 
   // Performance index for variant lookup
   @@index([testId, variant])
@@ -94,9 +100,10 @@ model ABTestEvent {
   id        String          @id @default(cuid())
   testId    String
   sessionId String
-  variant   String // "A" or "B"
+  variant   String          // "A" or "B" (test group, not product variant)
   eventType ABTestEventType
   productId String
+  variantId String?         // Optional: Track which product variant was involved
   revenue   Decimal?
   createdAt DateTime        @default(now())
   test      ABTest          @relation(fields: [testId], references: [id], onDelete: Cascade)

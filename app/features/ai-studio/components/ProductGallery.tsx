@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import {
     Card,
     Text,
@@ -11,7 +11,7 @@ import {
     Badge,
 } from "@shopify/polaris";
 import { DeleteIcon } from "@shopify/polaris-icons";
-import type { LibraryItem } from "../types";
+import type { LibraryItem, ProductVariant } from "../types";
 
 interface MediaNode {
   id: string;
@@ -31,6 +31,8 @@ interface ProductGalleryProps {
   onPublishFromLibrary?: (url: string) => void;
   onRemoveFromLibrary?: (url: string) => void;
   isDeleting: boolean;
+  selectedVariantId?: string | null; // null = "All Variants"
+  variants?: ProductVariant[];
 }
 
 export function ProductGallery({
@@ -40,10 +42,38 @@ export function ProductGallery({
   onPublishFromLibrary,
   onRemoveFromLibrary,
   isDeleting,
+  selectedVariantId,
+  variants = [],
 }: ProductGalleryProps) {
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [selectedMediaId, setSelectedMediaId] = useState<string | null>(null);
   const [libraryToDelete, setLibraryToDelete] = useState<string | null>(null);
+
+  // Filter library items by selected variant
+  const filteredLibraryItems = useMemo(() => {
+    if (!selectedVariantId) return libraryItems; // Show all if no filter
+
+    return libraryItems.filter((item) => {
+      if (typeof item === "string") return true; // Legacy format = show for all
+      if (!item.variantIds || item.variantIds.length === 0) return true; // No variants specified = all
+      return item.variantIds.includes(selectedVariantId); // Has this variant
+    });
+  }, [libraryItems, selectedVariantId]);
+
+  // Helper to get variant names for an item
+  const getVariantNames = (item: LibraryItem): string[] => {
+    if (typeof item === "string" || !item.variantIds || item.variantIds.length === 0) {
+      return ["All Variants"];
+    }
+
+    return item.variantIds
+      .map((variantId) => {
+        const variant = variants.find((v) => v.id === variantId);
+        if (!variant) return null;
+        return variant.selectedOptions.map((opt) => opt.value).join(" / ");
+      })
+      .filter(Boolean) as string[];
+  };
 
   const handleDeleteClick = (mediaId: string) => {
     setSelectedMediaId(mediaId);
@@ -75,7 +105,7 @@ export function ProductGallery({
   };
 
   const productImages = images.filter((node) => node.image?.url);
-  const totalImages = productImages.length + libraryItems.length;
+  const totalImages = productImages.length + filteredLibraryItems.length;
 
   if (totalImages === 0) {
     return (
@@ -107,9 +137,11 @@ export function ProductGallery({
                   {productImages.length} published
                 </Badge>
               )}
-              {libraryItems.length > 0 && (
+              {filteredLibraryItems.length > 0 && (
                 <Badge>
-                  {libraryItems.length} in library
+                  {filteredLibraryItems.length} in library
+                  {selectedVariantId && libraryItems.length !== filteredLibraryItems.length &&
+                    ` (${libraryItems.length} total)`}
                 </Badge>
               )}
             </InlineStack>
@@ -174,8 +206,9 @@ export function ProductGallery({
             })}
 
             {/* Library images (unpublished) */}
-            {libraryItems.map((item) => {
+            {filteredLibraryItems.map((item) => {
               const url = typeof item === "string" ? item : item.imageUrl;
+              const variantNames = getVariantNames(item);
 
               return (
                 <div
@@ -208,6 +241,21 @@ export function ProductGallery({
                   >
                     <Badge>Library</Badge>
                   </div>
+
+                  {/* Variant badges */}
+                  {variantNames.length > 0 && variantNames[0] !== "All Variants" && (
+                    <div
+                      style={{
+                        position: "absolute",
+                        top: "8px",
+                        right: "8px",
+                      }}
+                    >
+                      <Badge tone="info" size="small">
+                        {variantNames.length} variant{variantNames.length > 1 ? "s" : ""}
+                      </Badge>
+                    </div>
+                  )}
 
                   {/* Action buttons overlay for library images */}
                   <div

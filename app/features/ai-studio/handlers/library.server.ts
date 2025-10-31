@@ -10,7 +10,28 @@ import { EventType } from "@prisma/client";
 import type {
   LibraryActionResponse,
   ActionErrorResponse,
+  LibraryItem,
 } from "../types";
+
+/**
+ * Helper: Filter library items by variant ID
+ * Returns items that:
+ * - Have no variantIds (legacy/all-variants items)
+ * - Include the specified variantId in their variantIds array
+ */
+export function filterLibraryByVariant(
+  items: LibraryItem[],
+  variantId: string | null,
+): LibraryItem[] {
+  if (!variantId) return items; // null = show all
+
+  return items.filter((item) => {
+    if (typeof item === "string") return true; // Legacy format = all variants
+    if (!item.variantIds || item.variantIds.length === 0) return true; // No variants specified = all variants
+    return item.variantIds.includes(variantId); // Has this variant
+  });
+}
+
 
 export async function handleSaveToLibrary(
   formData: FormData,
@@ -20,6 +41,18 @@ export async function handleSaveToLibrary(
   const imageUrl = String(formData.get("imageUrl") || "");
   const sourceUrl = String(formData.get("sourceUrl") || "");
   const productId = String(formData.get("productId") || "");
+  const variantIdsJson = String(formData.get("variantIds") || "");
+
+  // Parse variant IDs if provided
+  let variantIds: string[] | undefined;
+  if (variantIdsJson) {
+    try {
+      const parsed = JSON.parse(variantIdsJson);
+      variantIds = Array.isArray(parsed) ? parsed : undefined;
+    } catch {
+      variantIds = undefined;
+    }
+  }
 
   const query = `#graphql
     query GetLibrary($id: ID!) {
@@ -32,9 +65,7 @@ export async function handleSaveToLibrary(
   const qRes = await admin.graphql(query, { variables: { id: productId } });
   const qJson = await qRes.json();
   const current = qJson?.data?.product?.metafield?.value;
-  let libraryItems: Array<
-    string | { imageUrl: string; sourceUrl?: string | null }
-  > = [];
+  let libraryItems: LibraryItem[] = [];
   try {
     libraryItems = current ? JSON.parse(current) : [];
   } catch {
@@ -55,7 +86,16 @@ export async function handleSaveToLibrary(
     });
   }
 
-  libraryItems.push({ imageUrl, sourceUrl: sourceUrl || null });
+  // Create new library item with variant IDs if provided
+  const newItem: { imageUrl: string; sourceUrl?: string | null; variantIds?: string[] } = {
+    imageUrl,
+    sourceUrl: sourceUrl || null,
+  };
+  if (variantIds && variantIds.length > 0) {
+    newItem.variantIds = variantIds;
+  }
+
+  libraryItems.push(newItem);
 
   const setMutation = `#graphql
     mutation SetLibrary($ownerId: ID!, $value: String!) {
@@ -126,9 +166,7 @@ export async function handleDeleteFromLibrary(
   const qRes = await admin.graphql(query, { variables: { id: productId } });
   const qJson = await qRes.json();
   const current = qJson?.data?.product?.metafield?.value;
-  let libraryItems: Array<
-    string | { imageUrl: string; sourceUrl?: string | null }
-  > = [];
+  let libraryItems: LibraryItem[] = [];
   try {
     libraryItems = current ? JSON.parse(current) : [];
   } catch {
@@ -249,9 +287,7 @@ export async function handleUpload(
     const qJson = await qRes.json();
 
     const current = qJson?.data?.product?.metafield?.value;
-    let libraryItems: Array<
-      string | { imageUrl: string; sourceUrl?: string | null }
-    > = [];
+    let libraryItems: LibraryItem[] = [];
     try {
       libraryItems = current ? JSON.parse(current) : [];
       console.log("[UPLOAD:SERVER] Step 2/4: ✓ Current library has", libraryItems.length, "items");
@@ -481,9 +517,7 @@ export async function handleCompleteUpload(
     const qJson = await qRes.json();
 
     const current = qJson?.data?.product?.metafield?.value;
-    let libraryItems: Array<
-      string | { imageUrl: string; sourceUrl?: string | null }
-    > = [];
+    let libraryItems: LibraryItem[] = [];
     try {
       libraryItems = current ? JSON.parse(current) : [];
       console.log("[COMPLETE_UPLOAD] Step 2/3: ✓ Current library has", libraryItems.length, "items");

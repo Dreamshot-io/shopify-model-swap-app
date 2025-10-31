@@ -25,6 +25,7 @@ import { checkAIProviderHealth } from "../services/ai-providers.server";
 import { ImagePreviewModal } from "../features/ai-studio/components/ImagePreviewModal";
 import { ImageGenerationHub } from "../features/ai-studio/components/ImageGenerationHub";
 import { ProductGallery } from "../features/ai-studio/components/ProductGallery";
+import { VariantSelector } from "../features/ai-studio/components/VariantSelector";
 import { handleGenerate } from "../features/ai-studio/handlers/generation.server";
 import {
     handleSaveToLibrary,
@@ -37,6 +38,7 @@ import {
     handlePublish,
     handleDeleteFromProduct,
 } from "../features/ai-studio/handlers/product-media.server";
+import { handlePublishWithVariants } from "../features/ai-studio/handlers/variant-media.server";
 import { useAuthenticatedAppFetch } from "../hooks/useAuthenticatedAppFetch";
 import type {
     LibraryItem,
@@ -69,6 +71,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
                 url
                 altText
               }
+              variantsCount {
+                count
+              }
             }
           }
         }
@@ -96,6 +101,22 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         handle
         status
         metafield(namespace: "dreamshot", key: "ai_library") { value }
+        variants(first: 100) {
+          nodes {
+            id
+            title
+            displayName
+            sku
+            selectedOptions {
+              name
+              value
+            }
+            image {
+              url
+              altText
+            }
+          }
+        }
         media(first: 20) {
           nodes {
             id
@@ -225,6 +246,9 @@ export const action = async ({
     switch (intent) {
       case "publish":
         return handlePublish(formData, admin, session.shop);
+
+      case "publishWithVariants":
+        return handlePublishWithVariants(formData, admin, session.shop);
 
       case "deleteFromProduct":
         return handleDeleteFromProduct(formData, admin, session.shop);
@@ -399,6 +423,10 @@ export default function AIStudio() {
   const fetcher = useFetcher<typeof action>();
   const authenticatedAppFetch = useAuthenticatedAppFetch();
   const [searchQuery, setSearchQuery] = useState("");
+
+  // Variant state management
+  const variants = (product?.variants?.nodes || []) as any[];
+  const [selectedVariantId, setSelectedVariantId] = useState<string | null>(null);
 
   // State management
   const [selectedImages, setSelectedImages] = useState<SelectedImage[]>([]);
@@ -1006,10 +1034,28 @@ export default function AIStudio() {
           isCreating={false}
         />
 
+        {/* Variant Selector - Only show if product has multiple variants */}
+        {variants.length > 1 && (
+          <Card>
+            <BlockStack gap="300">
+              <Text as="h2" variant="headingMd">
+                Filter by Variant
+              </Text>
+              <VariantSelector
+                variants={variants}
+                selectedVariantId={selectedVariantId}
+                onSelect={setSelectedVariantId}
+              />
+            </BlockStack>
+          </Card>
+        )}
+
         {/* AREA 2: Product Gallery - Shows both published and library images */}
         <ProductGallery
           images={product.media?.nodes || []}
           libraryItems={libraryItems}
+          selectedVariantId={selectedVariantId}
+          variants={variants}
           onDelete={(mediaId) => {
             const fd = new FormData();
             fd.set("intent", "deleteFromProduct");
