@@ -154,50 +154,10 @@ export function ABTestManager({
       {existingTests.length > 0 && (
         <Card>
           <BlockStack gap="400">
-            {/* Compact Header with Key Stats */}
-            <InlineStack align="space-between" wrap={false}>
-              <BlockStack gap="100">
-                <Text as="h3" variant="headingMd">
-                  A/B Test Results
-                </Text>
-                <InlineStack gap="400" wrap={false}>
-                  <Text as="span" variant="bodySm" tone="subdued">
-                    Tests:{" "}
-                    <Text as="span" variant="bodySm" fontWeight="semibold">
-                      {getSummaryStats().totalTests}
-                    </Text>
-                  </Text>
-                  <Text as="span" variant="bodySm" tone="subdued">
-                    Active:{" "}
-                    <Text
-                      as="span"
-                      variant="bodySm"
-                      fontWeight="semibold"
-                      tone="success"
-                    >
-                      {getSummaryStats().runningTests}
-                    </Text>
-                  </Text>
-                  <Text as="span" variant="bodySm" tone="subdued">
-                    Impressions:{" "}
-                    <Text as="span" variant="bodySm" fontWeight="semibold">
-                      {getSummaryStats().totalImpressions.toLocaleString()}
-                    </Text>
-                  </Text>
-                  <Text as="span" variant="bodySm" tone="subdued">
-                    Avg. Lift:{" "}
-                    <Text
-                      as="span"
-                      variant="bodySm"
-                      fontWeight="semibold"
-                      tone="success"
-                    >
-                      {getSummaryStats().avgLift}%
-                    </Text>
-                  </Text>
-                </InlineStack>
-              </BlockStack>
-            </InlineStack>
+            {/* Compact Header */}
+            <Text as="h3" variant="headingMd">
+              A/B Test Results
+            </Text>
 
             {/* Tests Table */}
             <BlockStack gap="300">
@@ -294,8 +254,7 @@ export function ABTestManager({
                       <div
                         style={{
                           display: "grid",
-                          gridTemplateColumns:
-                            "auto auto auto auto auto auto auto",
+                          gridTemplateColumns: "auto auto auto auto",
                           gap: "12px",
                           alignItems: "center",
                         }}
@@ -310,15 +269,6 @@ export function ABTestManager({
                         </Text>
                         <Text as="span" variant="bodyMd" fontWeight="semibold">
                           ATC
-                        </Text>
-                        <Text as="span" variant="bodyMd" fontWeight="semibold">
-                          Purchases
-                        </Text>
-                        <Text as="span" variant="bodyMd" fontWeight="semibold">
-                          Revenue
-                        </Text>
-                        <Text as="span" variant="bodyMd" fontWeight="semibold">
-                          CVR
                         </Text>
 
                         {/* Variant A Row */}
@@ -368,19 +318,6 @@ export function ABTestManager({
                         <Text as="span" variant="bodySm">
                           {stats.variantA.conversions.toLocaleString()}
                         </Text>
-                        <Text as="span" variant="bodySm">
-                          {stats.variantA.purchases.toLocaleString()}
-                        </Text>
-                        <Text as="span" variant="bodySm">
-                          ${stats.variantA.revenue.toFixed(2)}
-                        </Text>
-                        <Text
-                          as="span"
-                          variant="bodySm"
-                          tone={stats.winner === "A" ? "success" : undefined}
-                        >
-                          {stats.variantA.ratePercent}%
-                        </Text>
 
                         {/* Variant B Row */}
                         <Text as="span" variant="bodyMd" fontWeight="semibold">
@@ -429,59 +366,7 @@ export function ABTestManager({
                         <Text as="span" variant="bodySm">
                           {stats.variantB.conversions.toLocaleString()}
                         </Text>
-                        <Text as="span" variant="bodySm">
-                          {stats.variantB.purchases.toLocaleString()}
-                        </Text>
-                        <Text as="span" variant="bodySm">
-                          ${stats.variantB.revenue.toFixed(2)}
-                        </Text>
-                        <Text
-                          as="span"
-                          variant="bodySm"
-                          tone={stats.winner === "B" ? "success" : undefined}
-                        >
-                          {stats.variantB.ratePercent}%
-                        </Text>
                       </div>
-
-                      {/* Summary Footer */}
-                      <InlineStack gap="400" align="start">
-                        <Text as="span" variant="bodySm" tone="subdued">
-                          Lift:{" "}
-                          <Text
-                            as="span"
-                            variant="bodySm"
-                            fontWeight="semibold"
-                            tone={
-                              parseFloat(stats.lift) > 0
-                                ? "success"
-                                : "critical"
-                            }
-                          >
-                            {stats.lift}%
-                          </Text>
-                        </Text>
-                        <Text as="span" variant="bodySm" tone="subdued">
-                          Confidence:{" "}
-                          <Text
-                            as="span"
-                            variant="bodySm"
-                            fontWeight="semibold"
-                          >
-                            {stats.confidence}%
-                          </Text>
-                        </Text>
-                        {stats.isSignificant && (
-                          <Text
-                            as="span"
-                            variant="bodySm"
-                            tone="success"
-                            fontWeight="semibold"
-                          >
-                            ✓ Significant
-                          </Text>
-                        )}
-                      </InlineStack>
                     </BlockStack>
                   </Card>
                 );
