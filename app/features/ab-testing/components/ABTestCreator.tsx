@@ -6,7 +6,6 @@ import {
     BlockStack,
     FormLayout,
     TextField,
-    Select,
     InlineStack,
     Grid,
     Box,
@@ -35,7 +34,6 @@ export function ABTestCreator({
   const [variantBImages, setVariantBImages] = useState<Map<string, number>>(
     new Map(),
   );
-  const [trafficSplit, setTrafficSplit] = useState("50");
   const [selectedVariant, setSelectedVariant] = useState<"A" | "B">("A");
   const [selectionCounter, setSelectionCounter] = useState(0);
 
@@ -91,7 +89,7 @@ export function ABTestCreator({
       productId,
       variantAImages: sortedAImages,
       variantBImages: sortedBImages,
-      trafficSplit: parseInt(trafficSplit),
+      trafficSplit: 50,
     });
   };
 
@@ -133,20 +131,6 @@ export function ABTestCreator({
                 autoComplete="off"
                 helpText="Give your test a descriptive name for easy identification"
               />
-
-              <Select
-                label="Traffic Split"
-                options={[
-                  { label: "50/50 Split (Recommended)", value: "50" },
-                  { label: "60/40 Split (A/B)", value: "60" },
-                  { label: "40/60 Split (A/B)", value: "40" },
-                  { label: "70/30 Split (A/B)", value: "70" },
-                  { label: "30/70 Split (A/B)", value: "30" },
-                ]}
-                value={trafficSplit}
-                onChange={setTrafficSplit}
-                helpText="Percentage of traffic that will see Variant A"
-              />
             </FormLayout>
 
             <BlockStack gap="300">
@@ -171,12 +155,6 @@ export function ABTestCreator({
                       tone={variantBImages.size > 0 ? "success" : "subdued"}
                     >
                       {variantBImages.size} selected
-                    </Text>
-                  </InlineStack>
-                  <InlineStack align="space-between">
-                    <Text variant="bodyMd">Traffic Split:</Text>
-                    <Text variant="bodyMd">
-                      {trafficSplit}% / {100 - parseInt(trafficSplit)}%
                     </Text>
                   </InlineStack>
                 </BlockStack>
