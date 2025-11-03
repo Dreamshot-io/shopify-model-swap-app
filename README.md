@@ -115,10 +115,14 @@ The codebase includes preparation for multi-client Shopify app configuration man
 
 **Note:** Current implementation uses single-client configuration. Multi-client support is prepared but not yet active.
 
+## Documentation
+
+- **[AGENTS.md](./AGENTS.md)** - Quick reference for agentic coding tools (commands, style, architecture)
+- **[CLAUDE.md](./CLAUDE.md)** - Comprehensive development guide (philosophy, patterns, examples)
+
 ## Resources
 
 - [Shopify App Remix Docs](https://shopify.dev/docs/api/shopify-app-remix)
 - [Remix Documentation](https://remix.run/docs)
 - [Shopify Polaris](https://polaris.shopify.com/)
 - [fal.ai Documentation](https://fal.ai/docs)
-- [Project Guidelines](./CLAUDE.md)
