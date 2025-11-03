@@ -1,0 +1,51 @@
+# Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
+
+client_id = "4dc2e8d3f47c4f7be299ded5b9965ab8"
+name = "dreamshot-model-swap-haanbrand"
+
+# Shared backend URL (same for all clients)
+application_url = "https://shopify-model-swap-haanbrand.vercel.app"
+
+embedded = true
+handle = "dreamshot-model-swap-haanbrand"
+
+[build]
+automatically_update_urls_on_dev = false
+
+[webhooks]
+api_version = "2025-07"
+
+  [[webhooks.subscriptions]]
+  topics = [ "app/scopes_update" ]
+  uri = "/webhooks/app/scopes_update"
+
+  [[webhooks.subscriptions]]
+  topics = [ "app/uninstalled" ]
+  uri = "/webhooks/app/uninstalled"
+
+  [[webhooks.subscriptions]]
+  topics = [ "app_subscriptions/update" ]
+  uri = "/webhooks/app/subscriptions_update"
+
+  [[webhooks.subscriptions]]
+  topics = [ "orders/paid" ]
+  uri = "/webhooks/orders-paid"
+
+[access_scopes]
+# Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
+scopes = "write_files,write_products,read_orders"
+
+[auth]
+redirect_urls = [
+  "https://shopify-model-swap-haanbrand.vercel.app/auth/callback",
+  "https://shopify-model-swap-haanbrand.vercel.app/auth/shopify/callback",
+  "https://shopify-model-swap-haanbrand.vercel.app/api/auth/callback"
+]
+
+[app_proxy]
+url = "https://shopify-model-swap-haanbrand.vercel.app"
+subpath = "model-swap"
+prefix = "apps"
+
+[pos]
+embedded = false

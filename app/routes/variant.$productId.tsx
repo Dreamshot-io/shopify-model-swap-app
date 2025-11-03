@@ -96,19 +96,72 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 			});
 		}
 
-		if (!activeTest || activeTest.variants.length !== 2) {
-			console.log('[variant] No active test found or invalid variant count');
+		if (!activeTest || activeTest.variants.length < 2) {
+			console.log('[variant] No active test found or not enough variants');
 			return json({ variant: null }, { headers: corsHeaders });
 		}
 
-		// Filter variants if this is a variant-specific test
-		const relevantVariants =
-			activeTest.variantScope === 'VARIANT' && variantId
-				? activeTest.variants.filter(v => v.shopifyVariantId === variantId)
-				: activeTest.variants;
+		// Filter variants based on scope
+		let relevantVariants;
+		if (activeTest.variantScope === 'VARIANT') {
+			// For variant-scoped tests, filter to specific Shopify variant
+			if (variantId) {
+				relevantVariants = activeTest.variants.filter(v => v.shopifyVariantId === variantId);
+				console.log(
+					`[variant] Filtered to ${relevantVariants.length} variants for Shopify variant ${variantId}`,
+				);
+			} else {
+				// No variantId provided, try to use any available variant pair
+				// Group by shopifyVariantId and pick first group with both A and B
+				const variantGroups = new Map<string, typeof activeTest.variants>();
+				activeTest.variants.forEach(v => {
+					const key = v.shopifyVariantId || 'null';
+					if (!variantGroups.has(key)) {
+						variantGroups.set(key, []);
+					}
+					variantGroups.get(key)!.push(v);
+				});
+
+				// Find first complete group (has both A and B)
+				for (const [key, group] of variantGroups.entries()) {
+					if (
+						group.length === 2 &&
+						group.some(v => v.variant === 'A') &&
+						group.some(v => v.variant === 'B')
+					) {
+						relevantVariants = group;
+						console.log(`[variant] No variantId provided, using default group for ${key}`);
+						break;
+					}
+				}
+
+				if (!relevantVariants) {
+					console.log('[variant] No valid variant group found');
+					return json({ variant: null }, { headers: corsHeaders });
+				}
+			}
+		} else {
+			// Product-wide test - use all variants (should be 2: A and B)
+			relevantVariants = activeTest.variants.filter(
+				v => v.shopifyVariantId === null || v.shopifyVariantId === undefined,
+			);
+			console.log(`[variant] Product-wide test, using ${relevantVariants.length} variants`);
+		}
 
 		if (relevantVariants.length !== 2) {
-			console.log('[variant] Invalid number of relevant variants:', relevantVariants.length);
+			console.log(
+				'[variant] Invalid number of relevant variants:',
+				relevantVariants.length,
+				'Expected 2 (A and B)',
+			);
+			return json({ variant: null }, { headers: corsHeaders });
+		}
+
+		// Verify we have both A and B
+		const hasA = relevantVariants.some(v => v.variant === 'A');
+		const hasB = relevantVariants.some(v => v.variant === 'B');
+		if (!hasA || !hasB) {
+			console.log('[variant] Missing A or B variant');
 			return json({ variant: null }, { headers: corsHeaders });
 		}
 
@@ -195,17 +248,18 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 			}
 		}
 
-		const variantData = activeTest.variants.find(v => v.variant === selectedVariant);
+		// Find the variant data matching both selectedVariant (A/B) and shopifyVariantId
+		const variantData = relevantVariants.find(v => v.variant === selectedVariant);
 
 		console.log(
 			'[variant] Looking for variant:',
 			selectedVariant,
-			'Available variants:',
-			activeTest.variants.map(v => v.variant),
+			'from relevant variants:',
+			relevantVariants.map(v => `${v.variant}(${v.shopifyVariantId || 'product-wide'})`),
 		);
 
 		if (!variantData) {
-			console.error('[variant] Variant not found:', selectedVariant, 'Available:', activeTest.variants);
+			console.error('[variant] Variant not found:', selectedVariant, 'in relevant variants:', relevantVariants);
 			return json({ error: 'Variant not found' }, { status: 404, headers: corsHeaders });
 		}
 

@@ -105,41 +105,43 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 				let test;
 
 				if (variantScope === 'VARIANT') {
-					// Create multiple tests for each variant
-					const createdTests = [];
-					for (const vt of variantTests) {
-						const variantTest = await db.aBTest.create({
-							data: {
-								shop: session.shop,
-								productId,
-								name: `${name} - ${vt.shopifyVariantId}`,
-								status: 'DRAFT',
-								variantScope: 'VARIANT',
-								trafficSplit: 50,
-								variants: {
-									create: [
-										{
-											variant: 'A',
-											imageUrls: JSON.stringify(vt.variantAImages),
-											shopifyVariantId: vt.shopifyVariantId,
-										},
-										{
-											variant: 'B',
-											imageUrls: JSON.stringify(vt.variantBImages),
-											shopifyVariantId: vt.shopifyVariantId,
-										},
-									],
-								},
+					// Create SINGLE test with multiple variant configurations
+					// Each Shopify variant gets both A and B test variants
+					const variantConfigs = variantTests.flatMap(vt => [
+						{
+							variant: 'A',
+							imageUrls: JSON.stringify(vt.variantAImages),
+							shopifyVariantId: vt.shopifyVariantId,
+						},
+						{
+							variant: 'B',
+							imageUrls: JSON.stringify(vt.variantBImages),
+							shopifyVariantId: vt.shopifyVariantId,
+						},
+					]);
+
+					test = await db.aBTest.create({
+						data: {
+							shop: session.shop,
+							productId,
+							name,
+							status: 'DRAFT',
+							variantScope: 'VARIANT',
+							trafficSplit: 50,
+							variants: {
+								create: variantConfigs,
 							},
-							include: {
-								variants: true,
-							},
-						});
-						createdTests.push(variantTest);
-					}
-					test = createdTests[0]; // Return first test for now
+						},
+						include: {
+							variants: true,
+						},
+					});
+
+					console.log(
+						`[A/B Test Created] Single test with ${variantConfigs.length} variant configs (${variantTests.length} Shopify variants x 2)`,
+					);
 				} else {
-					// Create product-wide test (existing behavior)
+					// Create product-wide test
 					test = await db.aBTest.create({
 						data: {
 							shop: session.shop,
@@ -153,10 +155,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 									{
 										variant: 'A',
 										imageUrls: variantAImages,
+										shopifyVariantId: null,
 									},
 									{
 										variant: 'B',
 										imageUrls: variantBImages,
+										shopifyVariantId: null,
 									},
 								],
 							},
@@ -165,6 +169,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 							variants: true,
 						},
 					});
+
+					console.log(`[A/B Test Created] Product-wide test with 2 variants (A/B)`);
 				}
 
 				return json({ ok: true, test });
