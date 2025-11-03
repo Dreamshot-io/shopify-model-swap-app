@@ -396,202 +396,216 @@ export function ABTestCreator({
 							<Box padding='300'>
 								<div
 									style={{
-										display: 'grid',
-										gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))',
-										gap: '16px',
+										maxHeight: '760px',
+										overflowY: 'auto',
+										overflowX: 'hidden',
 									}}
 								>
-									{availableImages.map((imageUrl, index) => {
-										const currentVariantA = currentData.variantAImages;
-										const currentVariantB = currentData.variantBImages;
+									<div
+										style={{
+											display: 'grid',
+											gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))',
+											gap: '16px',
+										}}
+									>
+										{availableImages.map((imageUrl, index) => {
+											const currentVariantA = currentData.variantAImages;
+											const currentVariantB = currentData.variantBImages;
 
-										const isSelectedAInCurrent = currentVariantA.has(imageUrl);
-										const isSelectedBInCurrent = currentVariantB.has(imageUrl);
-										const isSelected =
-											selectedVariant === 'A' ? isSelectedAInCurrent : isSelectedBInCurrent;
+											const isSelectedAInCurrent = currentVariantA.has(imageUrl);
+											const isSelectedBInCurrent = currentVariantB.has(imageUrl);
+											const isSelected =
+												selectedVariant === 'A' ? isSelectedAInCurrent : isSelectedBInCurrent;
 
-										let selectionOrder: number | null = null;
-										if (isSelectedAInCurrent) {
-											const allAEntries = Array.from(currentVariantA.entries()).sort(
-												(a, b) => a[1] - b[1],
-											);
-											selectionOrder = allAEntries.findIndex(([url]) => url === imageUrl) + 1;
-										} else if (isSelectedBInCurrent) {
-											const allBEntries = Array.from(currentVariantB.entries()).sort(
-												(a, b) => a[1] - b[1],
-											);
-											selectionOrder = allBEntries.findIndex(([url]) => url === imageUrl) + 1;
-										}
+											let selectionOrder: number | null = null;
+											if (isSelectedAInCurrent) {
+												const allAEntries = Array.from(currentVariantA.entries()).sort(
+													(a, b) => a[1] - b[1],
+												);
+												selectionOrder = allAEntries.findIndex(([url]) => url === imageUrl) + 1;
+											} else if (isSelectedBInCurrent) {
+												const allBEntries = Array.from(currentVariantB.entries()).sort(
+													(a, b) => a[1] - b[1],
+												);
+												selectionOrder = allBEntries.findIndex(([url]) => url === imageUrl) + 1;
+											}
 
-										const imageVariant = isSelectedAInCurrent
-											? 'A'
-											: isSelectedBInCurrent
-												? 'B'
-												: null;
+											const imageVariant = isSelectedAInCurrent
+												? 'A'
+												: isSelectedBInCurrent
+													? 'B'
+													: null;
 
-										let isInOtherProductVariant = false;
-										let otherVariantLabel = '';
-										if (testScope === 'VARIANT' && !isSelectedAInCurrent && !isSelectedBInCurrent) {
-											if (allSelections.allA && allSelections.allA.has(imageUrl)) {
-												const info = allSelections.allA.get(imageUrl)!;
-												if (info.variantId !== selectedProductVariantId) {
-													isInOtherProductVariant = true;
-													const variant = variants?.find(v => v.id === info.variantId);
-													otherVariantLabel = variant
-														? `A: ${formatVariantTitle(variant)}`
-														: 'A: Other';
-												}
-											} else if (allSelections.allB && allSelections.allB.has(imageUrl)) {
-												const info = allSelections.allB.get(imageUrl)!;
-												if (info.variantId !== selectedProductVariantId) {
-													isInOtherProductVariant = true;
-													const variant = variants?.find(v => v.id === info.variantId);
-													otherVariantLabel = variant
-														? `B: ${formatVariantTitle(variant)}`
-														: 'B: Other';
+											let isInOtherProductVariant = false;
+											let otherVariantLabel = '';
+											if (
+												testScope === 'VARIANT' &&
+												!isSelectedAInCurrent &&
+												!isSelectedBInCurrent
+											) {
+												if (allSelections.allA && allSelections.allA.has(imageUrl)) {
+													const info = allSelections.allA.get(imageUrl)!;
+													if (info.variantId !== selectedProductVariantId) {
+														isInOtherProductVariant = true;
+														const variant = variants?.find(v => v.id === info.variantId);
+														otherVariantLabel = variant
+															? `A: ${formatVariantTitle(variant)}`
+															: 'A: Other';
+													}
+												} else if (allSelections.allB && allSelections.allB.has(imageUrl)) {
+													const info = allSelections.allB.get(imageUrl)!;
+													if (info.variantId !== selectedProductVariantId) {
+														isInOtherProductVariant = true;
+														const variant = variants?.find(v => v.id === info.variantId);
+														otherVariantLabel = variant
+															? `B: ${formatVariantTitle(variant)}`
+															: 'B: Other';
+													}
 												}
 											}
-										}
 
-										return (
-											<div
-												key={`${selectedVariant}-${index}`}
-												style={{
-													cursor: 'pointer',
-													transition: 'all 0.2s ease',
-													position: 'relative',
-												}}
-												onClick={() => handleImageToggle(imageUrl, selectedVariant)}
-											>
+											return (
 												<div
+													key={`${selectedVariant}-${index}`}
 													style={{
-														border: isSelected
-															? '3px solid #008060'
-															: isSelectedAInCurrent || isSelectedBInCurrent
-																? '2px solid #FFA500'
-																: isInOtherProductVariant
-																	? '2px dashed #CCCCCC'
-																	: '2px solid #E1E3E5',
-														borderRadius: '12px',
-														padding: '8px',
-														backgroundColor: isSelected
-															? '#F0FAF7'
-															: isSelectedAInCurrent || isSelectedBInCurrent
-																? '#FFF5E6'
-																: isInOtherProductVariant
-																	? '#F9F9F9'
-																	: '#FFFFFF',
-														transform: isSelected ? 'scale(1.02)' : 'scale(1)',
-														boxShadow: isSelected
-															? '0 4px 12px rgba(0, 128, 96, 0.15)'
-															: isSelectedAInCurrent || isSelectedBInCurrent
-																? '0 2px 8px rgba(255, 165, 0, 0.1)'
-																: '0 2px 4px rgba(0, 0, 0, 0.05)',
+														cursor: 'pointer',
+														transition: 'all 0.2s ease',
+														position: 'relative',
 													}}
+													onClick={() => handleImageToggle(imageUrl, selectedVariant)}
 												>
 													<div
 														style={{
-															width: '100%',
-															maxHeight: '180px',
-															display: 'flex',
-															alignItems: 'center',
-															justifyContent: 'center',
-															overflow: 'hidden',
-															borderRadius: '8px',
-															backgroundColor: '#F6F6F7',
+															border: isSelected
+																? '3px solid #008060'
+																: isSelectedAInCurrent || isSelectedBInCurrent
+																	? '2px solid #FFA500'
+																	: isInOtherProductVariant
+																		? '2px dashed #CCCCCC'
+																		: '2px solid #E1E3E5',
+															borderRadius: '12px',
+															padding: '8px',
+															backgroundColor: isSelected
+																? '#F0FAF7'
+																: isSelectedAInCurrent || isSelectedBInCurrent
+																	? '#FFF5E6'
+																	: isInOtherProductVariant
+																		? '#F9F9F9'
+																		: '#FFFFFF',
+															transform: isSelected ? 'scale(1.02)' : 'scale(1)',
+															boxShadow: isSelected
+																? '0 4px 12px rgba(0, 128, 96, 0.15)'
+																: isSelectedAInCurrent || isSelectedBInCurrent
+																	? '0 2px 8px rgba(255, 165, 0, 0.1)'
+																	: '0 2px 4px rgba(0, 0, 0, 0.05)',
 														}}
 													>
-														<img
-															src={imageUrl}
-															alt={
-																selectedVariant === 'A'
-																	? `Variant A option ${index + 1}`
-																	: `Variant B option ${index + 1}`
-															}
+														<div
 															style={{
-																maxWidth: '100%',
+																width: '100%',
 																maxHeight: '180px',
-																width: 'auto',
-																height: 'auto',
-																objectFit: 'contain',
+																display: 'flex',
+																alignItems: 'center',
+																justifyContent: 'center',
+																overflow: 'hidden',
 																borderRadius: '8px',
-																opacity: isInOtherProductVariant ? 0.6 : 1,
+																backgroundColor: '#F6F6F7',
 															}}
-														/>
-													</div>
-													{(isSelectedAInCurrent || isSelectedBInCurrent) && (
-														<>
-															<div
+														>
+															<img
+																src={imageUrl}
+																alt={
+																	selectedVariant === 'A'
+																		? `Variant A option ${index + 1}`
+																		: `Variant B option ${index + 1}`
+																}
 																style={{
-																	position: 'absolute',
-																	top: '12px',
-																	left: '12px',
-																	backgroundColor:
-																		imageVariant === 'A' ? '#008060' : '#0066CC',
-																	color: 'white',
-																	borderRadius: '12px',
-																	padding: '2px 8px',
-																	display: 'flex',
-																	alignItems: 'center',
-																	fontSize: '11px',
-																	fontWeight: 'bold',
-																	boxShadow: '0 2px 4px rgba(0, 0, 0, 0.2)',
+																	maxWidth: '100%',
+																	maxHeight: '180px',
+																	width: 'auto',
+																	height: 'auto',
+																	objectFit: 'contain',
+																	borderRadius: '8px',
+																	opacity: isInOtherProductVariant ? 0.6 : 1,
 																}}
-															>
-																{imageVariant} #{selectionOrder}
-															</div>
-
-															{isSelected && (
+															/>
+														</div>
+														{(isSelectedAInCurrent || isSelectedBInCurrent) && (
+															<>
 																<div
 																	style={{
 																		position: 'absolute',
 																		top: '12px',
-																		right: '12px',
-																		backgroundColor: '#008060',
+																		left: '12px',
+																		backgroundColor:
+																			imageVariant === 'A'
+																				? '#008060'
+																				: '#0066CC',
 																		color: 'white',
-																		borderRadius: '50%',
-																		width: '24px',
-																		height: '24px',
+																		borderRadius: '12px',
+																		padding: '2px 8px',
 																		display: 'flex',
 																		alignItems: 'center',
-																		justifyContent: 'center',
-																		fontSize: '14px',
+																		fontSize: '11px',
 																		fontWeight: 'bold',
 																		boxShadow: '0 2px 4px rgba(0, 0, 0, 0.2)',
 																	}}
 																>
-																	✓
+																	{imageVariant} #{selectionOrder}
 																</div>
-															)}
-														</>
-													)}
-													{isInOtherProductVariant && (
-														<div
-															style={{
-																position: 'absolute',
-																bottom: '8px',
-																left: '8px',
-																right: '8px',
-																backgroundColor: 'rgba(0, 0, 0, 0.75)',
-																color: 'white',
-																borderRadius: '4px',
-																padding: '4px',
-																fontSize: '9px',
-																fontWeight: 'bold',
-																textAlign: 'center',
-																overflow: 'hidden',
-																textOverflow: 'ellipsis',
-																whiteSpace: 'nowrap',
-															}}
-															title={otherVariantLabel}
-														>
-															{otherVariantLabel}
-														</div>
-													)}
+
+																{isSelected && (
+																	<div
+																		style={{
+																			position: 'absolute',
+																			top: '12px',
+																			right: '12px',
+																			backgroundColor: '#008060',
+																			color: 'white',
+																			borderRadius: '50%',
+																			width: '24px',
+																			height: '24px',
+																			display: 'flex',
+																			alignItems: 'center',
+																			justifyContent: 'center',
+																			fontSize: '14px',
+																			fontWeight: 'bold',
+																			boxShadow: '0 2px 4px rgba(0, 0, 0, 0.2)',
+																		}}
+																	>
+																		✓
+																	</div>
+																)}
+															</>
+														)}
+														{isInOtherProductVariant && (
+															<div
+																style={{
+																	position: 'absolute',
+																	bottom: '8px',
+																	left: '8px',
+																	right: '8px',
+																	backgroundColor: 'rgba(0, 0, 0, 0.75)',
+																	color: 'white',
+																	borderRadius: '4px',
+																	padding: '4px',
+																	fontSize: '9px',
+																	fontWeight: 'bold',
+																	textAlign: 'center',
+																	overflow: 'hidden',
+																	textOverflow: 'ellipsis',
+																	whiteSpace: 'nowrap',
+																}}
+																title={otherVariantLabel}
+															>
+																{otherVariantLabel}
+															</div>
+														)}
+													</div>
 												</div>
-											</div>
-										);
-									})}
+											);
+										})}
+									</div>
 								</div>
 							</Box>
 						</Card>

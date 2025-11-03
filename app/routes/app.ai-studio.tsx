@@ -136,17 +136,43 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 	});
 
 	// Transform Prisma data to match TypeScript interfaces
-	const abTests = abTestsRaw.map(test => ({
-		...test,
-		variants: test.variants.map(v => ({
-			...v,
-			imageUrls: JSON.parse(v.imageUrls),
-		})),
-		events: test.events.map(e => ({
-			...e,
-			revenue: e.revenue ? Number(e.revenue) : undefined,
-		})),
-	}));
+	const abTests = abTestsRaw.map(test => {
+		try {
+			return {
+				...test,
+				variants: test.variants.map(v => {
+					try {
+						// Handle various bad states
+						if (
+							!v.imageUrls ||
+							v.imageUrls === 'undefined' ||
+							v.imageUrls === 'null' ||
+							v.imageUrls === ''
+						) {
+							console.warn(`[AI Studio Loader] Variant ${v.id} has invalid imageUrls: ${v.imageUrls}`);
+							return { ...v, imageUrls: [] };
+						}
+						return { ...v, imageUrls: JSON.parse(v.imageUrls) };
+					} catch (parseError) {
+						console.error(
+							`[AI Studio Loader] Failed to parse imageUrls for variant ${v.id}:`,
+							parseError,
+							'Raw value:',
+							v.imageUrls,
+						);
+						return { ...v, imageUrls: [] };
+					}
+				}),
+				events: test.events.map(e => ({
+					...e,
+					revenue: e.revenue ? Number(e.revenue) : undefined,
+				})),
+			};
+		} catch (testError) {
+			console.error(`[AI Studio Loader] Failed to transform test ${test.id}:`, testError);
+			throw testError;
+		}
+	});
 
 	// Find active test (RUNNING or DRAFT)
 	const activeTest = abTests.find(test => test.status === 'RUNNING' || test.status === 'DRAFT') || null;

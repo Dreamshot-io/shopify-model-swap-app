@@ -120,12 +120,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 									create: [
 										{
 											variant: 'A',
-											imageUrls: vt.variantAImages,
+											imageUrls: JSON.stringify(vt.variantAImages),
 											shopifyVariantId: vt.shopifyVariantId,
 										},
 										{
 											variant: 'B',
-											imageUrls: vt.variantBImages,
+											imageUrls: JSON.stringify(vt.variantBImages),
 											shopifyVariantId: vt.shopifyVariantId,
 										},
 									],
