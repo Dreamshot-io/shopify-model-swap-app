@@ -263,7 +263,7 @@ export function ABTestManager({
 											<div
 												style={{
 													display: 'grid',
-													gridTemplateColumns: 'auto auto auto',
+													gridTemplateColumns: 'auto auto auto auto',
 													gap: '12px',
 													alignItems: 'center',
 												}}
@@ -272,6 +272,9 @@ export function ABTestManager({
 												<div />
 												<Text as='span' variant='bodyMd' fontWeight='semibold'>
 													Images
+												</Text>
+												<Text as='span' variant='bodyMd' fontWeight='semibold'>
+													Impressions
 												</Text>
 												<Text as='span' variant='bodyMd' fontWeight='semibold'>
 													ATC
@@ -316,6 +319,9 @@ export function ABTestManager({
 													)}
 												</InlineStack>
 												<Text as='span' variant='bodySm'>
+													{stats.variantA.impressions.toLocaleString()}
+												</Text>
+												<Text as='span' variant='bodySm'>
 													{stats.variantA.conversions.toLocaleString()}
 												</Text>
 
@@ -357,6 +363,9 @@ export function ABTestManager({
 														</Text>
 													)}
 												</InlineStack>
+												<Text as='span' variant='bodySm'>
+													{stats.variantB.impressions.toLocaleString()}
+												</Text>
 												<Text as='span' variant='bodySm'>
 													{stats.variantB.conversions.toLocaleString()}
 												</Text>
