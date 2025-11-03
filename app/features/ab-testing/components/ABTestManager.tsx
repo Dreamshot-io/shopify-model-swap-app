@@ -263,7 +263,7 @@ export function ABTestManager({
 											<div
 												style={{
 													display: 'grid',
-													gridTemplateColumns: 'auto auto auto auto auto auto auto',
+													gridTemplateColumns: 'auto auto auto',
 													gap: '12px',
 													alignItems: 'center',
 												}}
@@ -274,19 +274,7 @@ export function ABTestManager({
 													Images
 												</Text>
 												<Text as='span' variant='bodyMd' fontWeight='semibold'>
-													Impressions
-												</Text>
-												<Text as='span' variant='bodyMd' fontWeight='semibold'>
 													ATC
-												</Text>
-												<Text as='span' variant='bodyMd' fontWeight='semibold'>
-													Purchases
-												</Text>
-												<Text as='span' variant='bodyMd' fontWeight='semibold'>
-													Revenue
-												</Text>
-												<Text as='span' variant='bodyMd' fontWeight='semibold'>
-													CVR
 												</Text>
 
 												{/* Variant A Row */}
@@ -328,23 +316,7 @@ export function ABTestManager({
 													)}
 												</InlineStack>
 												<Text as='span' variant='bodySm'>
-													{stats.variantA.impressions.toLocaleString()}
-												</Text>
-												<Text as='span' variant='bodySm'>
 													{stats.variantA.conversions.toLocaleString()}
-												</Text>
-												<Text as='span' variant='bodySm'>
-													{stats.variantA.purchases.toLocaleString()}
-												</Text>
-												<Text as='span' variant='bodySm'>
-													${stats.variantA.revenue.toFixed(2)}
-												</Text>
-												<Text
-													as='span'
-													variant='bodySm'
-													tone={stats.winner === 'A' ? 'success' : undefined}
-												>
-													{stats.variantA.ratePercent}%
 												</Text>
 
 												{/* Variant B Row */}
@@ -386,46 +358,13 @@ export function ABTestManager({
 													)}
 												</InlineStack>
 												<Text as='span' variant='bodySm'>
-													{stats.variantB.impressions.toLocaleString()}
-												</Text>
-												<Text as='span' variant='bodySm'>
 													{stats.variantB.conversions.toLocaleString()}
-												</Text>
-												<Text as='span' variant='bodySm'>
-													{stats.variantB.purchases.toLocaleString()}
-												</Text>
-												<Text as='span' variant='bodySm'>
-													${stats.variantB.revenue.toFixed(2)}
-												</Text>
-												<Text
-													as='span'
-													variant='bodySm'
-													tone={stats.winner === 'B' ? 'success' : undefined}
-												>
-													{stats.variantB.ratePercent}%
 												</Text>
 											</div>
 
 											{/* Summary Footer */}
-											<InlineStack gap='400' align='start'>
-												<Text as='span' variant='bodySm' tone='subdued'>
-													Lift:{' '}
-													<Text
-														as='span'
-														variant='bodySm'
-														fontWeight='semibold'
-														tone={parseFloat(stats.lift) > 0 ? 'success' : 'critical'}
-													>
-														{stats.lift}%
-													</Text>
-												</Text>
-												<Text as='span' variant='bodySm' tone='subdued'>
-													Confidence:{' '}
-													<Text as='span' variant='bodySm' fontWeight='semibold'>
-														{stats.confidence}%
-													</Text>
-												</Text>
-												{stats.isSignificant && (
+											{stats.isSignificant && (
+												<InlineStack gap='400' align='start'>
 													<Text
 														as='span'
 														variant='bodySm'
@@ -434,8 +373,8 @@ export function ABTestManager({
 													>
 														✓ Significant
 													</Text>
-												)}
-											</InlineStack>
+												</InlineStack>
+											)}
 										</BlockStack>
 									</Card>
 								);
