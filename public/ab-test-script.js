@@ -50,6 +50,76 @@
     return null;
   }
 
+  function getCurrentVariantId() {
+    // 1. Check URL parameter
+    const urlParams = new URLSearchParams(window.location.search);
+    const urlVariant = urlParams.get('variant');
+    if (urlVariant) {
+      return urlVariant;
+    }
+    
+    // 2. Check form input (most reliable for current selection)
+    const variantInput = document.querySelector('form[action*="/cart/add"] [name="id"]');
+    if (variantInput && variantInput.value) {
+      return variantInput.value;
+    }
+    
+    // 3. Check Shopify global objects
+    if (window.ShopifyAnalytics && window.ShopifyAnalytics.meta && window.ShopifyAnalytics.meta.selectedVariantId) {
+      return window.ShopifyAnalytics.meta.selectedVariantId.toString();
+    }
+    
+    // 4. Check theme globals
+    if (window.theme && window.theme.product && window.theme.product.selected_variant) {
+      return window.theme.product.selected_variant.toString();
+    }
+    
+    return null;
+  }
+
+  function watchVariantChanges(callback) {
+    let currentVariantId = getCurrentVariantId();
+    
+    // Check for changes periodically
+    const checkInterval = setInterval(() => {
+      const newVariantId = getCurrentVariantId();
+      if (newVariantId && newVariantId !== currentVariantId) {
+        currentVariantId = newVariantId;
+        console.log('[A/B Test] Variant changed to:', newVariantId);
+        callback(newVariantId);
+      }
+    }, 500);
+    
+    // Also listen for form changes
+    document.addEventListener('change', function(e) {
+      if (e.target.name === 'id' || e.target.matches('[data-variant-selector]')) {
+        setTimeout(() => {
+          const newVariantId = getCurrentVariantId();
+          if (newVariantId && newVariantId !== currentVariantId) {
+            currentVariantId = newVariantId;
+            console.log('[A/B Test] Variant changed via form:', newVariantId);
+            callback(newVariantId);
+          }
+        }, 100);
+      }
+    });
+    
+    // Listen for common theme events
+    const variantEvents = ['variant:change', 'variant-change', 'variantChange'];
+    variantEvents.forEach(eventName => {
+      document.addEventListener(eventName, function(e) {
+        const variantId = e.detail?.variant?.id || e.detail?.id || e.detail?.variantId;
+        if (variantId && variantId !== currentVariantId) {
+          currentVariantId = variantId.toString();
+          console.log('[A/B Test] Variant changed via event:', currentVariantId);
+          callback(currentVariantId);
+        }
+      });
+    });
+    
+    return () => clearInterval(checkInterval);
+  }
+
   function replaceProductImages(imageUrls) {
     // Find main product image containers
     const imageSelectors = [
@@ -143,17 +213,16 @@
     });
   }
 
-  function initABTest() {
-    const productId = getProductId();
-    if (!productId) {
-      console.log('[A/B Test] No product ID found, skipping A/B test');
-      return;
-    }
-
+  function fetchAndApplyVariant(productId, variantId) {
     const sessionId = getSessionId();
+    let url = `${APP_PROXY_BASE}/variant/${encodeURIComponent(productId)}?session=${sessionId}`;
     
-    // Fetch variant for this user/product combination
-    fetch(`${APP_PROXY_BASE}/variant/${encodeURIComponent(productId)}?session=${sessionId}`)
+    if (variantId) {
+      url += `&variantId=${encodeURIComponent(variantId)}`;
+      console.log('[A/B Test] Fetching with variantId:', variantId);
+    }
+    
+    return fetch(url)
       .then(response => response.json())
       .then(data => {
         if (data.variant && data.imageUrls && data.testId) {
@@ -163,8 +232,10 @@
           const success = replaceProductImages(data.imageUrls);
           
           if (success) {
-            // Track impression
-            trackEvent(data.testId, 'IMPRESSION');
+            // Track impression (only on first load, not on variant changes)
+            if (!sessionStorage.getItem('ab_test_active')) {
+              trackEvent(data.testId, 'IMPRESSION');
+            }
             
             // Setup conversion tracking
             setupAddToCartTracking(data.testId);
@@ -173,18 +244,45 @@
             sessionStorage.setItem('ab_test_active', JSON.stringify({
               testId: data.testId,
               variant: data.variant,
-              productId: productId
+              productId: productId,
+              variantId: variantId
             }));
+            
+            return true;
           }
         } else if (data.variant === null) {
-          console.log('[A/B Test] No active test for this product');
+          console.log('[A/B Test] No active test for this product/variant');
         } else {
           console.log('[A/B Test] Invalid response from variant endpoint');
         }
+        return false;
       })
       .catch(error => {
         console.error('[A/B Test] Failed to fetch variant:', error);
+        return false;
       });
+  }
+
+  function initABTest() {
+    const productId = getProductId();
+    if (!productId) {
+      console.log('[A/B Test] No product ID found, skipping A/B test');
+      return;
+    }
+
+    // Get initial variant ID
+    const initialVariantId = getCurrentVariantId();
+    
+    // Fetch and apply initial variant
+    fetchAndApplyVariant(productId, initialVariantId).then(success => {
+      if (success) {
+        // Watch for variant changes
+        watchVariantChanges((newVariantId) => {
+          console.log('[A/B Test] Variant changed, fetching new images');
+          fetchAndApplyVariant(productId, newVariantId);
+        });
+      }
+    });
   }
 
   // Initialize A/B test when DOM is ready
