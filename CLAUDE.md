@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Quick Reference
+
+See **AGENTS.md** for concise command reference, code style guidelines, and architecture overview optimized for agentic coding tools.
+
 ## Project Overview
 
 This is a Shopify app built with Remix that provides AI-powered model swapping functionality for product images. The app integrates with fal.ai to perform image editing operations where users can apply prompts to transform product images.
