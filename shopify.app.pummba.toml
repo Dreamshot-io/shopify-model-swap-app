@@ -53,9 +53,9 @@ scopes = "write_files,write_products,read_orders"
 
 [auth]
 redirect_urls = [
-  "https://shopify-model-swap-pummba.vercel.app/auth/callback",
-  "https://shopify-model-swap-pummba.vercel.app/auth/shopify/callback",
-  "https://shopify-model-swap-pummba.vercel.app/api/auth/callback"
+  "https://shopify-model-swap-pummba.vercel.app//auth/callback",
+  "https://shopify-model-swap-pummba.vercel.app//auth/shopify/callback",
+  "https://shopify-model-swap-pummba.vercel.app//api/auth/callback"
 ]
 
 [app_proxy]

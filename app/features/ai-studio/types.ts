@@ -9,9 +9,31 @@ export type DraftItem =
   | { imageUrl: string; sourceUrl?: string | null }
   | string;
 
+// Product Variant Types
+export interface ProductVariant {
+  id: string; // gid://shopify/ProductVariant/...
+  title: string;
+  displayName: string;
+  sku?: string;
+  selectedOptions: Array<{
+    name: string;
+    value: string;
+  }>;
+  image?: {
+    url: string;
+    altText?: string;
+  } | null;
+}
+
+export interface VariantOption {
+  name: string;
+  value: string;
+}
+
 // New Library type (replacing Draft terminology)
+// Extended to support variant associations
 export type LibraryItem =
-  | { imageUrl: string; sourceUrl?: string | null }
+  | { imageUrl: string; sourceUrl?: string | null; variantIds?: string[] }
   | string;
 
 // Batch processing types
@@ -28,6 +50,13 @@ export interface SelectedImage {
   url: string;
   altText?: string;
   isAIGenerated?: boolean;
+  variantId?: string; // Optional variant association
+}
+
+// Variant context for tracking current selection/filter state
+export interface VariantContext {
+  selectedVariantId: string | null; // null = "All Variants"
+  availableVariants: ProductVariant[];
 }
 
 export interface BatchGenerationResult {
