@@ -184,7 +184,13 @@ export function ABTestManager({
 								const stats = calculateStatistics(test.events || []);
 
 								// Check if this is a variant-scoped test
-								const isVariantScoped = test.variantScope === 'VARIANT';
+								// Also infer from data: if any variant has shopifyVariantId, treat as variant-scoped
+								const hasVariantSpecificVariants = test.variants.some(
+									(v: any) => v.shopifyVariantId && v.shopifyVariantId !== null,
+								);
+								const isVariantScoped =
+									test.variantScope === 'VARIANT' ||
+									(test.variantScope !== 'PRODUCT' && hasVariantSpecificVariants);
 
 								if (isVariantScoped) {
 									// Group variants by shopifyVariantId
@@ -503,12 +509,39 @@ export function ABTestManager({
 								}
 
 								// Product-scoped test (existing logic)
-								const variantAImages = parseImageUrls(
-									test.variants.find((v: any) => v.variant === 'A' && !v.shopifyVariantId)?.imageUrls,
+								// Find variants without shopifyVariantId (product-wide) or with null shopifyVariantId
+								let productVariantA = test.variants.find(
+									(v: any) => v.variant === 'A' && (!v.shopifyVariantId || v.shopifyVariantId === null),
 								);
-								const variantBImages = parseImageUrls(
-									test.variants.find((v: any) => v.variant === 'B' && !v.shopifyVariantId)?.imageUrls,
+								let productVariantB = test.variants.find(
+									(v: any) => v.variant === 'B' && (!v.shopifyVariantId || v.shopifyVariantId === null),
 								);
+
+								// Fallback: if no product-scoped variants found, use first A/B variants
+								// This handles cases where variantScope might not be set correctly
+								if (!productVariantA) {
+									productVariantA = test.variants.find((v: any) => v.variant === 'A');
+								}
+								if (!productVariantB) {
+									productVariantB = test.variants.find((v: any) => v.variant === 'B');
+								}
+
+								const variantAImages = parseImageUrls(productVariantA?.imageUrls);
+								const variantBImages = parseImageUrls(productVariantB?.imageUrls);
+
+								// Debug: log if images are empty
+								if (variantAImages.length === 0 && variantBImages.length === 0) {
+									console.warn('[ABTestManager] Empty images for test:', test.id, {
+										variantScope: test.variantScope,
+										productVariantA,
+										productVariantB,
+										allVariants: test.variants.map((v: any) => ({
+											variant: v.variant,
+											shopifyVariantId: v.shopifyVariantId,
+											imageUrls: Array.isArray(v.imageUrls) ? `${v.imageUrls.length} items` : typeof v.imageUrls,
+										})),
+									});
+								}
 
 								return (
 									<Card key={test.id}>
