@@ -1,1082 +1,1199 @@
 (function () {
 	'use strict';
 
-	// ============================================
-	// CONFIGURATION & CONSTANTS
-	// ============================================
+	// Debug mode - enabled via ?ab_debug=true URL parameter
+	const DEBUG_MODE = window.location.search.includes('ab_debug=true');
 
-	const DEBUG_MODE = window.location.search.includes('ab-debug=true') || window.location.search.includes('ab_debug=true');
-	const APP_PROXY_BASE = '/apps/model-swap';
-	const SESSION_STORAGE_KEY = 'ab_test_session';
-	const SESSION_METADATA_KEY = 'ab_test_session_meta';
-	const SESSION_TTL_MS = 1000 * 60 * 60 * 12;
-	const ACTIVE_TEST_KEY = 'ab_test_active';
-	const MAX_RETRY_ATTEMPTS = 3;
-	const RETRY_DELAY = 100;
-
-	// State management
-	let isReplacingImages = false;
-	const processedImageUrls = new Set();
-	let detectedTheme = null;
-	let themeConfig = null;
-	let variantWatcher = null;
-	let currentVariantId = null;
-	let activeTestData = null;
-
-	// ============================================
-	// THEME CONFIGURATIONS
-	// ============================================
-
-	const THEME_CONFIGS = {
-		'dawn': {
-			name: 'Dawn',
-			detection: {
-				selectors: ['.product__media-list', 'media-gallery', '#MainProduct'],
-				attributes: ['data-section="main-product"'],
-				classes: ['product__media-item', 'product__media-wrapper']
-			},
-			gallery: {
-				containers: [
-					'.product__media-list',
-					'ul.product__media-list',
-					'media-gallery .product__media-list'
-				],
-				items: [
-					'.product__media-item',
-					'li.product__media-item',
-					'.product__media-list > li'
-				],
-				images: [
-					'.product__media img',
-					'.product__media-item img',
-					'.product-media-container img'
-				],
-				itemTemplate: 'li',
-				itemClasses: ['product__media-item']
-			},
-			hiding: {
-				strategy: 'item',
-				method: 'display',
-				cleanupSelectors: ['.product__media-wrapper:empty']
-			}
-		},
-
-		'horizon': {
-			name: 'Horizon',
-			detection: {
-				selectors: ['media-gallery', 'slideshow-component', 'slideshow-slide'],
-				attributes: ['data-presentation'],
-				classes: ['media-gallery', 'slideshow-slide', 'product-media-container']
-			},
-			gallery: {
-				containers: [
-					'slideshow-slides',
-					'media-gallery',
-					'slideshow-container'
-				],
-				items: [
-					'slideshow-slide',
-					'.product-media-container'
-				],
-				images: [
-					'slideshow-slide img',
-					'.product-media__image',
-					'.product-media img'
-				],
-				itemTemplate: 'slideshow-slide',
-				itemClasses: []
-			},
-			hiding: {
-				strategy: 'item',
-				method: 'display',
-				cleanupSelectors: []
-			}
-		},
-
-		'debut': {
-			name: 'Debut',
-			detection: {
-				selectors: ['.product-single__photos', '#ProductPhoto'],
-				attributes: [],
-				classes: ['product-single__photo']
-			},
-			gallery: {
-				containers: ['.product-single__photos', '.product__main-photos'],
-				items: ['.product-single__photo', '.product-single__photo-wrapper'],
-				images: ['.product-single__photo img'],
-				itemTemplate: 'div',
-				itemClasses: ['product-single__photo']
-			},
-			hiding: {
-				strategy: 'item',
-				method: 'visibility',
-				cleanupSelectors: []
-			}
-		},
-
-		'brooklyn': {
-			name: 'Brooklyn',
-			detection: {
-				selectors: ['.product__slides'],
-				attributes: [],
-				classes: ['product__slide']
-			},
-			gallery: {
-				containers: ['.product__slides'],
-				items: ['.product__slide'],
-				images: ['.product__slide img'],
-				itemTemplate: 'div',
-				itemClasses: ['product__slide']
-			},
-			hiding: {
-				strategy: 'item',
-				method: 'display',
-				cleanupSelectors: []
-			}
-		},
-
-		'prestige': {
-			name: 'Prestige',
-			detection: {
-				selectors: ['.Product__Gallery', '.Product__Slideshow'],
-				attributes: [],
-				classes: ['Product__SlideItem']
-			},
-			gallery: {
-				containers: ['.Product__Gallery', '.Product__Slideshow'],
-				items: ['.Product__SlideItem'],
-				images: ['.Product__SlideItem img', '.Image--lazyLoad'],
-				itemTemplate: 'div',
-				itemClasses: ['Product__SlideItem']
-			},
-			hiding: {
-				strategy: 'item',
-				method: 'display',
-				cleanupSelectors: []
-			}
-		},
-
-		'impulse': {
-			name: 'Impulse',
-			detection: {
-				selectors: ['.product__photos'],
-				attributes: [],
-				classes: ['product__photo']
-			},
-			gallery: {
-				containers: ['.product__photos'],
-				items: ['.product__photo'],
-				images: ['.product__photo img'],
-				itemTemplate: 'div',
-				itemClasses: ['product__photo']
-			},
-			hiding: {
-				strategy: 'item',
-				method: 'display',
-				cleanupSelectors: []
-			}
-		},
-
-		'turbo': {
-			name: 'Turbo',
-			detection: {
-				selectors: ['.product-images', '.product-gallery'],
-				attributes: [],
-				classes: ['product-image', 'gallery-cell']
-			},
-			gallery: {
-				containers: ['.product-images', '.product-gallery'],
-				items: ['.product-image', '.gallery-cell'],
-				images: ['.product-image img', '.gallery-cell img'],
-				itemTemplate: 'div',
-				itemClasses: ['product-image']
-			},
-			hiding: {
-				strategy: 'item',
-				method: 'display',
-				cleanupSelectors: []
-			}
-		},
-
-		'narrative': {
-			name: 'Narrative',
-			detection: {
-				selectors: ['.product__images'],
-				attributes: [],
-				classes: ['product__image']
-			},
-			gallery: {
-				containers: ['.product__images'],
-				items: ['.product__image'],
-				images: ['.product__image img'],
-				itemTemplate: 'div',
-				itemClasses: ['product__image']
-			},
-			hiding: {
-				strategy: 'item',
-				method: 'display',
-				cleanupSelectors: []
-			}
-		}
-	};
-
-	// ============================================
-	// UTILITY FUNCTIONS
-	// ============================================
-
+	// Debug logging helper
 	function debugLog(...args) {
 		if (DEBUG_MODE) {
 			console.log('[A/B Test Debug]', ...args);
 		}
 	}
 
-	function getProductId() {
-		const strategies = [
-			() => window.ShopifyAnalytics?.meta?.product?.gid,
-			() => window.__st?.rid ? `gid://shopify/Product/${window.__st.rid}` : null,
-			() => {
-				const meta = document.querySelector('meta[property="og:product:id"]');
-				return meta?.content ? `gid://shopify/Product/${meta.content}` : null;
-			},
-			() => {
-				const match = window.location.pathname.match(/\/products\/([^\/]+)/);
-				return match?.[1] ? `handle:${match[1]}` : null;
-			}
-		];
+	// Configuration
+	const APP_PROXY_BASE = '/apps/model-swap';
+	const SESSION_STORAGE_KEY = 'ab_test_session';
+	const SESSION_METADATA_KEY = 'ab_test_session_meta';
+	const SESSION_TTL_MS = 1000 * 60 * 60 * 12; // 12 hours
+	const ACTIVE_TEST_KEY = 'ab_test_active';
+	const CART_ATC_KEY_PREFIX = 'ab_test_atc_sent_';
+	const CART_FALLBACK_SENT_FLAG = 'ab_test_atc_fallback_sent';
+	const CART_ATTRIBUTE_SYNC_PREFIX = 'ab_test_cart_attr_synced_';
+	const AB_PROPERTY_KEY = 'ModelSwapAB';
+	const MAX_RETRY_ATTEMPTS = 3;
+	const RETRY_DELAY = 100;
 
-		for (const strategy of strategies) {
-			const productId = strategy();
-			if (productId) {
-				debugLog('Product ID detected:', productId);
-				return productId;
-			}
-		}
+	// Re-entry guard to prevent infinite loops
+	let isReplacingImages = false;
+	const processedImageUrls = new Set(); // Track which image URLs we've already applied
 
-		console.warn('[A/B Test] Could not detect product ID');
-		return null;
-	}
-
-	function getCurrentVariantId() {
-		const urlParams = new URLSearchParams(window.location.search);
-		const urlVariant = urlParams.get('variant');
-		if (urlVariant) {
-			return urlVariant;
-		}
-
-		const variantInput = document.querySelector('form[action*="/cart/add"] [name="id"]');
-		if (variantInput && variantInput.value) {
-			return variantInput.value;
-		}
-
-		if (window.ShopifyAnalytics?.meta?.selectedVariantId) {
-			return window.ShopifyAnalytics.meta.selectedVariantId.toString();
-		}
-
-		if (window.theme?.product?.selected_variant) {
-			return window.theme.product.selected_variant.toString();
-		}
-
-		return null;
-	}
-
-	function getSessionId() {
-		const now = Date.now();
-		let sessionId = localStorage.getItem(SESSION_STORAGE_KEY);
-		let metadata;
-
-		try {
-			metadata = JSON.parse(localStorage.getItem(SESSION_METADATA_KEY) || '{}');
-		} catch {
-			metadata = {};
-		}
-
-		if (metadata.id && metadata.createdAt) {
-			const age = now - Number(metadata.createdAt);
-			if (age < SESSION_TTL_MS) {
-				return metadata.id;
-			}
-		}
-
-		sessionId = 'session_' + Math.random().toString(36).substr(2, 16) + now.toString(36);
-		metadata = { id: sessionId, createdAt: now };
-
-		localStorage.setItem(SESSION_STORAGE_KEY, sessionId);
-		localStorage.setItem(SESSION_METADATA_KEY, JSON.stringify(metadata));
-
-		debugLog('New session created:', sessionId);
-		return sessionId;
-	}
+	// Log script initialization
+	console.log('[A/B Test] Script loaded and initialized', DEBUG_MODE ? '(debug mode ON)' : '');
 
 	function getActiveTestData() {
 		const testDataRaw = sessionStorage.getItem(ACTIVE_TEST_KEY);
 		if (!testDataRaw) return null;
-
 		try {
 			const parsed = JSON.parse(testDataRaw);
-			if (parsed && parsed.testId && parsed.productId && (parsed.variant === 'A' || parsed.variant === 'B')) {
+			if (
+				parsed &&
+				typeof parsed.testId === 'string' &&
+				typeof parsed.productId === 'string' &&
+				(parsed.variant === 'A' || parsed.variant === 'B')
+			) {
 				return parsed;
 			}
 		} catch (error) {
-			debugLog('Failed to parse active test data');
+			debugLog('Failed to parse active test payload', error);
 		}
 		return null;
 	}
 
-	// ============================================
-	// THEME DETECTION
-	// ============================================
-
-	function detectTheme() {
-		if (detectedTheme) return detectedTheme;
-
-		debugLog('Starting theme detection...');
-
-		const themeScores = {};
-
-		for (const [themeKey, config] of Object.entries(THEME_CONFIGS)) {
-			let score = 0;
-
-			for (const selector of config.detection.selectors) {
-				if (document.querySelector(selector)) {
-					score += 10;
-					debugLog(`Theme ${config.name}: Found selector ${selector} (+10)`);
-				}
-			}
-
-			for (const attr of config.detection.attributes) {
-				if (document.querySelector(`[${attr}]`)) {
-					score += 5;
-					debugLog(`Theme ${config.name}: Found attribute ${attr} (+5)`);
-				}
-			}
-
-			for (const className of config.detection.classes) {
-				if (document.getElementsByClassName(className).length > 0) {
-					score += 3;
-					debugLog(`Theme ${config.name}: Found class ${className} (+3)`);
-				}
-			}
-
-			if (score > 0) {
-				themeScores[themeKey] = score;
-			}
-		}
-
-		let bestTheme = null;
-		let bestScore = 0;
-
-		for (const [theme, score] of Object.entries(themeScores)) {
-			if (score > bestScore) {
-				bestScore = score;
-				bestTheme = theme;
-			}
-		}
-
-		if (bestTheme) {
-			detectedTheme = bestTheme;
-			themeConfig = THEME_CONFIGS[bestTheme];
-			console.log(`[A/B Test] Theme detected: ${themeConfig.name} (confidence: ${bestScore})`);
-		} else {
-			detectedTheme = 'adaptive';
-			themeConfig = null;
-			console.log('[A/B Test] No specific theme detected, using adaptive mode');
-		}
-
-		return detectedTheme;
-	}
-
-	// ============================================
-	// GALLERY DETECTION
-	// ============================================
-
-	function findGalleryContainer() {
-		const theme = detectTheme();
-
-		if (themeConfig) {
-			debugLog(`Attempting ${themeConfig.name} theme-specific gallery detection`);
-
-			for (const containerSelector of themeConfig.gallery.containers) {
-				const container = document.querySelector(containerSelector);
-				if (container) {
-					const gallery = analyzeGalleryStructure(container, themeConfig);
-					if (gallery) {
-						console.log(`[A/B Test] Gallery found: ${themeConfig.name} - ${containerSelector}`);
-						return gallery;
-					}
-				}
-			}
-		}
-
-		return findGalleryAdaptive();
-	}
-
-	function analyzeGalleryStructure(container, config) {
-		let images = [];
-		let validItems = [];
-
-		if (config && config.gallery.items) {
-			const itemSelector = config.gallery.items.join(',');
-			const allItems = Array.from(container.querySelectorAll(itemSelector));
-
-			if (allItems.length > 0) {
-				allItems.forEach(item => {
-					const img = item.querySelector('img');
-					if (img && isProductImage(img)) {
-						images.push({ img, item });
-						validItems.push(item);
-					}
-				});
-			}
-		}
-
-		if (images.length === 0) {
-			const allImages = container.querySelectorAll('img');
-			allImages.forEach(img => {
-				if (isProductImage(img)) {
-					images.push({ img, item: img.parentElement });
-				}
-			});
-		}
-
-		if (images.length >= 1) {
-			return {
-				container,
-				images,
-				items: validItems,
-				theme: config ? config.name : 'adaptive',
-				structured: validItems.length > 0
-			};
-		}
-
-		return null;
-	}
-
-	function findGalleryAdaptive() {
-		debugLog('Using adaptive gallery detection');
-
-		const patterns = [
-			'media-gallery',
-			'product-gallery',
-			'slider-component',
-			'[class*="product"][class*="media"]',
-			'[class*="product"][class*="gallery"]',
-			'[class*="product"][class*="image"]',
-			'[class*="product"][class*="photo"]',
-			'[class*="product"][class*="slide"]',
-			'[data-product-images]',
-			'[data-product-gallery]',
-			'[data-media-gallery]',
-			'[data-gallery]',
-			'ul[class*="product"]',
-			'div[class*="swiper"]',
-			'div[class*="slider"]',
-			'div[class*="carousel"]'
-		];
-
-		for (const pattern of patterns) {
-			try {
-				const containers = document.querySelectorAll(pattern);
-				for (const container of containers) {
-					const gallery = analyzeGalleryStructure(container, null);
-					if (gallery) {
-						debugLog(`Gallery found using adaptive pattern: ${pattern}`);
-						return gallery;
-					}
-				}
-			} catch (e) {
-				// Invalid selector, skip
-			}
-		}
-
-		return findCommonParentGallery();
-	}
-
-	function findCommonParentGallery() {
-		debugLog('Using common parent detection');
-
-		const productImages = Array.from(document.querySelectorAll('img')).filter(isProductImage);
-
-		if (productImages.length < 1) return null;
-
-		let parent = productImages[0].parentElement;
-		let maxDepth = 10;
-		let depth = 0;
-
-		while (parent && depth < maxDepth) {
-			const containedImages = productImages.filter(img => parent.contains(img));
-
-			if (containedImages.length >= productImages.length * 0.8) {
-				const images = containedImages.map(img => ({
-					img,
-					item: findImageItem(img, parent)
-				}));
-
-				return {
-					container: parent,
-					images,
-					items: [],
-					theme: 'common-parent',
-					structured: false
-				};
-			}
-
-			parent = parent.parentElement;
-			depth++;
-		}
-
-		return null;
-	}
-
-	function findImageItem(img, container) {
-		let current = img.parentElement;
-		let bestItem = current;
-
-		while (current && current !== container) {
-			const className = current.className || '';
-			if (className.match(/item|slide|cell|wrapper|container/i)) {
-				bestItem = current;
-			}
-			current = current.parentElement;
-		}
-
-		return bestItem;
-	}
-
-	function isProductImage(img) {
-		const src = img.src || img.dataset.src || '';
-
-		if (src.includes('/products/') || src.includes('cdn.shopify.com') || src.includes('/cdn/shop/files/') || src.includes('.myshopify.com/cdn/')) {
-			const width = img.naturalWidth || img.offsetWidth || img.getBoundingClientRect().width;
-			const height = img.naturalHeight || img.offsetHeight || img.getBoundingClientRect().height;
-
-			if (width > 50 || height > 50) {
-				return true;
-			}
-		}
-
-		return false;
-	}
-
-	// ============================================
-	// GALLERY RECONSTRUCTION
-	// ============================================
-
-	function rebuildGallery(gallery, imageUrls) {
-		if (!gallery || !imageUrls || !imageUrls.length) {
-			debugLog('Cannot rebuild gallery: missing gallery or images');
+	async function persistCartMetadata(activeTest) {
+		if (!activeTest || !activeTest.testId || !activeTest.variant) {
 			return false;
 		}
 
-		debugLog('Rebuilding gallery with', imageUrls.length, 'images');
-
-		const { container, images: originalImages } = gallery;
-		const config = themeConfig;
-
-		if (!config || !config.gallery.itemTemplate) {
-			debugLog('No theme config for reconstruction, using simple replacement');
-			return replaceImagesSimple(gallery, imageUrls);
-		}
-
-		try {
-			const templateItem = originalImages.length > 0 ? originalImages[0].item : null;
-
-			if (templateItem) {
-				debugLog('Using existing item structure as template');
-				return rebuildGalleryFromTemplate(container, templateItem, imageUrls, config);
-			} else {
-				debugLog('No template found, creating new structure');
-				return rebuildGalleryFromScratch(container, imageUrls, config);
-			}
-		} catch (error) {
-			console.error('[A/B Test] Gallery rebuild failed:', error);
-			return replaceImagesSimple(gallery, imageUrls);
-		}
-	}
-
-	function rebuildGalleryFromTemplate(container, templateItem, imageUrls, config) {
-		debugLog('Rebuilding from template, removing all existing items');
-
-		const allItems = Array.from(container.querySelectorAll(config.gallery.items.join(',')));
-		const itemsToRemove = allItems.length > 0 ? allItems : Array.from(container.children);
-
-		itemsToRemove.forEach(item => {
-			if (item !== templateItem) {
-				item.remove();
-			}
-		});
-
-		const newItems = [];
-
-		imageUrls.forEach((imageUrl, index) => {
-			let newItem;
-
-			if (index === 0 && templateItem) {
-				newItem = templateItem;
-				const img = newItem.querySelector('img');
-				if (img) {
-					if (!img.dataset.originalSrc) {
-						img.dataset.originalSrc = img.src;
-						if (img.srcset) img.dataset.originalSrcset = img.srcset;
-						if (img.dataset.src) img.dataset.originalDataSrc = img.dataset.src;
-					}
-					img.src = imageUrl;
-					img.srcset = '';
-					if (img.dataset.src) img.dataset.src = imageUrl;
-					img.loading = 'eager';
-					img.dataset.abTestReplaced = 'true';
-					img.dataset.abTestIndex = index.toString();
-				}
-			} else {
-				newItem = templateItem.cloneNode(true);
-				const img = newItem.querySelector('img');
-				if (img) {
-					img.src = imageUrl;
-					img.srcset = '';
-					if (img.dataset.src) img.dataset.src = imageUrl;
-					img.loading = 'eager';
-					img.dataset.abTestReplaced = 'true';
-					img.dataset.abTestIndex = index.toString();
-				}
-				container.appendChild(newItem);
-			}
-
-			newItem.style.removeProperty('display');
-			newItem.style.removeProperty('visibility');
-			newItem.dataset.abTestVisible = 'true';
-			newItems.push(newItem);
-		});
-
-		debugLog('Rebuilt gallery with', newItems.length, 'items');
-		return true;
-	}
-
-	function rebuildGalleryFromScratch(container, imageUrls, config) {
-		debugLog('Rebuilding from scratch, clearing container');
-
-		container.innerHTML = '';
-
-		const itemTag = config.gallery.itemTemplate || 'div';
-
-		imageUrls.forEach((imageUrl, index) => {
-			const item = document.createElement(itemTag);
-
-			config.gallery.itemClasses.forEach(className => {
-				item.classList.add(className);
-			});
-
-			const img = document.createElement('img');
-			img.src = imageUrl;
-			img.loading = index === 0 ? 'eager' : 'lazy';
-			img.dataset.abTestReplaced = 'true';
-			img.dataset.abTestIndex = index.toString();
-
-			item.appendChild(img);
-			container.appendChild(item);
-			item.dataset.abTestVisible = 'true';
-		});
-
-		debugLog('Rebuilt gallery from scratch with', imageUrls.length, 'items');
-		return true;
-	}
-
-	function replaceImagesSimple(gallery, imageUrls) {
-		debugLog('Using simple replacement strategy');
-
-		const { images } = gallery;
-		let replaced = 0;
-
-		images.forEach((imageData, index) => {
-			if (index < imageUrls.length) {
-				const { img, item } = imageData;
-
-				if (!img.dataset.originalSrc) {
-					img.dataset.originalSrc = img.src;
-					if (img.srcset) img.dataset.originalSrcset = img.srcset;
-					if (img.dataset.src) img.dataset.originalDataSrc = img.dataset.src;
-				}
-
-				img.src = imageUrls[index];
-				img.srcset = '';
-				if (img.dataset.src) img.dataset.src = imageUrls[index];
-				img.loading = 'eager';
-				img.dataset.abTestReplaced = 'true';
-				img.dataset.abTestIndex = index.toString();
-
-				img.style.removeProperty('display');
-				img.style.removeProperty('visibility');
-
-				if (item && item !== img) {
-					item.style.removeProperty('display');
-					item.style.removeProperty('visibility');
-					item.dataset.abTestVisible = 'true';
-				}
-
-				replaced++;
-			} else {
-				const { img, item } = imageData;
-				const targetElement = item || img;
-				targetElement.style.display = 'none';
-				targetElement.dataset.abTestHidden = 'true';
-			}
-		});
-
-		return replaced > 0;
-	}
-
-	function replaceImages(imageUrls, variantId) {
-		if (!imageUrls || !imageUrls.length) {
-			debugLog('No images to replace');
-			return false;
-		}
-
-		if (isReplacingImages) {
-			debugLog('Already replacing images, skipping');
-			return false;
-		}
-
-		const urlKey = imageUrls.join('|');
-		if (processedImageUrls.has(urlKey)) {
-			debugLog('Already processed these URLs');
-			return true;
-		}
-
-		isReplacingImages = true;
-		processedImageUrls.add(urlKey);
-
-		try {
-			console.log(`[A/B Test] Starting image replacement (${imageUrls.length} images)`);
-
-			const gallery = findGalleryContainer();
-
-			if (!gallery) {
-				console.error('[A/B Test] No gallery found');
-				return false;
-			}
-
-			console.log(`[A/B Test] Gallery found: ${gallery.theme} mode, ${gallery.images.length} original images`);
-
-			const success = rebuildGallery(gallery, imageUrls);
-
-			if (success) {
-				console.log(`[A/B Test] ✅ Replacement complete`);
-				cleanupGallery(gallery);
-				observeDynamicContent(imageUrls);
-			} else {
-				console.warn('[A/B Test] Gallery rebuild failed');
-			}
-
-			return success;
-
-		} finally {
-			isReplacingImages = false;
-		}
-	}
-
-	function cleanupGallery(gallery) {
-		if (!themeConfig || !themeConfig.hiding.cleanupSelectors) return;
-
-		themeConfig.hiding.cleanupSelectors.forEach(selector => {
-			const elements = document.querySelectorAll(selector);
-			elements.forEach(el => {
-				const hasVisible = Array.from(el.children).some(child =>
-					child.dataset.abTestHidden !== 'true' &&
-					child.style.display !== 'none'
-				);
-
-				if (!hasVisible) {
-					el.style.display = 'none';
-					debugLog('Hidden empty container:', selector);
-				}
-			});
-		});
-	}
-
-	function observeDynamicContent(imageUrls) {
-		if (!window.MutationObserver) return;
-
-		let observerTimeout;
-		const observer = new MutationObserver(() => {
-			clearTimeout(observerTimeout);
-			observerTimeout = setTimeout(() => {
-				debugLog('Re-applying images after DOM mutation');
-				processedImageUrls.delete(imageUrls.join('|'));
-				replaceImages(imageUrls);
-			}, 100);
-		});
-
-		observer.observe(document.body, {
-			childList: true,
-			subtree: true
-		});
-
-		setTimeout(() => observer.disconnect(), 5000);
-	}
-
-	// ============================================
-	// TEST FETCHING & VARIANT HANDLING
-	// ============================================
-
-	async function fetchVariant(productId, variantId = null, attempt = 1) {
 		const sessionId = getSessionId();
-		const urlParams = new URLSearchParams(window.location.search);
-		const forcedVariant = urlParams.get('variant');
-
-		let url = `${APP_PROXY_BASE}/variant/${encodeURIComponent(productId)}?session=${sessionId}`;
-
-		if (variantId) {
-			url += `&variantId=${encodeURIComponent(variantId)}`;
-			debugLog('Fetching with variantId:', variantId);
-		}
-
-		if (forcedVariant && /^[ab]$/i.test(forcedVariant)) {
-			url += `&force=${forcedVariant.toUpperCase()}`;
-			console.log('[A/B Test] Forcing variant:', forcedVariant.toUpperCase());
-		}
+		const metadata = {
+			testId: activeTest.testId,
+			variant: activeTest.variant,
+			productId: activeTest.productId,
+			sessionId,
+			assignedAt: new Date().toISOString(),
+		};
 
 		try {
-			const response = await fetch(url, {
-				method: 'GET',
+			const payload = {
+				attributes: {
+					[AB_PROPERTY_KEY]: JSON.stringify(metadata),
+				},
+			};
+
+			const response = await fetch('/cart/update.js', {
+				method: 'POST',
 				headers: {
-					'Accept': 'application/json',
-					'X-AB-Session': sessionId.substring(0, 32)
-				}
+					'Content-Type': 'application/json',
+					Accept: 'application/json',
+				},
+				credentials: 'include',
+				body: JSON.stringify(payload),
 			});
 
-			if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-			const data = await response.json();
-			debugLog('Variant data received:', data);
-			return data;
+			debugLog('Cart metadata persisted', metadata, 'status:', response.status);
+			return response.ok;
 		} catch (error) {
-			if (attempt < MAX_RETRY_ATTEMPTS) {
-				await new Promise(r => setTimeout(r, RETRY_DELAY * attempt));
-				return fetchVariant(productId, variantId, attempt + 1);
-			}
-			console.error('[A/B Test] Failed to fetch variant:', error);
-			throw error;
-		}
-	}
-
-	async function applyTest(productId, variantId = null) {
-		try {
-			debugLog('Fetching test for product:', productId, 'variant:', variantId);
-
-			const data = await fetchVariant(productId, variantId);
-
-			if (data?.variant && data?.imageUrls?.length && data?.testId) {
-				console.log('[A/B Test] Test active:', {
-					testId: data.testId,
-					variant: data.variant,
-					images: data.imageUrls.length,
-					variantId: variantId || 'product-wide'
-				});
-
-				const success = replaceImages(data.imageUrls, data.variant);
-
-				if (success) {
-					activeTestData = {
-						testId: data.testId,
-						variant: data.variant,
-						productId: productId,
-						variantId: variantId
-					};
-
-					sessionStorage.setItem(ACTIVE_TEST_KEY, JSON.stringify(activeTestData));
-
-					wireAddToCartTracking();
-
-					return true;
-				} else {
-					console.warn('[A/B Test] Failed to replace images');
-					return false;
-				}
-			} else {
-				debugLog('No active test for this product/variant');
-				return false;
-			}
-		} catch (error) {
-			console.error('[A/B Test] Apply test failed:', error);
+			console.error('[A/B Test] Failed to persist cart metadata', error);
 			return false;
 		}
 	}
 
-	function watchVariantChanges(callback) {
-		let lastVariantId = getCurrentVariantId();
+	// Generate or retrieve session ID
+	function getSessionId() {
+		const now = Date.now();
+		let sessionId = localStorage.getItem(SESSION_STORAGE_KEY);
+		let metadataRaw = localStorage.getItem(SESSION_METADATA_KEY);
+		let metadata;
 
-		const checkInterval = setInterval(() => {
-			const newVariantId = getCurrentVariantId();
-			if (newVariantId && newVariantId !== lastVariantId) {
-				lastVariantId = newVariantId;
-				debugLog('Variant changed to:', newVariantId);
-				callback(newVariantId);
+		if (metadataRaw) {
+			try {
+				metadata = JSON.parse(metadataRaw);
+			} catch (error) {
+				debugLog('Failed to parse session metadata, resetting');
+				metadata = null;
 			}
-		}, 500);
+		}
 
-		document.addEventListener('change', function(e) {
-			if (e.target.name === 'id' || e.target.matches('[data-variant-selector]')) {
-				setTimeout(() => {
-					const newVariantId = getCurrentVariantId();
-					if (newVariantId && newVariantId !== lastVariantId) {
-						lastVariantId = newVariantId;
-						debugLog('Variant changed via form:', newVariantId);
-						callback(newVariantId);
-					}
-				}, 100);
-			}
-		});
-
-		const variantEvents = ['variant:change', 'variant-change', 'variantChange'];
-		variantEvents.forEach(eventName => {
-			document.addEventListener(eventName, function(e) {
-				const variantId = e.detail?.variant?.id || e.detail?.id || e.detail?.variantId;
-				if (variantId && variantId !== lastVariantId) {
-					lastVariantId = variantId.toString();
-					debugLog('Variant changed via event:', lastVariantId);
-					callback(lastVariantId);
+		if (metadata && metadata.id && metadata.createdAt) {
+			const age = now - Number(metadata.createdAt);
+			if (age < SESSION_TTL_MS) {
+				sessionId = metadata.id;
+				if (!sessionId) {
+					debugLog('Metadata missing session id, regenerating');
 				}
-			});
-		});
+			} else {
+				debugLog('Session TTL exceeded, rotating session ID');
+				sessionId = null;
+			}
+		} else if (sessionId) {
+			metadata = { id: sessionId, createdAt: now };
+		}
 
-		return () => clearInterval(checkInterval);
+		if (!sessionId) {
+			sessionId = 'session_' + Math.random().toString(36).substr(2, 16) + now.toString(36);
+			metadata = { id: sessionId, createdAt: now };
+			debugLog('New session ID created:', sessionId, 'at', new Date(now).toISOString());
+		}
+
+		localStorage.setItem(SESSION_STORAGE_KEY, sessionId);
+		try {
+			localStorage.setItem(SESSION_METADATA_KEY, JSON.stringify(metadata));
+		} catch (error) {
+			debugLog('Unable to persist session metadata:', error);
+		}
+
+		return sessionId;
 	}
-
-	// ============================================
-	// TRACKING
-	// ============================================
 
 	async function sendTrackingEvent(eventType, payload = {}) {
 		const activeTest = getActiveTestData();
 		if (!activeTest) {
-			debugLog('No active test for tracking');
+			console.warn('[A/B Test] Cannot track', eventType, '- no active test data');
 			return false;
 		}
 
+		if (typeof payload !== 'object' || payload === null) {
+			console.warn('[A/B Test] Invalid payload for', eventType);
+			return false;
+		}
+
+		const { skipCartAttach = false, ...extraPayload } = payload;
+		const syncKey = CART_ATTRIBUTE_SYNC_PREFIX + activeTest.testId + '_' + activeTest.variant;
+
+		if (!skipCartAttach && !sessionStorage.getItem(syncKey)) {
+			try {
+				persistCartMetadata(activeTest);
+				sessionStorage.setItem(syncKey, '1');
+			} catch (error) {
+				debugLog('Failed to persist cart metadata', error);
+			}
+		}
+
 		const sessionId = getSessionId();
+		const url = APP_PROXY_BASE + '/track';
 		const body = {
 			testId: activeTest.testId,
 			sessionId,
 			eventType,
 			productId: activeTest.productId,
 			variant: activeTest.variant,
-			variantId: activeTest.variantId || null,
-			...payload
+			...extraPayload,
 		};
+		const requestPayload = JSON.stringify(body);
 
-		debugLog('Sending tracking event:', eventType, body);
+		console.log('[A/B Test] Sending tracking event:', eventType, 'to', url, body);
+
+		if (eventType === 'ADD_TO_CART' && typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
+			try {
+				const beaconSent = navigator.sendBeacon(url, new Blob([requestPayload], { type: 'application/json' }));
+				console.log('[A/B Test] sendBeacon result:', beaconSent);
+				if (beaconSent) {
+					console.log('[A/B Test] Event tracked via sendBeacon');
+					return true;
+				}
+			} catch (error) {
+				console.error('[A/B Test] sendBeacon failed, falling back to fetch', error);
+				debugLog('sendBeacon failed, falling back to fetch', error);
+			}
+		}
 
 		try {
-			const response = await fetch(`${APP_PROXY_BASE}/track`, {
+			const response = await fetch(url, {
 				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify(body)
+				headers: {
+					'Content-Type': 'application/json',
+				},
+				keepalive: eventType === 'ADD_TO_CART',
+				body: requestPayload,
 			});
+			console.log('[A/B Test] Fetch response:', response.status, response.statusText, response.headers.get('content-type'));
 
-			return response.ok;
+			if (!response.ok) {
+				let errorText = '';
+				try {
+					const contentType = response.headers.get('content-type');
+					if (contentType && contentType.includes('application/json')) {
+						const errorJson = await response.json();
+						errorText = JSON.stringify(errorJson, null, 2);
+					} else {
+						errorText = await response.text();
+					}
+				} catch (parseError) {
+					errorText = 'Unable to read error response';
+				}
+				console.error('[A/B Test] Tracking failed:', {
+					status: response.status,
+					statusText: response.statusText,
+					url: url,
+					error: errorText,
+					body: body
+				});
+				return false;
+			}
+
+			let responseData = null;
+			try {
+				const contentType = response.headers.get('content-type');
+				if (contentType && contentType.includes('application/json')) {
+					responseData = await response.json();
+				} else {
+					responseData = await response.text();
+				}
+			} catch (parseError) {
+				console.warn('[A/B Test] Could not parse response:', parseError);
+			}
+			console.log('[A/B Test] Tracking response:', responseData);
+			return true;
 		} catch (error) {
-			console.error('[A/B Test] Tracking failed:', error);
+			console.error('[A/B Test] Theme tracking failed:', {
+				eventType,
+				error: error instanceof Error ? error.message : String(error),
+				stack: error instanceof Error ? error.stack : undefined,
+				url: url
+			});
 			return false;
 		}
 	}
 
-	function wireAddToCartTracking() {
-		const forms = document.querySelectorAll('form[action*="/cart/add"]');
-		const buttons = document.querySelectorAll([
-			'button[name="add"]',
-			'button[data-add-to-cart]',
-			'.product-form__submit',
-			'.add-to-cart',
-			'#AddToCart'
-		].join(','));
+	let isCartFallbackInitialized = false;
+	let lastManualAddToCartTimestamp = 0;
+	let addToCartTrackingInProgress = false;
 
-		forms.forEach(form => {
-			if (form.dataset.abTracked) return;
-			form.dataset.abTracked = 'true';
-			form.addEventListener('submit', () => {
-				sendTrackingEvent('ADD_TO_CART', { source: 'form' });
+	function initAddToCartFallback() {
+		if (isCartFallbackInitialized) return;
+		isCartFallbackInitialized = true;
+
+		const CART_ENDPOINT_REGEX = /\/cart\/(add|update)/;
+		const TRACK_ENDPOINT_REGEX = /\/apps\/model-swap\/track/;
+
+		function shouldMonitorRequest(resource) {
+			if (!resource) return false;
+			const url = typeof resource === 'string' ? resource : resource.url || '';
+			return CART_ENDPOINT_REGEX.test(url) && !TRACK_ENDPOINT_REGEX.test(url);
+		}
+
+		function handleSuccessfulCartMutation(source) {
+			const activeTest = getActiveTestData();
+			if (!activeTest) return;
+			const dedupeKey = CART_ATC_KEY_PREFIX + activeTest.testId + '_' + activeTest.variant;
+			if (sessionStorage.getItem(dedupeKey) === 'true') {
+				debugLog('ATC fallback already sent for this session/test');
+				return;
+			}
+			sessionStorage.setItem(dedupeKey, 'true');
+			sessionStorage.setItem(CART_FALLBACK_SENT_FLAG, source);
+			sendTrackingEvent('ADD_TO_CART').then((success) => {
+				if (success) {
+					console.log('[A/B Test] Fallback add to cart tracked via', source);
+				} else {
+					sessionStorage.removeItem(dedupeKey);
+				}
 			});
-		});
+		}
 
-		buttons.forEach(button => {
-			if (button.dataset.abTracked) return;
-			button.dataset.abTracked = 'true';
-			button.addEventListener('click', () => {
-				setTimeout(() => {
-					sendTrackingEvent('ADD_TO_CART', { source: 'button' });
-				}, 0);
-			});
-		});
+		if (window.fetch) {
+			const originalFetch = window.fetch;
+			window.fetch = function (input, init) {
+				const args = arguments;
+				const shouldTrack = shouldMonitorRequest(input);
+				return originalFetch.apply(this, args).then(function (response) {
+					try {
+						if (shouldTrack && response && response.ok) {
+							response
+								.clone()
+								.text()
+								.catch(function () {
+									return '';
+								})
+								.finally(function () {
+									handleSuccessfulCartMutation('fetch');
+								});
+						}
+					} catch (error) {
+						debugLog('Fetch fallback handler error', error);
+					}
+					return response;
+				});
+			};
+		}
 
-		debugLog(`Wired tracking: ${forms.length} forms, ${buttons.length} buttons`);
+		if (window.XMLHttpRequest) {
+			const send = window.XMLHttpRequest.prototype.send;
+			window.XMLHttpRequest.prototype.send = function () {
+				try {
+					this.addEventListener('load', function () {
+						try {
+							const url = this.responseURL || '';
+							if (CART_ENDPOINT_REGEX.test(url) && this.status >= 200 && this.status < 300) {
+								handleSuccessfulCartMutation('xhr');
+							}
+						} catch (error) {
+							debugLog('XHR fallback handler error', error);
+						}
+					});
+				} catch (error) {
+					debugLog('Failed to attach XHR fallback', error);
+				}
+				return send.apply(this, arguments);
+			};
+		}
 	}
 
-	// ============================================
-	// INITIALIZATION
-	// ============================================
+	const ADD_TO_CART_BUTTON_SELECTORS = [
+		'button[name="add"]',
+		'button[data-add-to-cart]',
+		'button[data-action="add-to-cart"]',
+		'[data-add-to-cart]',
+		'[ref="addToCartButton"]',
+		'button[ref="addToCartButton"]',
+		'[id*="add-to-cart"]',
+		'button[id*="add-to-cart"]',
+		'[id^="BuyButtons-ProductSubmitButton"]',
+		'.add-to-cart',
+		'.add-to-cart-button',
+		'.product-form__submit',
+		'.product-form__cart-submit',
+		'#AddToCart',
+		'#ProductSubmitButton',
+	];
 
-	async function init() {
-		console.log('[A/B Test] Initializing unified image replacer');
-		console.log('[A/B Test] Debug mode:', DEBUG_MODE ? 'ON' : 'OFF');
+	const ADD_TO_CART_THROTTLE_MS = 500;
 
-		if (!window.location.pathname.includes('/products/')) {
-			debugLog('Not a product page');
+	function recordManualAddToCart(source) {
+		console.log('[A/B Test] recordManualAddToCart called with source:', source);
+
+		// Prevent multiple simultaneous requests
+		if (addToCartTrackingInProgress) {
+			console.warn('[A/B Test] Add to cart tracking already in progress, skipping', source);
 			return;
 		}
 
-		const theme = detectTheme();
-		console.log('[A/B Test] Theme:', theme);
+		const now = Date.now();
+		if (now - lastManualAddToCartTimestamp < ADD_TO_CART_THROTTLE_MS) {
+			console.warn('[A/B Test] Manual add to cart throttled', source);
+			debugLog('Manual add to cart throttled', source);
+			return;
+		}
+
+		lastManualAddToCartTimestamp = now;
+		addToCartTrackingInProgress = true;
+
+		console.log('[A/B Test] Calling sendTrackingEvent for ADD_TO_CART');
+		sendTrackingEvent('ADD_TO_CART', {
+			source,
+			skipCartAttach: true,
+		}).then((success) => {
+			console.log('[A/B Test] sendTrackingEvent result:', success);
+			addToCartTrackingInProgress = false;
+		}).catch((error) => {
+			console.error('[A/B Test] sendTrackingEvent error:', error);
+			addToCartTrackingInProgress = false;
+		});
+	}
+
+	function wireAddToCartTracking() {
+		try {
+			const forms = document.querySelectorAll('form[action*="/cart/add"]');
+			debugLog('Found', forms.length, 'cart forms');
+			forms.forEach((form) => {
+				if (form.dataset.abAtcBound === 'true') {
+					return;
+				}
+				form.dataset.abAtcBound = 'true';
+				form.addEventListener('submit', function () {
+					console.log('[A/B Test] Form submit detected');
+					recordManualAddToCart('form-submit');
+				});
+			});
+
+			const buttons = document.querySelectorAll(ADD_TO_CART_BUTTON_SELECTORS.join(', '));
+			debugLog('Found', buttons.length, 'add-to-cart buttons');
+			if (buttons.length > 0) {
+				console.log('[A/B Test] Add-to-cart buttons detected:', Array.from(buttons).map(b => ({
+					id: b.id,
+					class: b.className,
+					name: b.name,
+					ref: b.getAttribute('ref')
+				})));
+			}
+			buttons.forEach((button) => {
+				if (button.dataset.abAtcBound === 'true') {
+					return;
+				}
+				button.dataset.abAtcBound = 'true';
+				button.addEventListener('click', function (e) {
+					console.log('[A/B Test] Button click detected:', {
+						id: button.id,
+						class: button.className,
+						name: button.name
+					});
+					// Defer slightly to allow theme scripts to process click handlers first
+					setTimeout(function () {
+						recordManualAddToCart('button-click');
+					}, 0);
+				});
+			});
+		} catch (error) {
+			console.error('[A/B Test] Failed to wire add to cart tracking', error);
+			debugLog('Failed to wire add to cart tracking', error);
+		}
+	}
+
+	let addToCartMutationObserver = null;
+
+	function monitorAddToCartElements() {
+		if (!window.MutationObserver || addToCartMutationObserver) {
+			return;
+		}
+
+		addToCartMutationObserver = new MutationObserver(function (mutations) {
+			let shouldRewire = false;
+			for (const mutation of mutations) {
+				if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
+					shouldRewire = true;
+					break;
+				}
+			}
+
+			if (shouldRewire) {
+				wireAddToCartTracking();
+			}
+		});
+
+		addToCartMutationObserver.observe(document.body, {
+			childList: true,
+			subtree: true,
+		});
+
+		setTimeout(function () {
+			if (addToCartMutationObserver) {
+				addToCartMutationObserver.disconnect();
+				addToCartMutationObserver = null;
+			}
+		}, 5000);
+	}
+
+	// Detect product ID using multiple strategies
+	function getProductId() {
+		debugLog('Attempting product ID detection...');
+
+		// Strategy 1: ShopifyAnalytics global
+		if (
+			window.ShopifyAnalytics &&
+			window.ShopifyAnalytics.meta &&
+			window.ShopifyAnalytics.meta.product &&
+			window.ShopifyAnalytics.meta.product.gid
+		) {
+			const productId = window.ShopifyAnalytics.meta.product.gid;
+			console.log('[A/B Test] Product ID detected:', productId, '(via ShopifyAnalytics)');
+			return productId;
+		}
+
+		// Strategy 2: __st global object
+		if (window.__st && window.__st.rid) {
+			const productId = 'gid://shopify/Product/' + window.__st.rid;
+			console.log('[A/B Test] Product ID detected:', productId, '(via __st)');
+			return productId;
+		}
+
+		// Strategy 3: meta tags
+		const productIdMeta = document.querySelector('meta[property="og:product:id"]');
+		if (productIdMeta && productIdMeta.content) {
+			const productId = 'gid://shopify/Product/' + productIdMeta.content;
+			console.log('[A/B Test] Product ID detected:', productId, '(via meta tag)');
+			return productId;
+		}
+
+		// Strategy 4: Cart form
+		const productForm = document.querySelector('form[action*="/cart/add"]');
+		if (productForm) {
+			const productIdInput = productForm.querySelector('input[name="id"]');
+			if (productIdInput && productIdInput.value) {
+				// This is actually a variant ID, but we can try to use it
+				const productId = 'gid://shopify/Product/' + productIdInput.value;
+				console.log('[A/B Test] Product ID detected:', productId, '(via cart form - may be variant ID)');
+				return productId;
+			}
+		}
+
+		// Strategy 5: URL pattern
+		const pathMatch = window.location.pathname.match(/\/products\/([^\/]+)/);
+		if (pathMatch && pathMatch[1]) {
+			// This is a handle, not an ID, but we'll return it as a fallback
+			const productId = 'handle:' + pathMatch[1];
+			console.log('[A/B Test] Product ID detected:', productId, '(via URL - handle only)');
+			return productId;
+		}
+
+		console.warn('[A/B Test] Could not detect product ID using any strategy');
+		debugLog('Available globals:', {
+			ShopifyAnalytics: !!window.ShopifyAnalytics,
+			__st: !!window.__st,
+			metaTags: document.querySelectorAll('meta[property*="product"]').length,
+		});
+		return null;
+	}
+
+	// Check if an image is visible (not hidden by CSS or dimensions)
+	function isImageVisible(img) {
+		if (!img || !img.offsetParent) return false; // Element is hidden
+
+		const style = window.getComputedStyle(img);
+		if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') {
+			return false;
+		}
+
+		// Check if image has dimensions
+		const rect = img.getBoundingClientRect();
+		if (rect.width === 0 || rect.height === 0) return false;
+
+		return true;
+	}
+
+	// Score an image based on its likelihood of being a main product image
+	function scoreProductImage(img) {
+		let score = 0;
+
+		// Check if image is visible (critical)
+		if (!isImageVisible(img)) return -1000; // Heavily penalize hidden images
+
+		const rect = img.getBoundingClientRect();
+		const src = img.src || img.dataset.src || '';
+
+		// Size scoring (larger images are more likely to be main images)
+		const area = rect.width * rect.height;
+		score += Math.min(area / 1000, 500); // Cap at 500 points
+
+		// URL pattern scoring
+		if (src.includes('/products/') || src.includes('cdn.shopify.com')) score += 100;
+		if (src.includes('_grande') || src.includes('_large') || src.includes('_1024x')) score += 50;
+		if (src.includes('_thumb') || src.includes('_small') || src.includes('_icon')) score -= 100;
+
+		// Position scoring (images higher on page are more likely main images)
+		const scrollY = window.pageYOffset || document.documentElement.scrollTop;
+		const imageY = rect.top + scrollY;
+		if (imageY < 1000) score += 50; // Bonus for images near top
+
+		// Context scoring - check parent elements
+		let element = img;
+		for (let i = 0; i < 5 && element; i++) {
+			const classList = element.classList ? Array.from(element.classList).join(' ') : '';
+			const className = element.className || '';
+
+			// Positive signals
+			if (/product|gallery|media|featured|main|primary/i.test(className)) score += 30;
+			if (/slider|carousel|swiper|slick|flickity/i.test(className)) score += 20;
+
+			// Negative signals
+			if (/thumb|thumbnail|nav|navigation|breadcrumb|footer|header/i.test(className)) score -= 50;
+
+			element = element.parentElement;
+		}
+
+		// Check for data attributes
+		if (img.dataset.productImage || img.dataset.productFeaturedImage) score += 50;
+
+		debugLog('Image score:', score, 'src:', src.substring(0, 60), 'size:', rect.width, 'x', rect.height);
+
+		return score;
+	}
+
+	// Find the product gallery container
+	function findGalleryContainer() {
+		// Common gallery container selectors for different themes
+		const gallerySelectors = [
+			// Horizon theme
+			'.product__media-list',
+			'.product-media-gallery',
+			'.product__media-wrapper',
+
+			// Dawn theme
+			'.product__media-list',
+			'.product__media-wrapper',
+
+			// Debut theme
+			'.product-single__photos',
+			'.product__main-photos',
+
+			// Brooklyn theme
+			'.product__slides',
+
+			// Generic patterns
+			'.product-gallery',
+			'.product-images',
+			'.product-photos',
+			'[data-product-images]',
+			'[data-product-gallery]',
+			'.gallery',
+			'.image-gallery',
+			'.product-media--image-container',
+			'.product__media-item',
+			'.product-media-item',
+			'[data-media-id]',
+			'.gallery__item',
+			'.product-gallery__media-item',
+			'.product__media-item-wrapper',
+			'.product__media-group',
+		];
+
+		// Try each selector
+		for (const selector of gallerySelectors) {
+			const container = document.querySelector(selector);
+			if (container) {
+				const images = container.querySelectorAll('img');
+				if (images.length >= 2) {
+					// Must have at least 2 images to be a gallery
+					debugLog('Found gallery container:', selector, 'with', images.length, 'images');
+					return { container, images: Array.from(images) };
+				}
+			}
+		}
+
+		// Fallback: Find element containing multiple product images
+		const allImages = Array.from(document.querySelectorAll('img'));
+		const productImages = allImages.filter(img => {
+			const src = img.src || img.dataset.src || '';
+			return src.includes('/products/') || src.includes('cdn.shopify.com');
+		});
+
+		if (productImages.length >= 2) {
+			// Find common parent
+			let commonParent = productImages[0].parentElement;
+			let depth = 0;
+			const maxDepth = 5;
+
+			while (commonParent && depth < maxDepth) {
+				const imagesInParent = commonParent.querySelectorAll('img');
+				if (imagesInParent.length >= productImages.length * 0.8) {
+					debugLog('Found common parent container with', imagesInParent.length, 'images');
+					return { container: commonParent, images: Array.from(imagesInParent) };
+				}
+				commonParent = commonParent.parentElement;
+				depth++;
+			}
+		}
+
+		debugLog('No gallery container found');
+		return null;
+	}
+
+	// Find all product images using intelligent detection
+	function findProductImages() {
+		// Get all images on the page
+		const allImages = Array.from(document.querySelectorAll('img'));
+
+		// Score and sort images
+		const scoredImages = allImages
+			.map(img => ({ img, score: scoreProductImage(img) }))
+			.filter(item => item.score > 0) // Only positive scores
+			.sort((a, b) => b.score - a.score); // Highest score first
+
+		debugLog('Found', scoredImages.length, 'potential product images');
+
+		return scoredImages.map(item => item.img);
+	}
+
+	// Hide an image and its container
+	function hideImage(img) {
+		if (!img) return;
+
+		// Mark as hidden to prevent re-processing
+		img.dataset.abTestHidden = 'true';
+		img.style.display = 'none';
+		img.style.visibility = 'hidden';
+
+		// Also hide parent container if it's a wrapper
+		const galleryWrapper = img.closest('[data-ab-gallery-wrapper]');
+		if (galleryWrapper) {
+			galleryWrapper.style.display = 'none';
+			galleryWrapper.dataset.abTestHidden = 'true';
+			debugLog('Hiding gallery wrapper via data attribute');
+			return;
+		}
+
+		let parent = img.parentElement;
+		let depth = 0;
+		while (parent && depth < 3) {
+			const parentClass = parent.className || '';
+
+			if (
+				/media-item|slide|photo-item|image-item|gallery-item|product__media-item|product-media-item|product__media|product__image|main-product-image/i.test(
+					parentClass,
+				)
+			) {
+				parent.style.display = 'none';
+				parent.dataset.abTestHidden = 'true';
+				debugLog('Hiding parent container:', parentClass);
+				break;
+			}
+
+			parent = parent.parentElement;
+			depth++;
+		}
+
+		if (parent && parent.dataset && parent.dataset.mediaId) {
+			parent.style.display = 'none';
+			parent.dataset.abTestHidden = 'true';
+			debugLog('Hiding parent dataset mediaId:', parent.dataset.mediaId);
+			return;
+		}
+	}
+
+	// Replace a single image
+	function replaceImageSrc(img, newSrc) {
+		if (!img) return;
+
+	// Store original source
+	if (!img.dataset.originalSrc) {
+		img.dataset.originalSrc = img.src;
+	}
+
+		// Replace image source
+		img.src = newSrc;
+
+		// Clear srcset to prevent browser from loading original responsive images
+		if (img.srcset) {
+			img.dataset.originalSrcset = img.srcset;
+			img.srcset = '';
+		}
+
+		// Handle lazy loading attributes
+		if (img.dataset.src) {
+			img.dataset.originalDataSrc = img.dataset.src;
+			img.dataset.src = newSrc;
+		}
+
+		if (img.loading === 'lazy') {
+			img.loading = 'eager'; // Force immediate loading
+		}
+
+		// Ensure image is visible
+		img.style.display = '';
+		img.style.visibility = '';
+		img.dataset.abTestReplaced = 'true';
+	}
+
+	// Replace images with intelligent detection + fallback selectors
+	function replaceImages(imageUrls, variantId) {
+		if (!imageUrls || !imageUrls.length) return false;
+
+		if (DEBUG_MODE) {
+			console.group('[A/B Test Debug] replaceImages');
+			console.debug('Variant ID:', variantId);
+			console.debug('Incoming image URLs:', imageUrls);
+		}
+
+		// Re-entry guard: prevent infinite loops from MutationObserver
+		if (isReplacingImages) {
+			debugLog('Skipping replaceImages - already in progress');
+			if (DEBUG_MODE) {
+				console.debug('replaceImages exiting early because another run is active');
+				console.groupEnd();
+			}
+			return false;
+		}
+
+		// Check if we've already processed these exact URLs
+		const urlKey = imageUrls.join('|');
+		if (processedImageUrls.has(urlKey)) {
+			debugLog('Skipping replaceImages - already processed these URLs');
+			if (DEBUG_MODE) {
+				console.debug('URL key already processed; returning success');
+				console.groupEnd();
+			}
+			return true; // Return true since we successfully processed them before
+		}
+
+		const currentVisible = Array.from(document.querySelectorAll('img[data-abtest-replaced="true"]')).map(
+			img => img.src,
+		);
+
+		if (DEBUG_MODE) {
+			console.debug('Currently visible variant images:', currentVisible);
+			console.debug('Current URL key:', urlKey);
+			console.debug('Processed URL keys:', Array.from(processedImageUrls));
+		}
+
+		if (currentVisible.join('|') !== urlKey) {
+			debugLog('Detected variant change; clearing previous processed URLs');
+			if (DEBUG_MODE) {
+				console.debug('Variant switch detected, clearing processedImageUrls cache');
+			}
+			processedImageUrls.clear();
+		}
+
+		isReplacingImages = true;
+		processedImageUrls.add(urlKey);
+
+		try {
+			let replaced = 0;
+			let hidden = 0;
+			let visibleReplaced = 0;
+
+			// PHASE 1: Try to find product gallery container (theme-agnostic approach)
+			const gallery = findGalleryContainer();
+
+			if (gallery && gallery.images.length > 0) {
+				displayGalleryDebugInfo(gallery);
+
+				gallery.images.forEach(img => {
+					const wrapper = img.parentElement;
+					if (wrapper && wrapper !== gallery.container) {
+						wrapper.setAttribute('data-ab-gallery-wrapper', 'true');
+					}
+				});
+
+				// Filter to only visible images
+				const visibleImages = gallery.images.filter(img => isImageVisible(img));
+				displayVisibleImagesDebugInfo(visibleImages);
+				debugLog('Visible images in gallery:', visibleImages.length);
+
+				// PHASE 2: Replace first N images (where N = imageUrls.length)
+				visibleImages.forEach((img, index) => {
+					const parentWrapper = img.closest('[data-ab-gallery-wrapper]') || img.parentElement;
+					if (index < imageUrls.length) {
+						const wasVisible = isImageVisible(img);
+						logReplacement(img, imageUrls[index], index);
+						replaceImageSrc(img, imageUrls[index]);
+						replaced++;
+						if (wasVisible) visibleReplaced++;
+					} else {
+						hideImage(parentWrapper || img);
+						reportHiddenImage(img, index);
+						hidden++;
+					}
+				});
+
+				// Also handle hidden images that might become visible later
+				handleHiddenImages(gallery.images);
+			} else {
+				// Fallback: Use intelligent scoring
+				debugLog('Using intelligent scoring approach (no gallery container found)');
+				if (DEBUG_MODE) {
+					console.debug('No gallery found; falling back to scoring heuristic');
+				}
+				const productImages = findProductImages();
+				displayVisibleImagesDebugInfo(productImages);
+
+				// Replace first N images
+				productImages.forEach((img, index) => {
+					if (index < imageUrls.length) {
+						const wasVisible = isImageVisible(img);
+						logReplacement(img, imageUrls[index], index);
+						replaceImageSrc(img, imageUrls[index]);
+						replaced++;
+						if (wasVisible) visibleReplaced++;
+					} else {
+						// Hide extra images beyond variant count
+						hideImage(img);
+						reportHiddenImage(img, index);
+						hidden++;
+					}
+				});
+			}
+
+			// Report results
+			reportReplacementSummary(replaced, visibleReplaced, hidden, imageUrls.length);
+			hideEmptyWrappers();
+
+			// Handle lazy-loaded images that might appear later
+			if (replaced > 0) {
+				observeLazyImages(imageUrls);
+			}
+
+			// Only consider it successful if we replaced visible images
+			return visibleReplaced > 0;
+		} finally {
+			// Always reset the flag, even if an error occurs
+			isReplacingImages = false;
+			if (DEBUG_MODE) {
+				console.groupEnd();
+			}
+		}
+	}
+
+	function displayGalleryDebugInfo(gallery) {
+		if (!DEBUG_MODE) return;
+		console.debug('[A/B Test Debug] Gallery container located', {
+			selectorAttempted: gallery.container?.className,
+			totalImages: gallery.images.length,
+			firstFive: gallery.images.slice(0, 5).map((img) => img.src),
+		});
+	}
+
+	function displayVisibleImagesDebugInfo(images) {
+		if (!DEBUG_MODE) return;
+		console.debug('[A/B Test Debug] Candidate images after visibility filter', images.map((img) => ({
+			src: img.src,
+			visible: isImageVisible(img),
+		})));
+	}
+
+	function logReplacement(img, newSrc, index) {
+		debugLog('Replacing image', index, 'with', newSrc);
+		if (DEBUG_MODE) {
+			console.debug('[A/B Test Debug] Image details before replace', {
+				originalSrc: img.src,
+				index,
+				classes: img.className,
+				parentClasses: img.parentElement?.className,
+			});
+		}
+	}
+
+	function reportHiddenImage(img, index) {
+		debugLog('Hiding image index', index);
+		if (DEBUG_MODE) {
+			console.debug('[A/B Test Debug] Hidden image details', {
+				src: img.src,
+				index,
+				classes: img.className,
+				parentClasses: img.parentElement?.className,
+			});
+		}
+	}
+
+	function handleHiddenImages(images) {
+		const hiddenImages = images.filter((img) => !isImageVisible(img));
+		if (DEBUG_MODE && hiddenImages.length) {
+			console.debug('[A/B Test Debug] Hidden images to process', hiddenImages.map((img) => img.src));
+		}
+		hiddenImages.forEach((img) => {
+			if (!img.dataset.abTestReplaced) {
+				hideImage(img);
+				if (DEBUG_MODE) {
+					console.debug('[A/B Test Debug] Lazy image forced hidden', img.src);
+				}
+			}
+		});
+	}
+
+	function reportReplacementSummary(replaced, visibleReplaced, hidden, expected) {
+		console.log('[A/B Test] Replacement summary:', {
+			replaced,
+			visible: visibleReplaced,
+			hidden,
+			expected,
+		});
+	}
+
+	function hideEmptyWrappers() {
+		const containers = document.querySelectorAll('[data-ab-gallery-wrapper]');
+		containers.forEach((container) => {
+			const imgs = Array.from(container.querySelectorAll('img'));
+			const hasVariantImage = imgs.some((img) => img.dataset.abTestReplaced === 'true');
+			if (!hasVariantImage) {
+				container.style.display = 'none';
+				container.dataset.abTestHidden = 'true';
+				debugLog('Hiding gallery wrapper with no variant images');
+				if (DEBUG_MODE) {
+					console.debug('[A/B Test Debug] Wrapper hidden because no active images remain', container);
+				}
+			}
+		});
+	}
+
+	// Observe for lazy-loaded images
+	function observeLazyImages(imageUrls) {
+		if (!window.MutationObserver) return;
+
+		let observerTimeout;
+		let triggerCount = 0;
+		const MAX_TRIGGERS = 3; // Limit number of times observer can trigger
+
+		const observer = new MutationObserver(function (mutations) {
+			// Check if we've triggered too many times
+			if (triggerCount >= MAX_TRIGGERS) {
+				debugLog('Observer reached max triggers, disconnecting');
+				observer.disconnect();
+				return;
+			}
+
+			// Only trigger if new <img> elements were actually added
+			let hasNewImages = false;
+			for (const mutation of mutations) {
+				if (mutation.type === 'childList') {
+					for (const node of mutation.addedNodes) {
+						if (
+							node.tagName === 'IMG' ||
+							(node.querySelectorAll && node.querySelectorAll('img').length > 0)
+						) {
+							hasNewImages = true;
+							break;
+						}
+					}
+				}
+				if (hasNewImages) break;
+			}
+
+		if (!hasNewImages) {
+			debugLog('No new images detected, skipping');
+			return;
+		}
+
+		wireAddToCartTracking();
+		monitorAddToCartElements();
+
+			triggerCount++;
+			debugLog('Observer detected new images, trigger count:', triggerCount);
+
+			clearTimeout(observerTimeout);
+			observerTimeout = setTimeout(function () {
+				replaceImages(imageUrls);
+			}, 100);
+		});
+
+		// Only watch for new child elements, NOT attribute changes
+		// This prevents triggering when we modify src attributes
+		observer.observe(document.body, {
+			childList: true,
+			subtree: true,
+		});
+
+		// Disconnect after 5 seconds
+		setTimeout(function () {
+			debugLog('Observer timeout reached, disconnecting');
+			observer.disconnect();
+		}, 5000);
+	}
+
+	// Fetch variant assignment from app proxy
+	async function fetchVariant(productId, attempt = 1) {
+		const sessionId = getSessionId();
+
+		// Check for forced variant in URL (for testing: ?variant=a or ?variant=b)
+		const urlParams = new URLSearchParams(window.location.search);
+		const forcedVariant = urlParams.get('variant');
+
+		let url = APP_PROXY_BASE + '/variant/' + encodeURIComponent(productId) + '?session=' + sessionId;
+
+		// Add forced variant parameter if present
+		if (forcedVariant && (forcedVariant.toLowerCase() === 'a' || forcedVariant.toLowerCase() === 'b')) {
+			url += '&force=' + forcedVariant.toUpperCase();
+			console.log('[A/B Test] 🔧 Forcing variant:', forcedVariant.toUpperCase());
+		}
+
+		debugLog('Fetching variant from:', url, 'Attempt:', attempt);
+
+	try {
+		const response = await fetch(url, {
+			method: 'GET',
+			headers: {
+				Accept: 'application/json',
+				'X-AB-Session': sessionId.substring(0, 32),
+			},
+		});
+
+			debugLog('Response status:', response.status);
+
+			if (!response.ok) {
+				throw new Error('HTTP ' + response.status);
+			}
+
+			const data = await response.json();
+			debugLog('Variant data received:', data);
+			return data;
+		} catch (error) {
+			// Retry logic with exponential backoff
+			if (attempt < MAX_RETRY_ATTEMPTS) {
+				debugLog('Retrying... attempt', attempt + 1);
+				await new Promise(resolve => setTimeout(resolve, RETRY_DELAY * attempt));
+				return fetchVariant(productId, attempt + 1);
+			}
+
+			console.error('[A/B Test] Failed to fetch variant after', MAX_RETRY_ATTEMPTS, 'attempts:', error);
+			return null;
+		}
+	}
+
+	// Main initialization
+	async function init() {
+		console.log('[A/B Test] Initializing on page:', window.location.pathname);
+
+		// Check if we're on a product page
+		if (!window.location.pathname.includes('/products/')) {
+			debugLog('Not a product page, skipping A/B test');
+			return;
+		}
+
+		initAddToCartFallback();
+		wireAddToCartTracking();
+		monitorAddToCartElements();
 
 		const productId = getProductId();
 		if (!productId) {
-			console.warn('[A/B Test] Could not detect product ID');
+			// Error already logged in getProductId()
 			return;
 		}
 
-		currentVariantId = getCurrentVariantId();
-		debugLog('Initial variant ID:', currentVariantId || 'none (simple product)');
+		try {
+			const data = await fetchVariant(productId);
 
-		const success = await applyTest(productId, currentVariantId);
+			if (data && data.variant && data.imageUrls && data.testId) {
+				console.log(
+					'[A/B Test] Active test found:',
+					data.testId,
+					'Variant:',
+					data.variant,
+					'Images:',
+					data.imageUrls.length,
+				);
+				if (DEBUG_MODE) {
+					console.debug('[A/B Test Debug] Variant payload', data);
+				}
 
-		if (success) {
-			variantWatcher = watchVariantChanges((newVariantId) => {
-				debugLog('Variant changed, applying new test');
-				currentVariantId = newVariantId;
-				processedImageUrls.clear();
-				applyTest(productId, newVariantId);
-			});
+				const success = replaceImages(data.imageUrls, data.variant);
 
-			setTimeout(wireAddToCartTracking, 1000);
-			setTimeout(wireAddToCartTracking, 3000);
+				if (success) {
+					// Store test information for tracking (Web Pixels will use this)
+					sessionStorage.setItem(
+						ACTIVE_TEST_KEY,
+						JSON.stringify({
+							testId: data.testId,
+							variant: data.variant,
+							productId: productId,
+						}),
+					);
+
+					console.log('[A/B Test] ✅ Visible images replaced successfully');
+					wireAddToCartTracking();
+					monitorAddToCartElements();
+				} else {
+					console.warn('[A/B Test] ⚠️ Failed to replace visible images');
+					console.warn('[A/B Test] This may indicate theme compatibility issues');
+					console.warn('[A/B Test] Enable debug mode with ?ab_debug=true for detailed logs');
+					debugLog('Image URLs attempted:', data.imageUrls);
+				}
+			} else {
+				console.log('[A/B Test] No active test for this product');
+				debugLog('API response:', data);
+			}
+		} catch (error) {
+			console.error('[A/B Test] ❌ Initialization failed:', error);
 		}
 	}
 
+	// Wait for DOM and start
 	if (document.readyState === 'loading') {
 		document.addEventListener('DOMContentLoaded', init);
 	} else {
+		// DOM already loaded, but wait a tick for other scripts
 		setTimeout(init, 0);
 	}
 
-	window.addEventListener('load', () => {
-		const testData = getActiveTestData();
+	// Also try on window load for images that load late
+	window.addEventListener('load', function () {
+		const testData = sessionStorage.getItem(ACTIVE_TEST_KEY);
 		if (testData) {
-			setTimeout(() => {
-				const productId = getProductId();
-				if (productId === testData.productId) {
-					const variantId = getCurrentVariantId();
-					processedImageUrls.clear();
-					applyTest(productId, variantId);
-				}
-			}, 100);
+			try {
+				const data = JSON.parse(testData);
+				// Re-apply images in case some loaded late
+				setTimeout(function () {
+					const productId = getProductId();
+					if (productId === data.productId) {
+						fetchVariant(productId).then(function (variantData) {
+						if (variantData && variantData.imageUrls) {
+							replaceImages(variantData.imageUrls, variantData.variant);
+							wireAddToCartTracking();
+							monitorAddToCartElements();
+						}
+						});
+					}
+				}, 100);
+			} catch (e) {
+				// Ignore parse errors
+			}
 		}
 	});
-
-	window.__abTest = {
-		detectTheme,
-		findGalleryContainer,
-		replaceImages,
-		getCurrentVariantId,
-		getProductId,
-		DEBUG_MODE,
-		version: '3.0.0-unified'
-	};
-
 })();
