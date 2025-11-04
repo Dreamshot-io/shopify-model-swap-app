@@ -299,46 +299,141 @@ export const action = async ({ request }: ActionFunctionArgs): Promise<Response>
 
 			case 'createABTest': {
 				const name = String(formData.get('name') || '');
+				const variantScope = String(formData.get('variantScope') || 'PRODUCT');
+				const variantTestsJson = String(formData.get('variantTests') || '');
 				const variantAImages = String(formData.get('variantAImages') || '');
 				const variantBImages = String(formData.get('variantBImages') || '');
 				const trafficSplit = parseInt(String(formData.get('trafficSplit') || '50'));
 
-				if (!name || !productId || !variantAImages || !variantBImages) {
+				if (!name || !productId) {
 					return json(
 						{ ok: false, error: 'Missing required fields' },
 						{ status: 400, headers: { 'Content-Type': 'application/json' } },
 					);
 				}
 
-				const testId = crypto.randomUUID();
-				const test = await db.aBTest.create({
-					data: {
-						id: testId,
+				// Parse variant tests if scope is VARIANT
+				let variantTests: Array<{ shopifyVariantId: string; variantAImages: string[]; variantBImages: string[] }> = [];
+				if (variantScope === 'VARIANT' && variantTestsJson) {
+					try {
+						variantTests = JSON.parse(variantTestsJson);
+						if (!Array.isArray(variantTests) || variantTests.length === 0) {
+							return json(
+								{ ok: false, error: 'Variant tests must be a non-empty array' },
+								{ status: 400, headers: { 'Content-Type': 'application/json' } },
+							);
+						}
+					} catch (error) {
+						return json(
+							{ ok: false, error: 'Invalid variant tests format' },
+							{ status: 400, headers: { 'Content-Type': 'application/json' } },
+						);
+					}
+				} else if (variantScope === 'PRODUCT' && (!variantAImages || !variantBImages)) {
+					return json(
+						{ ok: false, error: 'Missing variant images for product-wide test' },
+						{ status: 400, headers: { 'Content-Type': 'application/json' } },
+					);
+				}
+
+				// Check for existing active test for this product
+				const existingActiveTest = await db.aBTest.findFirst({
+					where: {
 						shop: session.shop,
 						productId,
-						name,
-						status: 'DRAFT',
-						trafficSplit,
-						updatedAt: new Date(),
-						variants: {
-							create: [
-								{
-									id: crypto.randomUUID(),
-									variant: 'A',
-									imageUrls: variantAImages,
-								},
-								{
-									id: crypto.randomUUID(),
-									variant: 'B',
-									imageUrls: variantBImages,
-								},
-							],
+						status: {
+							in: ['DRAFT', 'RUNNING'],
 						},
 					},
-					include: { variants: true },
 				});
 
-				return json({ ok: true, test });
+				if (existingActiveTest) {
+					return json(
+						{
+							ok: false,
+							error: 'An active A/B test already exists for this product. Please complete or delete the existing test before creating a new one.',
+						},
+						{ status: 400, headers: { 'Content-Type': 'application/json' } },
+					);
+				}
+
+				try {
+					let test;
+
+					if (variantScope === 'VARIANT') {
+						// Create SINGLE test with multiple variant configurations
+						// Each Shopify variant gets both A and B test variants
+						const variantConfigs = variantTests.flatMap(vt => [
+							{
+								variant: 'A',
+								imageUrls: JSON.stringify(vt.variantAImages),
+								shopifyVariantId: vt.shopifyVariantId,
+							},
+							{
+								variant: 'B',
+								imageUrls: JSON.stringify(vt.variantBImages),
+								shopifyVariantId: vt.shopifyVariantId,
+							},
+						]);
+
+						test = await db.aBTest.create({
+							data: {
+								shop: session.shop,
+								productId,
+								name,
+								status: 'DRAFT',
+								variantScope: 'VARIANT',
+								trafficSplit,
+								variants: {
+									create: variantConfigs,
+								},
+							},
+							include: {
+								variants: true,
+							},
+						});
+
+						console.log(
+							`[A/B Test Created] Single test with ${variantConfigs.length} variant configs (${variantTests.length} Shopify variants x 2)`,
+						);
+					} else {
+						// Create product-wide test
+						test = await db.aBTest.create({
+							data: {
+								shop: session.shop,
+								productId,
+								name,
+								status: 'DRAFT',
+								variantScope: 'PRODUCT',
+								trafficSplit,
+								variants: {
+									create: [
+										{
+											variant: 'A',
+											imageUrls: variantAImages,
+											shopifyVariantId: null,
+										},
+										{
+											variant: 'B',
+											imageUrls: variantBImages,
+											shopifyVariantId: null,
+										},
+									],
+								},
+							},
+							include: {
+								variants: true,
+							},
+						});
+
+						console.log(`[A/B Test Created] Product-wide test with 2 variants (A/B)`);
+					}
+
+					return json({ ok: true, test });
+				} catch (error) {
+					console.error('Failed to create A/B test:', error);
+					return json({ ok: false, error: 'Failed to create A/B test' }, { status: 500 });
+				}
 			}
 
 			case 'startABTest':
@@ -753,9 +848,15 @@ export default function AIStudio() {
 		fd.set('intent', 'createABTest');
 		fd.set('name', request.name);
 		fd.set('productId', request.productId);
-		fd.set('variantAImages', JSON.stringify(request.variantAImages));
-		fd.set('variantBImages', JSON.stringify(request.variantBImages));
+		fd.set('variantScope', request.variantScope || 'PRODUCT');
 		fd.set('trafficSplit', String(request.trafficSplit || 50));
+
+		if (request.variantScope === 'VARIANT' && request.variantTests) {
+			fd.set('variantTests', JSON.stringify(request.variantTests));
+		} else {
+			fd.set('variantAImages', JSON.stringify(request.variantAImages || []));
+			fd.set('variantBImages', JSON.stringify(request.variantBImages || []));
+		}
 
 		fetcher.submit(fd, { method: 'post' });
 	};

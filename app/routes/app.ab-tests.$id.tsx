@@ -22,7 +22,7 @@ import db from "../db.server";
 import { calculateStatistics } from "../features/ab-testing/utils/statistics";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
-  const { session } = await authenticate.admin(request);
+  const { session, admin } = await authenticate.admin(request);
   const testId = params.id;
 
   if (!testId) {
@@ -46,6 +46,39 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     throw new Response("Test not found", { status: 404 });
   }
 
+  // Fetch product variants if this is a variant-scoped test
+  let productVariants: any[] = [];
+  if (abTest.variantScope === 'VARIANT') {
+    try {
+      const response = await admin.graphql(
+        `#graphql
+        query GetProductVariants($id: ID!) {
+          product(id: $id) {
+            variants(first: 100) {
+              nodes {
+                id
+                title
+                displayName
+                selectedOptions {
+                  name
+                  value
+                }
+              }
+            }
+          }
+        }`,
+        {
+          variables: { id: abTest.productId },
+        },
+      );
+
+      const responseJson = await response.json();
+      productVariants = responseJson.data?.product?.variants?.nodes || [];
+    } catch (error) {
+      console.error('[AB Test Details] Failed to fetch product variants:', error);
+    }
+  }
+
   const serialized = {
     ...abTest,
     createdAt: abTest.createdAt.toISOString(),
@@ -56,17 +89,28 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
       ...event,
       createdAt: event.createdAt.toISOString(),
     })),
+    variants: abTest.variants.map((v: any) => {
+      try {
+        if (!v.imageUrls || v.imageUrls === 'undefined' || v.imageUrls === 'null' || v.imageUrls === '') {
+          return { ...v, imageUrls: [] };
+        }
+        return { ...v, imageUrls: JSON.parse(v.imageUrls) };
+      } catch {
+        return { ...v, imageUrls: [] };
+      }
+    }),
   };
 
-  return json({ abTest: serialized });
+  return json({ abTest: serialized, productVariants });
 };
 
 export default function ABTestDetails() {
-  const { abTest } = useLoaderData<typeof loader>();
+  const { abTest, productVariants } = useLoaderData<typeof loader>();
   const stats = calculateStatistics(abTest.events);
   const [previewVariant, setPreviewVariant] = useState<{
     variant: "A" | "B";
     images: string[];
+    variantTitle?: string;
   } | null>(null);
 
   const getStatusBadge = (status: string) => {
@@ -86,12 +130,29 @@ export default function ABTestDetails() {
     }
   };
 
-  const variantAImages = JSON.parse(
-    abTest.variants.find((v: any) => v.variant === "A")?.imageUrls || "[]",
-  );
-  const variantBImages = JSON.parse(
-    abTest.variants.find((v: any) => v.variant === "B")?.imageUrls || "[]",
-  );
+  const formatVariantTitle = (variant: any): string => {
+    if (!variant) return 'Unknown';
+    if (variant.title === 'Default Title') {
+      return 'Default Variant';
+    }
+    const options = variant.selectedOptions?.map((opt: any) => opt.value).join(' / ');
+    return options || variant.title || 'Unknown';
+  };
+
+  const getShopifyVariant = (shopifyVariantId: string | null) => {
+    if (!shopifyVariantId || !productVariants) return null;
+    return productVariants.find((v: any) => v.id === shopifyVariantId) || null;
+  };
+
+  const isVariantScoped = abTest.variantScope === 'VARIANT';
+
+  // For product-scoped tests, use existing logic
+  const variantAImages = isVariantScoped
+    ? []
+    : (abTest.variants.find((v: any) => v.variant === "A" && !v.shopifyVariantId)?.imageUrls || []);
+  const variantBImages = isVariantScoped
+    ? []
+    : (abTest.variants.find((v: any) => v.variant === "B" && !v.shopifyVariantId)?.imageUrls || []);
 
   return (
     <Page
@@ -181,162 +242,374 @@ export default function ABTestDetails() {
             {/* Variant Performance */}
             <Card>
               <BlockStack gap="300">
-                <Text variant="headingMd">Variant Performance</Text>
+                <InlineStack align="space-between">
+                  <Text variant="headingMd">Variant Performance</Text>
+                  {isVariantScoped && (
+                    <Badge tone="info">Variant-Scoped Test</Badge>
+                  )}
+                </InlineStack>
 
-                <DataTable
-                  columnContentTypes={[
-                    "text",
-                    "numeric",
-                    "numeric",
-                    "numeric",
-                    "numeric",
-                    "text",
-                  ]}
-                  headings={[
-                    "Images",
-                    "Impressions",
-                    "ATC",
-                    "Purchases",
-                    "Revenue",
-                    "Preview",
-                  ]}
-                  rows={[
-                    [
-                      <div
-                        key="variant-a-images"
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "12px",
-                        }}
-                      >
-                        <InlineStack gap="200" wrap={false} align="center">
-                          <Text variant="headingMd">
-                            Variant A
-                            {stats.winner === "A" && stats.isSignificant && (
-                              <span style={{ marginLeft: "8px" }}>🏆</span>
-                            )}
-                          </Text>
-                          <InlineStack gap="100" wrap={false}>
-                            {variantAImages
-                              .slice(0, 5)
-                              .map((url: string, index: number) => (
-                                <div
-                                  key={index}
-                                  style={{
-                                    width: "40px",
-                                    height: "40px",
-                                    borderRadius: "4px",
-                                    overflow: "hidden",
-                                    border: "1px solid #E1E3E5",
-                                    flexShrink: 0,
-                                  }}
-                                >
-                                  <img
-                                    src={url}
-                                    alt={`Variant A option ${index + 1}`}
-                                    style={{
-                                      width: "100%",
-                                      height: "100%",
-                                      objectFit: "cover",
-                                    }}
-                                  />
-                                </div>
-                              ))}
-                            {variantAImages.length > 5 && (
-                              <Text variant="bodySm" tone="subdued">
-                                +{variantAImages.length - 5}
-                              </Text>
-                            )}
-                          </InlineStack>
-                        </InlineStack>
-                      </div>,
-                      stats.variantA.impressions.toLocaleString(),
-                      stats.variantA.addToCarts.toLocaleString(),
-                      stats.variantA.purchases.toLocaleString(),
-                      `$${stats.variantA.revenue.toFixed(2)}`,
-                      <Button
-                        key="variant-a-preview"
-                        size="micro"
-                        onClick={() =>
-                          setPreviewVariant({
-                            variant: "A",
-                            images: variantAImages,
-                          })
+                {isVariantScoped ? (
+                  // Variant-scoped test: show each product variant separately
+                  <BlockStack gap="400">
+                    {(() => {
+                      // Group variants by shopifyVariantId
+                      const variantGroups = new Map<string, { variantA: any; variantB: any }>();
+                      abTest.variants.forEach((v: any) => {
+                        const key = v.shopifyVariantId || 'null';
+                        if (!variantGroups.has(key)) {
+                          variantGroups.set(key, { variantA: null, variantB: null });
                         }
-                      >
-                        👁️ Preview
-                      </Button>,
-                    ],
-                    [
-                      <div
-                        key="variant-b-images"
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "12px",
-                        }}
-                      >
-                        <InlineStack gap="200" wrap={false} align="center">
-                          <Text variant="headingMd">
-                            Variant B
-                            {stats.winner === "B" && stats.isSignificant && (
-                              <span style={{ marginLeft: "8px" }}>🏆</span>
-                            )}
-                          </Text>
-                          <InlineStack gap="100" wrap={false}>
-                            {variantBImages
-                              .slice(0, 5)
-                              .map((url: string, index: number) => (
-                                <div
-                                  key={index}
-                                  style={{
-                                    width: "40px",
-                                    height: "40px",
-                                    borderRadius: "4px",
-                                    overflow: "hidden",
-                                    border: "1px solid #E1E3E5",
-                                    flexShrink: 0,
-                                  }}
-                                >
-                                  <img
-                                    src={url}
-                                    alt={`Variant B option ${index + 1}`}
-                                    style={{
-                                      width: "100%",
-                                      height: "100%",
-                                      objectFit: "cover",
-                                    }}
-                                  />
-                                </div>
-                              ))}
-                            {variantBImages.length > 5 && (
-                              <Text variant="bodySm" tone="subdued">
-                                +{variantBImages.length - 5}
-                              </Text>
-                            )}
-                          </InlineStack>
-                        </InlineStack>
-                      </div>,
-                      stats.variantB.impressions.toLocaleString(),
-                      stats.variantB.addToCarts.toLocaleString(),
-                      stats.variantB.purchases.toLocaleString(),
-                      `$${stats.variantB.revenue.toFixed(2)}`,
-                      <Button
-                        key="variant-b-preview"
-                        size="micro"
-                        onClick={() =>
-                          setPreviewVariant({
-                            variant: "B",
-                            images: variantBImages,
-                          })
+                        const group = variantGroups.get(key)!;
+                        if (v.variant === 'A') {
+                          group.variantA = v;
+                        } else if (v.variant === 'B') {
+                          group.variantB = v;
                         }
-                      >
-                        👁️ Preview
-                      </Button>,
-                    ],
-                  ]}
-                />
+                      });
+
+                      return Array.from(variantGroups.entries()).map(([shopifyVariantId, group]) => {
+                        const shopifyVariant = getShopifyVariant(shopifyVariantId);
+                        const variantTitle = shopifyVariant
+                          ? formatVariantTitle(shopifyVariant)
+                          : shopifyVariantId === 'null'
+                            ? 'Product-Wide'
+                            : `Variant ${shopifyVariantId.substring(0, 8)}...`;
+
+                        const variantAImages = group.variantA?.imageUrls || [];
+                        const variantBImages = group.variantB?.imageUrls || [];
+
+                        return (
+                          <Card key={shopifyVariantId} background="subdued">
+                            <BlockStack gap="300">
+                              <Text variant="headingSm" fontWeight="semibold">
+                                {variantTitle}
+                              </Text>
+                              <DataTable
+                                columnContentTypes={[
+                                  "text",
+                                  "numeric",
+                                  "numeric",
+                                  "numeric",
+                                  "numeric",
+                                  "text",
+                                ]}
+                                headings={[
+                                  "Images",
+                                  "Impressions",
+                                  "ATC",
+                                  "Purchases",
+                                  "Revenue",
+                                  "Preview",
+                                ]}
+                                rows={[
+                                  [
+                                    <div
+                                      key="variant-a-images"
+                                      style={{
+                                        display: "flex",
+                                        alignItems: "center",
+                                        gap: "12px",
+                                      }}
+                                    >
+                                      <InlineStack gap="200" wrap={false} align="center">
+                                        <Text variant="headingMd">
+                                          Variant A
+                                          {stats.winner === "A" && stats.isSignificant && (
+                                            <span style={{ marginLeft: "8px" }}>🏆</span>
+                                          )}
+                                        </Text>
+                                        <InlineStack gap="100" wrap={false}>
+                                          {variantAImages.slice(0, 5).map((url: string, index: number) => (
+                                            <div
+                                              key={index}
+                                              style={{
+                                                width: "40px",
+                                                height: "40px",
+                                                borderRadius: "4px",
+                                                overflow: "hidden",
+                                                border: "1px solid #E1E3E5",
+                                                flexShrink: 0,
+                                              }}
+                                            >
+                                              <img
+                                                src={url}
+                                                alt={`Variant A option ${index + 1}`}
+                                                style={{
+                                                  width: "100%",
+                                                  height: "100%",
+                                                  objectFit: "cover",
+                                                }}
+                                              />
+                                            </div>
+                                          ))}
+                                          {variantAImages.length > 5 && (
+                                            <Text variant="bodySm" tone="subdued">
+                                              +{variantAImages.length - 5}
+                                            </Text>
+                                          )}
+                                          {variantAImages.length === 0 && (
+                                            <Text variant="bodySm" tone="subdued">
+                                              No images
+                                            </Text>
+                                          )}
+                                        </InlineStack>
+                                      </InlineStack>
+                                    </div>,
+                                    stats.variantA.impressions.toLocaleString(),
+                                    stats.variantA.addToCarts.toLocaleString(),
+                                    stats.variantA.purchases.toLocaleString(),
+                                    `$${stats.variantA.revenue.toFixed(2)}`,
+                                    <Button
+                                      key="variant-a-preview"
+                                      size="micro"
+                                      onClick={() =>
+                                        setPreviewVariant({
+                                          variant: "A",
+                                          images: variantAImages,
+                                          variantTitle,
+                                        })
+                                      }
+                                    >
+                                      👁️ Preview
+                                    </Button>,
+                                  ],
+                                  [
+                                    <div
+                                      key="variant-b-images"
+                                      style={{
+                                        display: "flex",
+                                        alignItems: "center",
+                                        gap: "12px",
+                                      }}
+                                    >
+                                      <InlineStack gap="200" wrap={false} align="center">
+                                        <Text variant="headingMd">
+                                          Variant B
+                                          {stats.winner === "B" && stats.isSignificant && (
+                                            <span style={{ marginLeft: "8px" }}>🏆</span>
+                                          )}
+                                        </Text>
+                                        <InlineStack gap="100" wrap={false}>
+                                          {variantBImages.slice(0, 5).map((url: string, index: number) => (
+                                            <div
+                                              key={index}
+                                              style={{
+                                                width: "40px",
+                                                height: "40px",
+                                                borderRadius: "4px",
+                                                overflow: "hidden",
+                                                border: "1px solid #E1E3E5",
+                                                flexShrink: 0,
+                                              }}
+                                            >
+                                              <img
+                                                src={url}
+                                                alt={`Variant B option ${index + 1}`}
+                                                style={{
+                                                  width: "100%",
+                                                  height: "100%",
+                                                  objectFit: "cover",
+                                                }}
+                                              />
+                                            </div>
+                                          ))}
+                                          {variantBImages.length > 5 && (
+                                            <Text variant="bodySm" tone="subdued">
+                                              +{variantBImages.length - 5}
+                                            </Text>
+                                          )}
+                                          {variantBImages.length === 0 && (
+                                            <Text variant="bodySm" tone="subdued">
+                                              No images
+                                            </Text>
+                                          )}
+                                        </InlineStack>
+                                      </InlineStack>
+                                    </div>,
+                                    stats.variantB.impressions.toLocaleString(),
+                                    stats.variantB.addToCarts.toLocaleString(),
+                                    stats.variantB.purchases.toLocaleString(),
+                                    `$${stats.variantB.revenue.toFixed(2)}`,
+                                    <Button
+                                      key="variant-b-preview"
+                                      size="micro"
+                                      onClick={() =>
+                                        setPreviewVariant({
+                                          variant: "B",
+                                          images: variantBImages,
+                                          variantTitle,
+                                        })
+                                      }
+                                    >
+                                      👁️ Preview
+                                    </Button>,
+                                  ],
+                                ]}
+                              />
+                            </BlockStack>
+                          </Card>
+                        );
+                      });
+                    })()}
+                  </BlockStack>
+                ) : (
+                  // Product-scoped test: existing logic
+                  <DataTable
+                    columnContentTypes={[
+                      "text",
+                      "numeric",
+                      "numeric",
+                      "numeric",
+                      "numeric",
+                      "text",
+                    ]}
+                    headings={[
+                      "Images",
+                      "Impressions",
+                      "ATC",
+                      "Purchases",
+                      "Revenue",
+                      "Preview",
+                    ]}
+                    rows={[
+                      [
+                        <div
+                          key="variant-a-images"
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "12px",
+                          }}
+                        >
+                          <InlineStack gap="200" wrap={false} align="center">
+                            <Text variant="headingMd">
+                              Variant A
+                              {stats.winner === "A" && stats.isSignificant && (
+                                <span style={{ marginLeft: "8px" }}>🏆</span>
+                              )}
+                            </Text>
+                            <InlineStack gap="100" wrap={false}>
+                              {variantAImages
+                                .slice(0, 5)
+                                .map((url: string, index: number) => (
+                                  <div
+                                    key={index}
+                                    style={{
+                                      width: "40px",
+                                      height: "40px",
+                                      borderRadius: "4px",
+                                      overflow: "hidden",
+                                      border: "1px solid #E1E3E5",
+                                      flexShrink: 0,
+                                    }}
+                                  >
+                                    <img
+                                      src={url}
+                                      alt={`Variant A option ${index + 1}`}
+                                      style={{
+                                        width: "100%",
+                                        height: "100%",
+                                        objectFit: "cover",
+                                      }}
+                                    />
+                                  </div>
+                                ))}
+                              {variantAImages.length > 5 && (
+                                <Text variant="bodySm" tone="subdued">
+                                  +{variantAImages.length - 5}
+                                </Text>
+                              )}
+                            </InlineStack>
+                          </InlineStack>
+                        </div>,
+                        stats.variantA.impressions.toLocaleString(),
+                        stats.variantA.addToCarts.toLocaleString(),
+                        stats.variantA.purchases.toLocaleString(),
+                        `$${stats.variantA.revenue.toFixed(2)}`,
+                        <Button
+                          key="variant-a-preview"
+                          size="micro"
+                          onClick={() =>
+                            setPreviewVariant({
+                              variant: "A",
+                              images: variantAImages,
+                            })
+                          }
+                        >
+                          👁️ Preview
+                        </Button>,
+                      ],
+                      [
+                        <div
+                          key="variant-b-images"
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "12px",
+                          }}
+                        >
+                          <InlineStack gap="200" wrap={false} align="center">
+                            <Text variant="headingMd">
+                              Variant B
+                              {stats.winner === "B" && stats.isSignificant && (
+                                <span style={{ marginLeft: "8px" }}>🏆</span>
+                              )}
+                            </Text>
+                            <InlineStack gap="100" wrap={false}>
+                              {variantBImages
+                                .slice(0, 5)
+                                .map((url: string, index: number) => (
+                                  <div
+                                    key={index}
+                                    style={{
+                                      width: "40px",
+                                      height: "40px",
+                                      borderRadius: "4px",
+                                      overflow: "hidden",
+                                      border: "1px solid #E1E3E5",
+                                      flexShrink: 0,
+                                    }}
+                                  >
+                                    <img
+                                      src={url}
+                                      alt={`Variant B option ${index + 1}`}
+                                      style={{
+                                        width: "100%",
+                                        height: "100%",
+                                        objectFit: "cover",
+                                      }}
+                                    />
+                                  </div>
+                                ))}
+                              {variantBImages.length > 5 && (
+                                <Text variant="bodySm" tone="subdued">
+                                  +{variantBImages.length - 5}
+                                </Text>
+                              )}
+                            </InlineStack>
+                          </InlineStack>
+                        </div>,
+                        stats.variantB.impressions.toLocaleString(),
+                        stats.variantB.addToCarts.toLocaleString(),
+                        stats.variantB.purchases.toLocaleString(),
+                        `$${stats.variantB.revenue.toFixed(2)}`,
+                        <Button
+                          key="variant-b-preview"
+                          size="micro"
+                          onClick={() =>
+                            setPreviewVariant({
+                              variant: "B",
+                              images: variantBImages,
+                            })
+                          }
+                        >
+                          👁️ Preview
+                        </Button>,
+                      ],
+                    ]}
+                  />
+                )}
               </BlockStack>
             </Card>
 
@@ -385,13 +658,13 @@ export default function ABTestDetails() {
         <Modal
           open={true}
           onClose={() => setPreviewVariant(null)}
-          title={`Product Preview - Variant ${previewVariant.variant}`}
+          title={`Product Preview - Variant ${previewVariant.variant}${previewVariant.variantTitle ? ` (${previewVariant.variantTitle})` : ''}`}
           large
         >
           <Modal.Section>
             <BlockStack gap="400">
               <Text variant="headingMd" as="h3">
-                How your product would look with Variant{" "}
+                How your product{previewVariant.variantTitle ? ` variant "${previewVariant.variantTitle}"` : ''} would look with Variant{" "}
                 {previewVariant.variant} images:
               </Text>
 
