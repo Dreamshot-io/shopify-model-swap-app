@@ -32,6 +32,23 @@ enum EventType {
   UPLOADED
 }
 
+enum RotationSlotStatus {
+  ACTIVE
+  PAUSED
+  DISABLED
+}
+
+enum RotationVariant {
+  CONTROL
+  TEST
+}
+
+enum RotationTrigger {
+  CRON
+  MANUAL
+  ROLLBACK
+}
+
 model Session {
   id            String    @id
   shop          String
@@ -75,6 +92,7 @@ model ABTest {
   endDate      DateTime?
   variants     ABTestVariant[]
   events       ABTestEvent[]
+  rotationSlots RotationSlot[]
   createdAt    DateTime        @default(now())
   updatedAt    DateTime        @updatedAt
 
@@ -91,6 +109,8 @@ model ABTestVariant {
   imageUrls        String  // JSON array stored as string
   shopifyVariantId String? // Optional: Link to actual Shopify product variant
   test             ABTest  @relation(fields: [testId], references: [id], onDelete: Cascade)
+  rotationSlotsA   RotationSlot[] @relation("RotationSlotVariantA")
+  rotationSlotsB   RotationSlot[] @relation("RotationSlotVariantB")
 
   // Performance index for variant lookup
   @@index([testId, variant])
@@ -112,4 +132,46 @@ model ABTestEvent {
   @@index([testId, sessionId])
   @@index([testId, eventType])
   @@index([testId, createdAt])
+}
+
+model RotationSlot {
+  id               String            @id @default(cuid())
+  shop             String
+  productId        String
+  shopifyVariantId String?
+  testId           String
+  variantAId       String?
+  variantBId       String?
+  status           RotationSlotStatus @default(ACTIVE)
+  activeVariant    RotationVariant    @default(CONTROL)
+  intervalMinutes  Int                @default(10)
+  lastSwitchAt     DateTime?
+  nextSwitchDueAt  DateTime?
+  controlMedia     Json
+  testMedia        Json
+  metadata         Json?
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+
+  test      ABTest         @relation(fields: [testId], references: [id], onDelete: Cascade)
+  variantA  ABTestVariant? @relation("RotationSlotVariantA", fields: [variantAId], references: [id])
+  variantB  ABTestVariant? @relation("RotationSlotVariantB", fields: [variantBId], references: [id])
+  history   RotationHistory[]
+
+  @@unique([shop, productId, shopifyVariantId])
+  @@index([shop, nextSwitchDueAt])
+  @@index([testId])
+}
+
+model RotationHistory {
+  id            String           @id @default(cuid())
+  slotId        String
+  switchedVariant RotationVariant
+  triggeredBy   RotationTrigger
+  switchedAt    DateTime         @default(now())
+  context       Json?
+
+  slot RotationSlot @relation(fields: [slotId], references: [id], onDelete: Cascade)
+
+  @@index([slotId, switchedAt])
 }
