@@ -7,7 +7,6 @@ import {
   Layout,
   Card,
   BlockStack,
-  Banner,
   Text,
   Button,
   InlineStack,
