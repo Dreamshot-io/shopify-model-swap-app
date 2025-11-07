@@ -35,7 +35,7 @@ export async function handleGenerate(
         data: {
           id: crypto.randomUUID(),
           shop,
-          type: "GENERATED",
+          eventType: "GENERATED",
           productId,
           imageUrl: result.imageUrl,
         },

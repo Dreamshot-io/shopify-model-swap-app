@@ -1,0 +1,117 @@
+[
+  {
+    "id": "cmhoouvb6000h9ktb824ad3k9",
+    "shop": "genlabs-dev-store.myshopify.com",
+    "productId": "gid://shopify/Product/7806848499781",
+    "shopifyVariantId": null,
+    "testId": "cmhoouo81000d9ktbdaayrbe1",
+    "variantAId": "cmhoouo81000e9ktbaz7r5vfh",
+    "variantBId": "cmhoouo81000f9ktbzxoyvay8",
+    "status": "ACTIVE",
+    "activeVariant": "TEST",
+    "intervalMinutes": 10,
+    "lastSwitchAt": "2025-11-07T10:05:05.647Z",
+    "nextSwitchDueAt": "2025-11-07T10:15:05.647Z",
+    "controlMedia": [
+      {
+        "id": "gid://shopify/MediaImage/29832090976325",
+        "url": "https://cdn.shopify.com/s/files/1/0684/2158/2917/files/rotation-image-0_c58bf8ce-2103-400d-9e2e-498ffa8bb308.jpg?v=1762509289",
+        "altText": "",
+        "position": 1
+      },
+      {
+        "id": "gid://shopify/MediaImage/29815067705413",
+        "url": "https://cdn.shopify.com/s/files/1/0684/2158/2917/files/replicate-prediction-jdts34phvdrme0ct07sr85mvwm-0.jpg?v=1762509289",
+        "altText": "",
+        "position": 2
+      },
+      {
+        "id": "gid://shopify/MediaImage/29815067738181",
+        "url": "https://cdn.shopify.com/s/files/1/0684/2158/2917/files/replicate-prediction-jdts34phvdrme0ct07sr85mvwm-2.jpg?v=1762509289",
+        "altText": "",
+        "position": 3
+      },
+      {
+        "id": "gid://shopify/MediaImage/29815067770949",
+        "url": "https://cdn.shopify.com/s/files/1/0684/2158/2917/files/replicate-prediction-jdts34phvdrme0ct07sr85mvwm-1_33cbca59-6b7b-4618-b5f8-63a6a2bd624c.jpg?v=1762509289",
+        "altText": "",
+        "position": 4
+      },
+      {
+        "id": "gid://shopify/MediaImage/29815067803717",
+        "url": "https://cdn.shopify.com/s/files/1/0684/2158/2917/files/replicate-prediction-h1xqzznztsrme0ct07rta7gwmr-0.jpg?v=1762509289",
+        "altText": "",
+        "position": 5
+      },
+      {
+        "id": "gid://shopify/MediaImage/29815067836485",
+        "url": "https://cdn.shopify.com/s/files/1/0684/2158/2917/files/replicate-prediction-h1xqzznztsrme0ct07rta7gwmr-2.jpg?v=1762509289",
+        "altText": "",
+        "position": 6
+      },
+      {
+        "id": "gid://shopify/MediaImage/29815067869253",
+        "url": "https://cdn.shopify.com/s/files/1/0684/2158/2917/files/replicate-prediction-t0zaybn6t5rm80ct07vbqda6sw-0_088a6706-fd9d-412f-bf73-a3d63ca97da3.jpg?v=1762509289",
+        "altText": "",
+        "position": 7
+      },
+      {
+        "id": "gid://shopify/MediaImage/29815067902021",
+        "url": "https://cdn.shopify.com/s/files/1/0684/2158/2917/files/replicate-prediction-t0zaybn6t5rm80ct07vbqda6sw-1_b94c3510-1c88-4dc0-9429-d746428a0a44.jpg?v=1762509289",
+        "altText": "",
+        "position": 8
+      },
+      {
+        "id": "gid://shopify/MediaImage/29832091074629",
+        "url": "https://cdn.shopify.com/s/files/1/0684/2158/2917/files/rotation-image-1_153f3e0a-3eda-4441-a5c2-f2eb8ea784fd.jpg?v=1762509289",
+        "altText": "",
+        "position": 9
+      },
+      {
+        "id": "gid://shopify/MediaImage/29832091107397",
+        "url": "https://cdn.shopify.com/s/files/1/0684/2158/2917/files/rotation-image-2_5be6f963-7a29-45f5-8e26-e9afbf5d0b8b.jpg?v=1762509289",
+        "altText": "",
+        "position": 10
+      },
+      {
+        "id": "gid://shopify/MediaImage/29832091140165",
+        "url": "https://cdn.shopify.com/s/files/1/0684/2158/2917/files/rotation-image-3_b1c7f1dc-866a-498d-9339-02fdbc8e50d7.jpg?v=1762509289",
+        "altText": "",
+        "position": 11
+      }
+    ],
+    "testMedia": [
+      {
+        "id": "gid://shopify/MediaImage/29832130134085",
+        "url": "https://cdn.shopify.com/s/files/1/0684/2158/2917/files/rotation-image-0_c58bf8ce-2103-400d-9e2e-498ffa8bb308.jpg?v=1762509289",
+        "altText": null,
+        "position": 1,
+        "metafieldId": null
+      },
+      {
+        "id": "gid://shopify/MediaImage/29832130166853",
+        "url": "https://cdn.shopify.com/s/files/1/0684/2158/2917/files/rotation-image-1_153f3e0a-3eda-4441-a5c2-f2eb8ea784fd.jpg?v=1762509289",
+        "altText": null,
+        "position": 2,
+        "metafieldId": null
+      },
+      {
+        "id": "gid://shopify/MediaImage/29832130199621",
+        "url": "https://cdn.shopify.com/s/files/1/0684/2158/2917/files/rotation-image-3_b1c7f1dc-866a-498d-9339-02fdbc8e50d7.jpg?v=1762509289",
+        "altText": null,
+        "position": 3,
+        "metafieldId": null
+      },
+      {
+        "id": "gid://shopify/MediaImage/29832130232389",
+        "url": "https://v3b.fal.media/files/b/panda/g6gV6C2QsAdQzt4uMJiBd.jpg",
+        "altText": null,
+        "position": 4,
+        "metafieldId": null
+      }
+    ],
+    "metadata": null,
+    "createdAt": "2025-11-07T10:04:09.090Z",
+    "updatedAt": "2025-11-07T10:05:05.649Z"
+  }
+]

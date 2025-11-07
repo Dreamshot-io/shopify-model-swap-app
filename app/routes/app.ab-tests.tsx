@@ -1,499 +1,827 @@
-import { useEffect, useState } from 'react';
+import { useState, useEffect } from 'react';
 import type { LoaderFunctionArgs, ActionFunctionArgs } from '@remix-run/node';
 import { json } from '@remix-run/node';
-import { useLoaderData, useFetcher } from '@remix-run/react';
+import { useLoaderData, useFetcher, useNavigate } from '@remix-run/react';
 import {
-	Page,
-	Layout,
-	Text,
-	Card,
-	Button,
-	BlockStack,
-	Banner,
-	DataTable,
-	Badge,
-	Modal,
-	FormLayout,
-	TextField,
-	InlineStack,
+  Page,
+  Layout,
+  Card,
+  BlockStack,
+  Banner,
+  Text,
+  Button,
+  InlineStack,
+  Badge,
+  DataTable,
+  ProgressBar,
+  Divider,
 } from '@shopify/polaris';
 import { TitleBar, useAppBridge } from '@shopify/app-bridge-react';
 import { authenticate } from '../shopify.server';
 import db from '../db.server';
-import { calculateStatistics } from '../features/ab-testing/utils/statistics';
+import { SimpleRotationService } from '../services/simple-rotation.server';
+import { AuditService } from '../services/audit.server';
+import { ProductSelector } from '../features/shared/components';
+import { ABTestCreationForm } from '../features/ab-testing/components';
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-	const { session } = await authenticate.admin(request);
+  const { session, admin } = await authenticate.admin(request);
+  const url = new URL(request.url);
+  const productId = url.searchParams.get('productId');
 
-	const abTests = await db.aBTest.findMany({
-		where: { shop: session.shop },
-		include: {
-			variants: true,
-			events: {
-				orderBy: { createdAt: 'asc' },
-			},
-		},
-		orderBy: { createdAt: 'desc' },
-	});
+  if (!productId) {
+    // STATE 1: Product Selection View
+    const productsResponse = await admin.graphql(
+      `#graphql
+        query GetProducts {
+          products(first: 50, sortKey: UPDATED_AT, reverse: true) {
+            edges {
+              node {
+                id
+                title
+                status
+                featuredImage {
+                  url
+                  altText
+                }
+              }
+            }
+          }
+        }
+      `
+    );
 
-	const serialized = abTests.map(test => ({
-		...test,
-		events: test.events.map(event => ({
-			...event,
-			createdAt: event.createdAt.toISOString(),
-		})),
-	}));
+    const productsData = await productsResponse.json();
+    const products = productsData.data?.products?.edges?.map((edge: any) => edge.node) || [];
 
-	return json({ abTests: serialized });
+    // Get test counts per product for badges
+    const tests = await db.aBTest.findMany({
+      where: { shop: session.shop },
+      select: { productId: true, status: true },
+    });
+
+    const testCounts: Record<string, { count: number; hasActive: boolean }> = {};
+    tests.forEach((test) => {
+      if (!testCounts[test.productId]) {
+        testCounts[test.productId] = { count: 0, hasActive: false };
+      }
+      testCounts[test.productId].count++;
+      if (test.status === 'ACTIVE') {
+        testCounts[test.productId].hasActive = true;
+      }
+    });
+
+    return json({
+      view: 'productSelection' as const,
+      products,
+      testCounts,
+    });
+  }
+
+  // STATE 2: Product Test Management View
+  const productResponse = await admin.graphql(
+    `#graphql
+      query GetProduct($id: ID!) {
+        product(id: $id) {
+          id
+          title
+          handle
+          status
+          featuredImage {
+            url
+            altText
+          }
+        }
+      }
+    `,
+    { variables: { id: productId } }
+  );
+
+  const productData = await productResponse.json();
+  const product = productData.data?.product;
+  const shop = session.shop;
+
+  if (!product) {
+    throw new Response('Product not found', { status: 404 });
+  }
+
+  // Fetch all tests for this product
+  const tests = await db.aBTest.findMany({
+    where: {
+      shop: session.shop,
+      productId,
+    },
+    include: {
+      variants: true,
+      events: {
+        take: 1000,
+      },
+      rotationEvents: {
+        take: 20,
+        orderBy: { timestamp: 'desc' },
+      },
+    },
+    orderBy: { createdAt: 'desc' },
+  });
+
+  // Calculate statistics for each test
+  const testsWithStats = tests.map((test) => {
+    const baseEvents = test.events.filter((e) => e.activeCase === 'BASE');
+    const testEvents = test.events.filter((e) => e.activeCase === 'TEST');
+
+    const baseImpressions = baseEvents.filter((e) => e.eventType === 'IMPRESSION').length;
+    const testImpressions = testEvents.filter((e) => e.eventType === 'IMPRESSION').length;
+
+    const baseConversions = baseEvents.filter((e) => e.eventType === 'PURCHASE').length;
+    const testConversions = testEvents.filter((e) => e.eventType === 'PURCHASE').length;
+
+    const baseCVR = baseImpressions > 0 ? (baseConversions / baseImpressions) * 100 : 0;
+    const testCVR = testImpressions > 0 ? (testConversions / testImpressions) * 100 : 0;
+    const lift = baseCVR > 0 ? ((testCVR - baseCVR) / baseCVR) * 100 : 0;
+
+    return {
+      ...test,
+      statistics: {
+        base: { impressions: baseImpressions, conversions: baseConversions, cvr: baseCVR },
+        test: { impressions: testImpressions, conversions: testConversions, cvr: testCVR },
+        lift,
+      },
+    };
+  });
+
+  const activeTest = testsWithStats.find((t) => t.status === 'ACTIVE' || t.status === 'PAUSED');
+  const draftTests = testsWithStats.filter((t) => t.status === 'DRAFT');
+  const completedTests = testsWithStats.filter((t) => t.status === 'COMPLETED');
+
+  return json({
+    view: 'productTests' as const,
+    product,
+    productId,
+    shop,
+    tests: testsWithStats,
+    activeTest,
+    draftTests,
+    completedTests,
+  });
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
-	try {
-		const { session } = await authenticate.admin(request);
-		const formData = await request.formData();
-		const intent = String(formData.get('intent') || '');
+  const { session, admin } = await authenticate.admin(request);
+  const formData = await request.formData();
+  const intent = formData.get('intent');
 
-		if (intent === 'create') {
-			const name = String(formData.get('name') || '');
-			const productId = String(formData.get('productId') || '');
-			const variantScope = String(formData.get('variantScope') || 'PRODUCT');
-			const variantTestsJson = String(formData.get('variantTests') || '');
-			const variantAImages = String(formData.get('variantAImages') || '');
-			const variantBImages = String(formData.get('variantBImages') || '');
+  try {
+    switch (intent) {
+      case 'create': {
+        const name = formData.get('name') as string;
+        const productId = formData.get('productId') as string;
+        const testImagesJson = formData.get('testImages') as string;
+        const variantTestsJson = formData.get('variantTests') as string;
 
-			if (!name || !productId) {
-				return json({ ok: false, error: 'Missing required fields' }, { status: 400 });
-			}
+        if (!name || !productId) {
+          return json({ success: false, error: 'Missing required fields' }, { status: 400 });
+        }
 
-			// Parse variant tests if scope is VARIANT
-			let variantTests: Array<{ shopifyVariantId: string; variantAImages: string; variantBImages: string }> = [];
-			if (variantScope === 'VARIANT' && variantTestsJson) {
-				try {
-					variantTests = JSON.parse(variantTestsJson);
-					if (!Array.isArray(variantTests) || variantTests.length === 0) {
-						return json({ ok: false, error: 'Variant tests must be a non-empty array' }, { status: 400 });
-					}
-				} catch (error) {
-					return json({ ok: false, error: 'Invalid variant tests format' }, { status: 400 });
-				}
-			} else if (variantScope === 'PRODUCT' && (!variantAImages || !variantBImages)) {
-				return json({ ok: false, error: 'Missing variant images for product-wide test' }, { status: 400 });
-			}
+        // Parse gallery images (optional)
+        let testImages: any[] = [];
+        if (testImagesJson) {
+          try {
+            testImages = JSON.parse(testImagesJson);
+          } catch (e) {
+            testImages = [];
+          }
+        }
 
-			// Check for existing active test for this product
-			const existingActiveTest = await db.aBTest.findFirst({
-				where: {
-					shop: session.shop,
-					productId,
-					status: {
-						in: ['DRAFT', 'RUNNING'],
-					},
-				},
-			});
+        // Parse variant tests (optional)
+        let variantTests: any[] = [];
+        if (variantTestsJson) {
+          try {
+            variantTests = JSON.parse(variantTestsJson);
+          } catch (e) {
+            variantTests = [];
+          }
+        }
 
-			if (existingActiveTest) {
-				return json(
-					{
-						ok: false,
-						error: 'An active A/B test already exists for this product. Please complete or delete the existing test before creating a new one.',
-					},
-					{ status: 400 },
-				);
-			}
+        // Must have at least gallery images OR variant tests
+        if (testImages.length === 0 && variantTests.length === 0) {
+          return json({ success: false, error: 'Select at least gallery images or variant heroes' }, { status: 400 });
+        }
 
-			try {
-				let test;
+        // Capture base images
+        const baseImages = testImages.length > 0
+          ? await SimpleRotationService.captureBaseImages(admin, productId)
+          : [];
 
-				if (variantScope === 'VARIANT') {
-					// Create SINGLE test with multiple variant configurations
-					// Each Shopify variant gets both A and B test variants
-					const variantConfigs = variantTests.flatMap(vt => [
-						{
-							variant: 'A',
-							imageUrls: JSON.stringify(vt.variantAImages),
-							shopifyVariantId: vt.shopifyVariantId,
-						},
-						{
-							variant: 'B',
-							imageUrls: JSON.stringify(vt.variantBImages),
-							shopifyVariantId: vt.shopifyVariantId,
-						},
-					]);
+        // Capture base variant heroes if testing variants
+        let baseHeroImages = new Map();
+        if (variantTests.length > 0) {
+          const variantIds = variantTests.map((v: any) => v.variantId);
+          baseHeroImages = await SimpleRotationService.captureVariantHeroImages(
+            admin,
+            productId,
+            variantIds
+          );
+        }
 
-					test = await db.aBTest.create({
-						data: {
-							shop: session.shop,
-							productId,
-							name,
-							status: 'DRAFT',
-							variantScope: 'VARIANT',
-							trafficSplit: 50,
-							variants: {
-								create: variantConfigs,
-							},
-						},
-						include: {
-							variants: true,
-						},
-					});
+        // Create the test (hardcoded to 24 hour rotation)
+        const test = await db.aBTest.create({
+          data: {
+            shop: session.shop,
+            productId,
+            name,
+            status: 'DRAFT',
+            trafficSplit: 50,
+            baseImages: baseImages,
+            testImages: testImages,
+            currentCase: 'BASE',
+            rotationHours: 24, // Default 24 hours
+            createdBy: session.id,
+          },
+        });
 
-					console.log(
-						`[A/B Test Created] Single test with ${variantConfigs.length} variant configs (${variantTests.length} Shopify variants x 2)`,
-					);
-				} else {
-					// Create product-wide test
-					test = await db.aBTest.create({
-						data: {
-							shop: session.shop,
-							productId,
-							name,
-							status: 'DRAFT',
-							variantScope: 'PRODUCT',
-							trafficSplit: 50,
-							variants: {
-								create: [
-									{
-										variant: 'A',
-										imageUrls: variantAImages,
-										shopifyVariantId: null,
-									},
-									{
-										variant: 'B',
-										imageUrls: variantBImages,
-										shopifyVariantId: null,
-									},
-								],
-							},
-						},
-						include: {
-							variants: true,
-						},
-					});
+        // Create variant test records if any
+        for (const variantTest of variantTests) {
+          const baseHero = baseHeroImages.get(variantTest.variantId);
+          await db.aBTestVariant.create({
+            data: {
+              testId: test.id,
+              shopifyVariantId: variantTest.variantId,
+              variantName: variantTest.variantName,
+              baseHeroImage: baseHero || null,
+              testHeroImage: {
+                url: variantTest.heroImage.url,
+                position: 0,
+              },
+            },
+          });
+        }
 
-					console.log(`[A/B Test Created] Product-wide test with 2 variants (A/B)`);
-				}
+        await AuditService.logTestCreated(test, session.id, {
+          hasGalleryTest: testImages.length > 0,
+          galleryImagesCount: testImages.length,
+          hasVariantTest: variantTests.length > 0,
+          variantCount: variantTests.length,
+        });
 
-				return json({ ok: true, test });
-			} catch (error) {
-				console.error('Failed to create A/B test:', error);
-				return json({ ok: false, error: 'Failed to create A/B test' }, { status: 500 });
-			}
-		}
+        return json({ success: true, testId: test.id });
+      }
 
-		if (intent === 'start') {
-			const testId = String(formData.get('testId') || '');
+      case 'start': {
+        const testId = formData.get('testId') as string;
+        await SimpleRotationService.startTest(testId, session.id);
+        return json({ success: true, message: 'Test started' });
+      }
 
-			// Check if test belongs to this shop
-			const test = await db.aBTest.findFirst({
-				where: {
-					id: testId,
-					shop: session.shop,
-				},
-			});
+      case 'pause': {
+        const testId = formData.get('testId') as string;
+        await SimpleRotationService.pauseTest(testId, session.id, admin);
+        return json({ success: true, message: 'Test paused and restored to base case' });
+      }
 
-			if (!test) {
-				return json({ ok: false, error: 'Test not found' }, { status: 404 });
-			}
+      case 'complete': {
+        const testId = formData.get('testId') as string;
+        await SimpleRotationService.completeTest(testId, admin, session.id);
+        return json({ success: true, message: 'Test completed' });
+      }
 
-			// Check for other active tests on the same product
-			const otherActiveTest = await db.aBTest.findFirst({
-				where: {
-					shop: session.shop,
-					productId: test.productId,
-					id: { not: testId },
-					status: 'RUNNING',
-				},
-			});
+      case 'delete': {
+        const testId = formData.get('testId') as string;
+        const test = await db.aBTest.findUnique({ where: { id: testId } });
 
-			if (otherActiveTest) {
-				return json(
-					{
-						ok: false,
-						error: 'Another test is already running for this product. Please stop it first.',
-					},
-					{ status: 400 },
-				);
-			}
+        if (test) {
+          await AuditService.logTestDeleted(testId, test.name, session.shop, session.id);
+          await db.aBTest.delete({ where: { id: testId } });
+        }
 
-			try {
-				const updatedTest = await db.aBTest.update({
-					where: { id: testId },
-					data: {
-						status: 'RUNNING',
-						startDate: new Date(),
-					},
-				});
+        return json({ success: true, message: 'Test deleted' });
+      }
 
-				return json({ ok: true, test: updatedTest });
-			} catch (error) {
-				return json({ ok: false, error: 'Failed to start test' }, { status: 500 });
-			}
-		}
+      case 'rotate': {
+        const testId = formData.get('testId') as string;
+        const result = await SimpleRotationService.rotateTest(testId, 'MANUAL', session.id, admin);
+        return json({ success: true, message: 'Rotation completed', result });
+      }
 
-		if (intent === 'stop') {
-			const testId = String(formData.get('testId') || '');
-
-			try {
-				const test = await db.aBTest.update({
-					where: { id: testId },
-					data: {
-						status: 'COMPLETED',
-						endDate: new Date(),
-					},
-				});
-
-				return json({ ok: true, test });
-			} catch (error) {
-				return json({ ok: false, error: 'Failed to stop test' }, { status: 500 });
-			}
-		}
-
-		if (intent === 'delete') {
-			const testId = String(formData.get('testId') || '');
-
-			try {
-				await db.aBTestEvent.deleteMany({
-					where: { testId },
-				});
-
-				await db.aBTestVariant.deleteMany({
-					where: { testId },
-				});
-
-				await db.aBTest.delete({
-					where: { id: testId },
-				});
-
-				return json({ ok: true });
-			} catch (error) {
-				return json({ ok: false, error: 'Failed to delete test' }, { status: 500 });
-			}
-		}
-
-		return json({ ok: false, error: 'Unknown intent' }, { status: 400 });
-	} catch (error) {
-		console.error('Action error:', error);
-		return json(
-			{
-				ok: false,
-				error: error instanceof Error ? error.message : 'Internal server error',
-			},
-			{ status: 500 },
-		);
-	}
+      default:
+        return json({ success: false, error: 'Unknown intent' }, { status: 400 });
+    }
+  } catch (error) {
+    console.error('Action error:', error);
+    return json(
+      { success: false, error: (error as Error).message },
+      { status: 500 }
+    );
+  }
 };
 
 export default function ABTests() {
-	const { abTests } = useLoaderData<typeof loader>();
-	const fetcher = useFetcher<typeof action>();
-	const shopify = useAppBridge();
+  const data = useLoaderData<typeof loader>();
+  const fetcher = useFetcher();
+  const navigate = useNavigate();
+  const shopify = useAppBridge();
+  const [showCreateForm, setShowCreateForm] = useState(false);
 
-	const [showCreateModal, setShowCreateModal] = useState(false);
-	const [newTestName, setNewTestName] = useState('');
-	const [selectedProductId, setSelectedProductId] = useState('');
-	const [variantAImages, setVariantAImages] = useState('');
-	const [variantBImages, setVariantBImages] = useState('');
+  // Show toast on success or error
+  useEffect(() => {
+    if (fetcher.data?.success && fetcher.data.message) {
+      shopify.toast.show(fetcher.data.message);
+    } else if (fetcher.data?.success === false && fetcher.data.error) {
+      shopify.toast.show(fetcher.data.error, { isError: true });
+    }
+  }, [fetcher.data, shopify]);
 
-	useEffect(() => {
-		const data = fetcher.data;
-		if (data?.ok && fetcher.formData?.get('intent') === 'create') {
-			setShowCreateModal(false);
-			setNewTestName('');
-			setSelectedProductId('');
-			setVariantAImages('');
-			setVariantBImages('');
-			shopify.toast.show('A/B test created successfully');
-		} else if (data?.ok && fetcher.formData?.get('intent') === 'start') {
-			shopify.toast.show('A/B test started');
-		} else if (data?.ok && fetcher.formData?.get('intent') === 'stop') {
-			shopify.toast.show('A/B test stopped');
-		} else if (data?.ok && fetcher.formData?.get('intent') === 'delete') {
-			shopify.toast.show('A/B test deleted');
-		} else if (data && !data.ok) {
-			shopify.toast.show((data as any).error, { isError: true });
-		}
-	}, [fetcher.data]);
+  // STATE 1: Product Selection
+  if (data.view === 'productSelection') {
+    const badgeData: Record<string, { count: number; tone: 'success' | 'info' }> = {};
+    Object.entries(data.testCounts).forEach(([productId, info]) => {
+      badgeData[productId] = {
+        count: info.count,
+        tone: info.hasActive ? 'success' : 'info',
+      };
+    });
 
-	const getStatusBadge = (status: string) => {
-		switch (status) {
-			case 'DRAFT':
-				return <Badge tone='attention'>Draft</Badge>;
-			case 'RUNNING':
-				return <Badge tone='success'>Running</Badge>;
-			case 'PAUSED':
-				return <Badge tone='warning'>Paused</Badge>;
-			case 'COMPLETED':
-				return <Badge tone='info'>Completed</Badge>;
-			case 'ARCHIVED':
-				return <Badge>Archived</Badge>;
-			default:
-				return <Badge>{status}</Badge>;
-		}
-	};
+    return (
+      <Page>
+        <TitleBar title="A/B Tests" />
+        <ProductSelector
+          products={data.products}
+          onSelectProduct={(id) => navigate(`/app/ab-tests?productId=${encodeURIComponent(id)}`)}
+          title="Select a Product"
+          description="Choose a product to manage its A/B tests"
+          emptyStateHeading="No products found"
+          emptyStateMessage="Create products in your store to start A/B testing"
+          showBadges={true}
+          badgeData={badgeData}
+        />
+      </Page>
+    );
+  }
 
-	const rows = abTests.map(test => {
-		const stats = calculateStatistics(test.events);
-		return [
-			test.name,
-			test.productId,
-			getStatusBadge(test.status),
-			`${stats.variantA.impressions.toLocaleString()} / ${stats.variantA.addToCarts.toLocaleString()} / ${stats.variantA.purchases.toLocaleString()} / ${stats.variantA.ratePercent}% / $${stats.variantA.revenue.toFixed(2)}`,
-			`${stats.variantB.impressions.toLocaleString()} / ${stats.variantB.addToCarts.toLocaleString()} / ${stats.variantB.purchases.toLocaleString()} / ${stats.variantB.ratePercent}% / $${stats.variantB.revenue.toFixed(2)}`,
-			<InlineStack key={test.id} gap='200'>
-				{test.status === 'DRAFT' && (
-					<Button
-						size='micro'
-						onClick={() => {
-							const fd = new FormData();
-							fd.set('intent', 'start');
-							fd.set('testId', test.id);
-							fetcher.submit(fd, { method: 'post' });
-						}}
-					>
-						Start
-					</Button>
-				)}
-				{test.status === 'RUNNING' && (
-					<Button
-						size='micro'
-						onClick={() => {
-							const fd = new FormData();
-							fd.set('intent', 'stop');
-							fd.set('testId', test.id);
-							fetcher.submit(fd, { method: 'post' });
-						}}
-					>
-						Stop
-					</Button>
-				)}
-				<Button
-					size='micro'
-					tone='critical'
-					onClick={() => {
-						if (confirm('Are you sure you want to delete this test?')) {
-							const fd = new FormData();
-							fd.set('intent', 'delete');
-							fd.set('testId', test.id);
-							fetcher.submit(fd, { method: 'post' });
-						}
-					}}
-				>
-					Delete
-				</Button>
-			</InlineStack>,
-		];
-	});
+  // STATE 2: Product Test Management
+  const handleAction = (testId: string, intent: string) => {
+    fetcher.submit(
+      { testId, intent },
+      { method: 'post' }
+    );
+  };
 
-	return (
-		<Page>
-			<TitleBar title='A/B Tests' />
+  return (
+    <Page
+      fullWidth
+      backAction={{
+        content: 'Products',
+        onAction: () => navigate('/app/ab-tests'),
+      }}
+    >
+      <TitleBar title={`A/B Tests - ${data.product.title}`}>
+        <button
+          onClick={() => {
+            const productNumericId = data.productId.replace('gid://shopify/Product/', '');
+            window.open(`shopify:admin/products/${productNumericId}`, '_blank');
+          }}
+        >
+          View Product
+        </button>
+        <button
+          onClick={() => {
+            window.open(`https://${data.shop}/products/${data.product.handle}`, '_blank');
+          }}
+        >
+          View in Store
+        </button>
+        <button
+          variant="primary"
+          onClick={() => setShowCreateForm(true)}
+        >
+          + Create New Test
+        </button>
+      </TitleBar>
 
-			<Layout>
-				<Layout.Section>
-					<BlockStack gap='500'>
-						<Card>
-							<BlockStack gap='300'>
-								<InlineStack align='space-between'>
-									<Text as='h2' variant='headingMd'>
-										A/B Tests
-									</Text>
-									<Button variant='primary' onClick={() => setShowCreateModal(true)}>
-										Create Test
-									</Button>
-								</InlineStack>
+      <Layout>
+        {/* Active Test Card */}
+        {data.activeTest && (
+          <Layout.Section>
+            <Card>
+              <BlockStack gap="400">
+                <InlineStack align="space-between">
+                  <BlockStack gap="200">
+                    <InlineStack gap="200">
+                      <Text variant="headingLg" as="h2">
+                        {data.activeTest.name}
+                      </Text>
+                      <Badge tone={data.activeTest.status === 'ACTIVE' ? 'success' : 'attention'}>
+                        {data.activeTest.status}
+                      </Badge>
+                      <Badge tone={data.activeTest.currentCase === 'BASE' ? 'info' : 'attention'}>
+                        {data.activeTest.currentCase}
+                      </Badge>
+                    </InlineStack>
+                    <Text as="p" tone="subdued">
+                      Rotation: Every {data.activeTest.rotationHours} hours
+                      {data.activeTest.nextRotation &&
+                        ` • Next: ${new Date(data.activeTest.nextRotation).toLocaleString()}`
+                      }
+                    </Text>
+                  </BlockStack>
+                  <InlineStack gap="200">
+                    {data.activeTest.status === 'ACTIVE' ? (
+                      <Button
+                        size="slim"
+                        onClick={() => handleAction(data.activeTest!.id, 'pause')}
+                        loading={fetcher.state !== 'idle'}
+                      >
+                        Pause
+                      </Button>
+                    ) : (
+                      <Button
+                        size="slim"
+                        onClick={() => handleAction(data.activeTest!.id, 'start')}
+                        loading={fetcher.state !== 'idle'}
+                      >
+                        Resume
+                      </Button>
+                    )}
+                    <Button
+                      size="slim"
+                      onClick={() => handleAction(data.activeTest!.id, 'rotate')}
+                      loading={fetcher.state !== 'idle'}
+                      disabled={data.activeTest.status === 'PAUSED'}
+                    >
+                      Rotate Now
+                    </Button>
+                    <Button
+                      size="slim"
+                      tone="critical"
+                      onClick={() => handleAction(data.activeTest!.id, 'complete')}
+                      loading={fetcher.state !== 'idle'}
+                    >
+                      Complete
+                    </Button>
+                  </InlineStack>
+                </InlineStack>
 
-								{abTests.length === 0 ? (
-									<Banner>
-										<Text as='p'>
-											No A/B tests created yet. Create your first test to start comparing image
-											variants.
-										</Text>
-									</Banner>
-								) : (
-									<DataTable
-										columnContentTypes={['text', 'text', 'text', 'text', 'text', 'text']}
-										headings={[
-											'Name',
-											'Product ID',
-											'Status',
-											'Variant A (Views/CVR)',
-											'Variant B (Views/CVR)',
-											'Actions',
-										]}
-										rows={rows}
-									/>
-								)}
-							</BlockStack>
-						</Card>
-					</BlockStack>
-				</Layout.Section>
-			</Layout>
+                {/* Lift Indicator */}
+                {data.activeTest.statistics.lift !== 0 && (
+                  <BlockStack gap="200">
+                    <Text as="p" variant="headingMd" fontWeight="bold">
+                      Lift: {data.activeTest.statistics.lift >= 0 ? '+' : ''}
+                      {data.activeTest.statistics.lift.toFixed(2)}%
+                    </Text>
+                    <ProgressBar
+                      progress={Math.min(Math.abs(data.activeTest.statistics.lift), 100)}
+                      tone={data.activeTest.statistics.lift > 0 ? 'success' : 'critical'}
+                      size="medium"
+                    />
+                  </BlockStack>
+                )}
 
-			<Modal
-				open={showCreateModal}
-				onClose={() => setShowCreateModal(false)}
-				title='Create A/B Test'
-				primaryAction={{
-					content: 'Create Test',
-					onAction: () => {
-						const fd = new FormData();
-						fd.set('intent', 'create');
-						fd.set('name', newTestName);
-						fd.set('productId', selectedProductId);
-						fd.set('variantAImages', variantAImages);
-						fd.set('variantBImages', variantBImages);
-						fetcher.submit(fd, { method: 'post' });
-					},
-					disabled:
-						!newTestName ||
-						!selectedProductId ||
-						!variantAImages ||
-						!variantBImages ||
-						fetcher.state === 'submitting',
-					loading: fetcher.state === 'submitting',
-				}}
-				secondaryActions={[
-					{
-						content: 'Cancel',
-						onAction: () => setShowCreateModal(false),
-					},
-				]}
-			>
-				<Modal.Section>
-					<FormLayout>
-						<TextField
-							label='Test Name'
-							value={newTestName}
-							onChange={setNewTestName}
-							placeholder='e.g., Homepage Hero Test'
-							autoComplete='off'
-						/>
-						<TextField
-							label='Product ID'
-							value={selectedProductId}
-							onChange={setSelectedProductId}
-							placeholder='gid://shopify/Product/123456789'
-							autoComplete='off'
-						/>
-						<TextField
-							label='Variant A Image URLs (JSON array)'
-							value={variantAImages}
-							onChange={setVariantAImages}
-							placeholder='["https://cdn.shopify.com/image1.jpg"]'
-							multiline={3}
-							autoComplete='off'
-						/>
-						<TextField
-							label='Variant B Image URLs (JSON array)'
-							value={variantBImages}
-							onChange={setVariantBImages}
-							placeholder='["https://cdn.shopify.com/image2.jpg"]'
-							multiline={3}
-							autoComplete='off'
-						/>
-					</FormLayout>
-				</Modal.Section>
-			</Modal>
-		</Page>
-	);
+                <Divider />
+
+                {/* Full Statistics Table */}
+                <BlockStack gap="300">
+                  <Text variant="headingMd" as="h3">
+                    Performance Metrics
+                  </Text>
+                  <DataTable
+                    columnContentTypes={['text', 'text', 'numeric', 'numeric', 'numeric', 'numeric', 'numeric', 'numeric']}
+                    headings={['', 'Preview', 'Impressions', 'Add to Carts', 'ATC Rate', 'Purchases', 'CVR', 'Revenue']}
+                    rows={[
+                      [
+                        'Base (Control)',
+                        <div key="base-preview" style={{ display: 'flex', gap: '4px', minWidth: '130px' }}>
+                          {(() => {
+                            // Try gallery images first
+                            let baseImages = data.activeTest.baseImages;
+                            if (typeof baseImages === 'string') {
+                              try { baseImages = JSON.parse(baseImages); } catch (e) { baseImages = []; }
+                            }
+
+                            // If no gallery images, try variant heroes
+                            const imagesToShow = Array.isArray(baseImages) && baseImages.length > 0
+                              ? baseImages
+                              : data.activeTest.variants?.length > 0
+                                ? data.activeTest.variants
+                                    .filter((v: any) => v.baseHeroImage)
+                                    .map((v: any) => {
+                                      const img = v.baseHeroImage;
+                                      return typeof img === 'string' ? JSON.parse(img) : img;
+                                    })
+                                : [];
+
+                            if ((imagesToShow as any[]).length === 0) {
+                              return <Text as="span" tone="subdued">No images</Text>;
+                            }
+
+                            return (imagesToShow as any[]).slice(0, 3).map((img: any, idx: number) => (
+                              <img
+                                key={idx}
+                                src={img?.url || img}
+                                alt=""
+                                style={{
+                                  width: '40px',
+                                  height: '40px',
+                                  objectFit: 'cover',
+                                  borderRadius: '4px',
+                                  border: '1px solid #E1E3E5',
+                                }}
+                              />
+                            ));
+                          })()}
+                        </div>,
+                        data.activeTest.statistics.base.impressions.toString(),
+                        data.activeTest.events.filter((e: any) => e.activeCase === 'BASE' && e.eventType === 'ADD_TO_CART').length.toString(),
+                        data.activeTest.statistics.base.impressions > 0
+                          ? `${((data.activeTest.events.filter((e: any) => e.activeCase === 'BASE' && e.eventType === 'ADD_TO_CART').length / data.activeTest.statistics.base.impressions) * 100).toFixed(2)}%`
+                          : '0%',
+                        data.activeTest.statistics.base.conversions.toString(),
+                        `${data.activeTest.statistics.base.cvr.toFixed(2)}%`,
+                        `$${data.activeTest.events
+                          .filter((e: any) => e.activeCase === 'BASE' && e.eventType === 'PURCHASE' && e.revenue)
+                          .reduce((sum: number, e: any) => sum + Number(e.revenue), 0)
+                          .toFixed(2)}`,
+                      ],
+                      [
+                        'Test (Variant)',
+                        <div key="test-preview" style={{ display: 'flex', gap: '4px', minWidth: '130px' }}>
+                          {(() => {
+                            // Try gallery images first
+                            let testImages = data.activeTest.testImages;
+                            if (typeof testImages === 'string') {
+                              try { testImages = JSON.parse(testImages); } catch (e) { testImages = []; }
+                            }
+
+                            // If no gallery images, try variant heroes
+                            const imagesToShow = Array.isArray(testImages) && testImages.length > 0
+                              ? testImages
+                              : data.activeTest.variants?.length > 0
+                                ? data.activeTest.variants
+                                    .filter((v: any) => v.testHeroImage)
+                                    .map((v: any) => {
+                                      const img = v.testHeroImage;
+                                      return typeof img === 'string' ? JSON.parse(img) : img;
+                                    })
+                                : [];
+
+                            if ((imagesToShow as any[]).length === 0) {
+                              return <Text as="span" tone="subdued">No images</Text>;
+                            }
+
+                            return (imagesToShow as any[]).slice(0, 3).map((img: any, idx: number) => (
+                              <img
+                                key={idx}
+                                src={img?.url || img}
+                                alt=""
+                                style={{
+                                  width: '40px',
+                                  height: '40px',
+                                  objectFit: 'cover',
+                                  borderRadius: '4px',
+                                  border: '1px solid #E1E3E5',
+                                }}
+                              />
+                            ));
+                          })()}
+                        </div>,
+                        data.activeTest.statistics.test.impressions.toString(),
+                        data.activeTest.events.filter((e: any) => e.activeCase === 'TEST' && e.eventType === 'ADD_TO_CART').length.toString(),
+                        data.activeTest.statistics.test.impressions > 0
+                          ? `${((data.activeTest.events.filter((e: any) => e.activeCase === 'TEST' && e.eventType === 'ADD_TO_CART').length / data.activeTest.statistics.test.impressions) * 100).toFixed(2)}%`
+                          : '0%',
+                        data.activeTest.statistics.test.conversions.toString(),
+                        `${data.activeTest.statistics.test.cvr.toFixed(2)}%`,
+                        `$${data.activeTest.events
+                          .filter((e: any) => e.activeCase === 'TEST' && e.eventType === 'PURCHASE' && e.revenue)
+                          .reduce((sum: number, e: any) => sum + Number(e.revenue), 0)
+                          .toFixed(2)}`,
+                      ],
+                    ]}
+                  />
+                </BlockStack>
+
+                {/* Recent Rotations */}
+                {data.activeTest.rotationEvents && data.activeTest.rotationEvents.length > 0 && (
+                  <>
+                    <Divider />
+                    <BlockStack gap="300">
+                      <Text variant="headingMd" as="h3">
+                        Recent Rotations
+                      </Text>
+                      <DataTable
+                        columnContentTypes={['text', 'text', 'text', 'text']}
+                        headings={['Time', 'Rotation', 'Triggered By', 'Status']}
+                        rows={data.activeTest.rotationEvents.slice(0, 5).map((event: any) => [
+                          new Date(event.timestamp).toLocaleString(),
+                          `${event.fromCase} → ${event.toCase}`,
+                          event.triggeredBy,
+                          event.success ? '✓ Success' : '✗ Failed',
+                        ])}
+                      />
+                    </BlockStack>
+                  </>
+                )}
+              </BlockStack>
+            </Card>
+          </Layout.Section>
+        )}
+
+        {/* Draft Tests */}
+        {data.draftTests.length > 0 && (
+          <Layout.Section>
+            <Card>
+              <BlockStack gap="400">
+                <Text variant="headingMd" as="h2">
+                  Draft Tests ({data.draftTests.length})
+                </Text>
+                <DataTable
+                  columnContentTypes={['text', 'text', 'text', 'numeric', 'numeric', 'text']}
+                  headings={['Preview', 'Name', 'Status', 'Base Images', 'Test Images', <div key="actions-header" style={{ textAlign: 'right' }}>Actions</div>]}
+                  rows={data.draftTests.map((test) => {
+                    const testImages = Array.isArray(test.testImages) ? test.testImages as any[] : [];
+                    const previewImages = testImages.slice(0, 3);
+
+                    return [
+                      <div key={`preview-${test.id}`} style={{ display: 'flex', gap: '4px' }}>
+                        {previewImages.map((img: any, idx: number) => (
+                          <img
+                            key={idx}
+                            src={img.url}
+                            alt=""
+                            style={{
+                              width: '40px',
+                              height: '40px',
+                              objectFit: 'cover',
+                              borderRadius: '4px',
+                              border: '1px solid #E1E3E5',
+                            }}
+                          />
+                        ))}
+                        {testImages.length > 3 && (
+                          <div
+                            style={{
+                              width: '40px',
+                              height: '40px',
+                              borderRadius: '4px',
+                              border: '1px solid #E1E3E5',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              backgroundColor: '#F6F6F7',
+                              fontSize: '12px',
+                              fontWeight: '600',
+                              color: '#6D7175',
+                            }}
+                          >
+                            +{testImages.length - 3}
+                          </div>
+                        )}
+                      </div>,
+                      test.name,
+                      <Badge key={`status-${test.id}`} tone={test.status === 'PAUSED' ? 'attention' : 'info'}>
+                        {test.status}
+                      </Badge>,
+                      Array.isArray(test.baseImages) ? test.baseImages.length.toString() : '0',
+                      Array.isArray(test.testImages) ? test.testImages.length.toString() : '0',
+                      <div key={`draft-actions-${test.id}`} style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                        <InlineStack gap="200">
+                          <Button
+                            size="slim"
+                            onClick={() => handleAction(test.id, 'start')}
+                            loading={fetcher.state !== 'idle'}
+                          >
+                            {test.status === 'PAUSED' ? 'Resume' : 'Start'}
+                          </Button>
+                          <Button
+                            size="slim"
+                            url={`/app/ab-tests/${test.id}`}
+                          >
+                            View Stats
+                          </Button>
+                          <Button
+                            size="slim"
+                            tone="critical"
+                            onClick={() => handleAction(test.id, 'delete')}
+                            loading={fetcher.state !== 'idle'}
+                          >
+                            Delete
+                          </Button>
+                        </InlineStack>
+                      </div>,
+                    ];
+                  })}
+                />
+              </BlockStack>
+            </Card>
+          </Layout.Section>
+        )}
+
+        {/* Create New Test Section - Only shown when triggered */}
+        {showCreateForm && (
+          <Layout.Section>
+            <Card>
+              <BlockStack gap="400">
+                <InlineStack align="space-between">
+                  <Text variant="headingMd" as="h2">
+                    Create New Test
+                  </Text>
+                  <Button onClick={() => setShowCreateForm(false)}>
+                    Cancel
+                  </Button>
+                </InlineStack>
+                <ABTestCreationForm
+                  productId={data.productId}
+                  productTitle={data.product.title}
+                  onSuccess={() => {
+                    setShowCreateForm(false);
+                    navigate(`/app/ab-tests?productId=${data.productId}`);
+                  }}
+                  onCancel={() => setShowCreateForm(false)}
+                />
+              </BlockStack>
+            </Card>
+          </Layout.Section>
+        )}
+
+        {/* Completed Tests */}
+        {data.completedTests.length > 0 && (
+          <Layout.Section>
+            <Card>
+              <BlockStack gap="400">
+                <Text variant="headingMd" as="h2">
+                  Completed Tests ({data.completedTests.length})
+                </Text>
+                <DataTable
+                  columnContentTypes={['text', 'text', 'text', 'numeric', 'numeric', 'text']}
+                  headings={['Preview', 'Name', 'Winner', 'Lift', 'Conversions', <div key="actions-header-completed" style={{ textAlign: 'right' }}>Actions</div>]}
+                  rows={data.completedTests.map((test) => {
+                    const testImages = Array.isArray(test.testImages) ? test.testImages as any[] : [];
+                    const previewImages = testImages.slice(0, 3);
+
+                    return [
+                      <div key={`preview-${test.id}`} style={{ display: 'flex', gap: '4px' }}>
+                        {previewImages.map((img: any, idx: number) => (
+                          <img
+                            key={idx}
+                            src={img.url}
+                            alt=""
+                            style={{
+                              width: '40px',
+                              height: '40px',
+                              objectFit: 'cover',
+                              borderRadius: '4px',
+                              border: '1px solid #E1E3E5',
+                            }}
+                          />
+                        ))}
+                        {testImages.length > 3 && (
+                          <div
+                            style={{
+                              width: '40px',
+                              height: '40px',
+                              borderRadius: '4px',
+                              border: '1px solid #E1E3E5',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              backgroundColor: '#F6F6F7',
+                              fontSize: '12px',
+                              fontWeight: '600',
+                              color: '#6D7175',
+                            }}
+                          >
+                            +{testImages.length - 3}
+                          </div>
+                        )}
+                      </div>,
+                      test.name,
+                      test.statistics.lift > 0 ? 'Test' : test.statistics.lift < 0 ? 'Base' : 'Tie',
+                      `${test.statistics.lift >= 0 ? '+' : ''}${test.statistics.lift.toFixed(2)}%`,
+                      `${test.statistics.base.conversions} vs ${test.statistics.test.conversions}`,
+                      <div key={`completed-actions-${test.id}`} style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                        <InlineStack gap="200">
+                          <Button
+                            size="slim"
+                            url={`/app/ab-tests/${test.id}`}
+                          >
+                            View Stats
+                          </Button>
+                          <Button
+                            size="slim"
+                            tone="critical"
+                            onClick={() => handleAction(test.id, 'delete')}
+                            loading={fetcher.state !== 'idle'}
+                          >
+                            Delete
+                          </Button>
+                        </InlineStack>
+                      </div>,
+                    ];
+                  })}
+                />
+              </BlockStack>
+            </Card>
+          </Layout.Section>
+        )}
+      </Layout>
+    </Page>
+  );
 }

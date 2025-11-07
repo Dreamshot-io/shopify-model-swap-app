@@ -1,238 +1,178 @@
-import type { ActionFunctionArgs } from "@remix-run/node";
-import { json } from "@remix-run/node";
-import { authenticate } from "../shopify.server";
-import db from "../db.server";
+import type { ActionFunctionArgs } from '@remix-run/node';
+import { json } from '@remix-run/node';
+import { authenticate } from '../shopify.server';
+import db from '../db.server';
+import { AuditService } from '../services/audit.server';
 
+/**
+ * Track events from the web pixel (impressions, add-to-cart, purchases)
+ */
 export const action = async ({ request }: ActionFunctionArgs) => {
-  console.log("[track] ===== REQUEST RECEIVED =====", {
-    method: request.method,
-    url: request.url,
-    headers: Object.fromEntries(request.headers.entries()),
-  });
-
-  if (request.method !== "POST") {
-    console.log("[track] Method not allowed:", request.method);
-    return json({ error: "Method not allowed" }, { status: 405 });
+  if (request.method !== 'POST') {
+    return json({ error: 'Method not allowed' }, { status: 405 });
   }
 
   let corsHeaders: Record<string, string> = {};
-  let sessionShop: string | undefined;
+  let shopDomain: string | undefined;
 
   try {
-    console.log("[track] Attempting authentication...");
-    // CRITICAL: Add proper authentication with HMAC validation
     const { session, cors } = await authenticate.public.appProxy(request);
-    sessionShop = session?.shop;
+    shopDomain = session?.shop;
     corsHeaders = cors?.headers || {};
 
-    console.log("[track] Authentication successful, shop:", sessionShop);
+    const body = await request.json();
+    const {
+      testId,
+      sessionId,
+      eventType,
+      activeCase,
+      revenue,
+      quantity,
+      productId,
+      variantId,
+      metadata,
+    } = body ?? {};
 
-    let body;
-    try {
-      body = await request.json();
-      console.log("[track] Body received:", {
-        testId: body.testId,
-        sessionId: body.sessionId?.substring(0, 20) + "...",
-        eventType: body.eventType,
-        productId: body.productId,
-        hasVariant: !!body.variant,
-      });
-    } catch (parseError) {
-      console.error("[track] Failed to parse JSON body:", parseError);
+    // Validate required fields
+    if (!testId || !sessionId || !eventType || !productId || !activeCase) {
       return json(
-        { error: "Invalid JSON body" },
-        { status: 400, headers: corsHeaders }
-      );
-    }
-
-    const { testId, sessionId, eventType, revenue, productId, variant } = body;
-
-    if (!testId || !sessionId || !eventType || !productId) {
-      console.error("[track] Missing required fields:", {
-        hasTestId: !!testId,
-        hasSessionId: !!sessionId,
-        hasEventType: !!eventType,
-        hasProductId: !!productId,
-      });
-      return json(
-        { error: "Missing required fields", details: { testId: !!testId, sessionId: !!sessionId, eventType: !!eventType, productId: !!productId } },
-        { status: 400, headers: corsHeaders }
+        {
+          error: 'Missing required fields',
+          details: {
+            hasTestId: Boolean(testId),
+            hasSessionId: Boolean(sessionId),
+            hasEventType: Boolean(eventType),
+            hasProductId: Boolean(productId),
+            hasActiveCase: Boolean(activeCase),
+          },
+        },
+        { status: 400, headers: corsHeaders },
       );
     }
 
     // Validate event type
-    const validEventTypes = ["IMPRESSION", "ADD_TO_CART", "PURCHASE"];
+    const validEventTypes = ['IMPRESSION', 'ADD_TO_CART', 'PURCHASE'];
     if (!validEventTypes.includes(eventType)) {
-      console.error("[track] Invalid event type:", eventType);
       return json(
-        { error: "Invalid event type", received: eventType, valid: validEventTypes },
-        { status: 400, headers: corsHeaders }
+        { error: 'Invalid event type', received: eventType, valid: validEventTypes },
+        { status: 400, headers: corsHeaders },
       );
     }
 
-    // Verify test belongs to this shop
+    // Validate active case
+    const validCases = ['BASE', 'TEST'];
+    if (!validCases.includes(activeCase)) {
+      return json(
+        { error: 'Invalid active case', received: activeCase, valid: validCases },
+        { status: 400, headers: corsHeaders },
+      );
+    }
+
+    // Verify test exists and belongs to this shop
     const test = await db.aBTest.findFirst({
       where: {
         id: testId,
-        shop: sessionShop,
-      }
+        shop: shopDomain,
+      },
     });
 
     if (!test) {
-      console.error("[track] Test not found:", { testId, shop: sessionShop });
       return json(
-        { error: "Test not found or unauthorized", testId, shop: sessionShop },
-        { status: 404, headers: corsHeaders }
+        { error: 'Test not found or unauthorized', testId, shop: shopDomain },
+        { status: 404, headers: corsHeaders },
       );
     }
 
-    console.log("[track] Test found:", test.id, "status:", test.status);
+    // Normalize variant ID if provided
+    const normalizedVariantId = normalizeVariantId(variantId ?? null);
 
-    // Get the user's variant assignment from any existing event (prefer IMPRESSION)
-    const existingEvent = await db.aBTestEvent.findFirst({
-      where: {
-        testId,
-        sessionId,
-      },
-      orderBy: {
-        createdAt: "asc", // Get the first event (should be IMPRESSION)
-      },
-    });
-
-    let variantToUse: string | null = null;
-
-    if (existingEvent) {
-      variantToUse = existingEvent.variant;
-      console.log("[track] Found existing event with variant:", variantToUse);
-    } else {
-      // If no existing event, try to use variant from request body (for ADD_TO_CART events)
-      if (variant && (variant === "A" || variant === "B")) {
-        variantToUse = variant;
-        console.log("[track] Using variant from request body:", variantToUse);
-
-        // Create IMPRESSION event retroactively if it doesn't exist
-        try {
-          await db.aBTestEvent.create({
-            data: {
-              testId,
-              sessionId,
-              variant: variantToUse,
-              eventType: "IMPRESSION",
-              productId,
-            },
-          });
-          console.log("[track] Created retroactive IMPRESSION event");
-        } catch (createError) {
-          console.error("[track] Failed to create retroactive IMPRESSION:", createError);
-        }
-      } else {
-        console.error("[track] No variant assignment found:", {
+    // Check for duplicate events (only for impressions to prevent double-counting)
+    if (eventType === 'IMPRESSION') {
+      const duplicateEvent = await db.aBTestEvent.findFirst({
+        where: {
           testId,
-          sessionId: sessionId.substring(0, 20) + "...",
-          hasExistingEvent: false,
-          variantFromBody: variant,
-        });
+          sessionId,
+          eventType,
+          productId,
+        },
+      });
+
+      if (duplicateEvent) {
         return json(
-          { error: "No variant assignment found for this session", testId, sessionId: sessionId.substring(0, 20) + "..." },
-          { status: 404, headers: corsHeaders }
+          { success: true, message: 'Event already tracked', eventId: duplicateEvent.id },
+          { headers: corsHeaders },
         );
       }
     }
 
-    if (!variantToUse) {
-      console.error("[track] No variant determined");
-      return json(
-        { error: "Unable to determine variant" },
-        { status: 400, headers: corsHeaders }
-      );
-    }
-
-    // Prevent duplicate events of the same type for the same session
-    const duplicateEvent = await db.aBTestEvent.findFirst({
-      where: {
-        testId,
-        sessionId,
-        eventType,
-      },
-    });
-
-    if (duplicateEvent) {
-      console.log("[track] Duplicate event detected, skipping:", {
-        eventType,
-        testId,
-        sessionId: sessionId.substring(0, 20) + "...",
-      });
-      return json(
-        { success: true, message: "Event already tracked" },
-        { headers: corsHeaders }
-      );
-    }
-
-    // Create the tracking event
-    console.log("[track] Creating event:", {
-      testId,
-      sessionId: sessionId.substring(0, 20) + "...",
-      variant: variantToUse,
-      eventType,
-      productId,
-    });
-
+    // Create the event
     const createdEvent = await db.aBTestEvent.create({
       data: {
         testId,
         sessionId,
-        variant: variantToUse,
         eventType,
+        activeCase, // What was showing when event occurred
         productId,
-        revenue: revenue ? parseFloat(revenue.toString()) : null,
+        variantId: normalizedVariantId,
+        revenue: revenue ? Number.parseFloat(String(revenue)) : null,
+        quantity: quantity ? Number.parseInt(String(quantity), 10) : null,
+        metadata: metadata || {},
       },
     });
 
-    console.log("[track] Event created successfully:", createdEvent.id);
-
-    return json(
-      { success: true, eventId: createdEvent.id },
-      { headers: corsHeaders }
-    );
-  } catch (error) {
-    console.error("[track] ===== ERROR OCCURRED =====");
-    console.error("[track] Error type:", error instanceof Error ? error.constructor.name : typeof error);
-    console.error("[track] Error message:", error instanceof Error ? error.message : String(error));
-    console.error("[track] Error stack:", error instanceof Error ? error.stack : "No stack");
-    console.error("[track] Error details:", {
-      name: error instanceof Error ? error.name : typeof error,
-      message: error instanceof Error ? error.message : String(error),
-      shop: sessionShop,
-      hasCorsHeaders: Object.keys(corsHeaders).length > 0,
-    });
-
-    // Handle authentication errors
-    if (error instanceof Error && (
-      error.message.includes("authenticate") ||
-      error.message.includes("HMAC") ||
-      error.message.includes("signature")
-    )) {
-      console.error("[track] Authentication error detected");
-      return json(
-        { error: "Authentication failed", details: error.message },
-        { status: 401, headers: corsHeaders }
+    // Log significant events (purchases always, others sampled)
+    if (eventType === 'PURCHASE' || Math.random() < 0.1) {
+      await AuditService.logUserAction(
+        `CUSTOMER_${eventType}`,
+        sessionId,
+        shopDomain!,
+        {
+          testId,
+          activeCase,
+          productId,
+          variantId: normalizedVariantId,
+          revenue,
+        }
       );
     }
 
-    // Handle Response errors (from Remix/Shopify auth)
+    return json(
+      {
+        success: true,
+        eventId: createdEvent.id,
+        activeCase,
+        message: `${eventType} event tracked successfully`,
+      },
+      { headers: corsHeaders },
+    );
+  } catch (error) {
     if (error instanceof Response) {
-      console.error("[track] Response error:", error.status, error.statusText);
       return error;
     }
 
-    console.error("[track] Returning 500 error response");
-    return json(
-      {
-        error: "Internal server error",
-        message: error instanceof Error ? error.message : String(error),
-        type: error instanceof Error ? error.constructor.name : typeof error,
-      },
-      { status: 500, headers: corsHeaders }
+    const message = error instanceof Error ? error.message : 'Internal server error';
+
+    // Log tracking errors
+    await AuditService.logApiError(
+      shopDomain || 'UNKNOWN',
+      '/track',
+      error as Error
     );
+
+    return json({ error: message }, { status: 500, headers: corsHeaders });
   }
 };
+
+/**
+ * Normalize variant ID to Shopify GID format
+ */
+export function normalizeVariantId(variantId: string | null): string | null {
+  if (!variantId) return null;
+  if (variantId.startsWith('gid://shopify/ProductVariant/')) {
+    return variantId;
+  }
+  if (/^\d+$/.test(variantId)) {
+    return `gid://shopify/ProductVariant/${variantId}`;
+  }
+  return variantId;
+}

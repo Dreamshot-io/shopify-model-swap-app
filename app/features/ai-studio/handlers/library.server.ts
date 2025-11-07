@@ -6,7 +6,6 @@ import {
   createStagedUpload,
   finalizeShopifyUpload,
 } from "../../../services/file-upload.server";
-import { EventType } from "@prisma/client";
 import type {
   LibraryActionResponse,
   ActionErrorResponse,
@@ -131,7 +130,7 @@ export async function handleSaveToLibrary(
       data: {
         id: crypto.randomUUID(),
         shop,
-        type: EventType.GENERATED,
+        eventType: 'GENERATED',
         productId,
         imageUrl,
       },
@@ -211,7 +210,7 @@ export async function handleDeleteFromLibrary(
       data: {
         id: crypto.randomUUID(),
         shop,
-        type: EventType.DRAFT_DELETED,
+        eventType: 'DRAFT_DELETED',
         productId,
         imageUrl,
       },
@@ -346,7 +345,7 @@ export async function handleUpload(
         data: {
           id: crypto.randomUUID(),
           shop,
-          type: EventType.UPLOADED,
+          eventType: 'UPLOADED',
           productId,
           imageUrl: uploadedFile.url,
         },
@@ -576,7 +575,7 @@ export async function handleCompleteUpload(
         data: {
           id: crypto.randomUUID(),
           shop,
-          type: EventType.UPLOADED,
+          eventType: 'UPLOADED',
           productId,
           imageUrl: uploadedFile.url,
         },

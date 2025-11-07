@@ -63,8 +63,7 @@ export interface ABTestStats {
 
 export interface VariantTestConfig {
 	shopifyVariantId: string;
-	variantAImages: string[];
-	variantBImages: string[];
+	testImages: string[]; // User-provided test images (Variant B)
 }
 
 export interface ABTestCreateRequest {
@@ -72,8 +71,7 @@ export interface ABTestCreateRequest {
 	productId: string;
 	variantScope?: ABTestScope;
 	variantTests?: VariantTestConfig[];
-	variantAImages?: string[];
-	variantBImages?: string[];
+	testImages?: string[]; // User-provided test images (Variant B) - control comes from snapshot
 	trafficSplit?: number;
 }
 

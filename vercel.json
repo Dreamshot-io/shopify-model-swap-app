@@ -1,4 +1,10 @@
 {
 	"$schema": "https://openapi.vercel.sh/vercel.json",
-	"framework": "remix"
+	"framework": "remix",
+	"crons": [
+		{
+			"path": "/api/rotation",
+			"schedule": "*/10 * * * *"
+		}
+	]
 }

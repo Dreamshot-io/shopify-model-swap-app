@@ -1,0 +1,97 @@
+import { PrismaClient } from '@prisma/client';
+import fs from 'fs';
+import path from 'path';
+
+const prisma = new PrismaClient();
+
+async function backupABTestData() {
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const backupDir = path.join(process.cwd(), 'backups', `ab-test-backup-${timestamp}`);
+
+  // Create backup directory
+  fs.mkdirSync(backupDir, { recursive: true });
+
+  console.log(`📦 Starting backup to ${backupDir}`);
+
+  try {
+    // Backup ABTest records
+    console.log('Backing up ABTest records...');
+    const abTests = await prisma.aBTest.findMany({
+      include: {
+        variants: true,
+        events: true,
+      }
+    });
+    fs.writeFileSync(
+      path.join(backupDir, 'ab-tests.json'),
+      JSON.stringify(abTests, null, 2)
+    );
+    console.log(`✅ Backed up ${abTests.length} A/B tests`);
+
+    // Backup RotationSlot records
+    console.log('Backing up RotationSlot records...');
+    const rotationSlots = await prisma.rotationSlot.findMany();
+    fs.writeFileSync(
+      path.join(backupDir, 'rotation-slots.json'),
+      JSON.stringify(rotationSlots, null, 2)
+    );
+    console.log(`✅ Backed up ${rotationSlots.length} rotation slots`);
+
+    // Backup RotationHistory records
+    console.log('Backing up RotationHistory records...');
+    const rotationHistory = await prisma.rotationHistory.findMany();
+    fs.writeFileSync(
+      path.join(backupDir, 'rotation-history.json'),
+      JSON.stringify(rotationHistory, null, 2)
+    );
+    console.log(`✅ Backed up ${rotationHistory.length} rotation history records`);
+
+    // Backup ABTestEvent records
+    console.log('Backing up ABTestEvent records...');
+    const events = await prisma.aBTestEvent.findMany();
+    fs.writeFileSync(
+      path.join(backupDir, 'ab-test-events.json'),
+      JSON.stringify(events, null, 2)
+    );
+    console.log(`✅ Backed up ${events.length} event records`);
+
+    // Create summary
+    const summary = {
+      timestamp,
+      counts: {
+        abTests: abTests.length,
+        variants: abTests.reduce((acc, test) => acc + test.variants.length, 0),
+        events: events.length,
+        rotationSlots: rotationSlots.length,
+        rotationHistory: rotationHistory.length,
+      },
+      activeTests: abTests.filter(t => t.status === 'ACTIVE').map(t => ({
+        id: t.id,
+        name: t.name,
+        productId: t.productId,
+        status: t.status,
+      })),
+    };
+
+    fs.writeFileSync(
+      path.join(backupDir, 'summary.json'),
+      JSON.stringify(summary, null, 2)
+    );
+
+    console.log('\n📊 Backup Summary:');
+    console.log(JSON.stringify(summary.counts, null, 2));
+    console.log(`\n✨ Backup completed successfully at: ${backupDir}`);
+
+  } catch (error) {
+    console.error('❌ Backup failed:', error);
+    throw error;
+  } finally {
+    await prisma.$disconnect();
+  }
+}
+
+// Run backup
+backupABTestData().catch((e) => {
+  console.error('Fatal error:', e);
+  process.exit(1);
+});

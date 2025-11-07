@@ -1,16 +1,15 @@
 import { useEffect, useState } from 'react';
 import type { LoaderFunctionArgs, ActionFunctionArgs } from '@remix-run/node';
 import { json } from '@remix-run/node';
-import { useLoaderData, useSearchParams, useFetcher, useNavigate, useRevalidator } from '@remix-run/react';
-import { Page, Text, Card, BlockStack, Modal, InlineGrid, InlineStack, TextField, EmptyState } from '@shopify/polaris';
+import { useLoaderData, useSearchParams, useFetcher, useNavigate } from '@remix-run/react';
+import { Page, Text, BlockStack, Modal } from '@shopify/polaris';
 import { TitleBar, useAppBridge } from '@shopify/app-bridge-react';
 import { authenticate } from '../shopify.server';
-import db from '../db.server';
 import { checkAIProviderHealth } from '../services/ai-providers.server';
 import { ImagePreviewModal } from '../features/ai-studio/components/ImagePreviewModal';
 import { ImageGenerationHub } from '../features/ai-studio/components/ImageGenerationHub';
 import { ProductGallery } from '../features/ai-studio/components/ProductGallery';
-import { VariantSelector } from '../features/ai-studio/components/VariantSelector';
+import { ProductSelector } from '../features/shared/components';
 import { handleGenerate } from '../features/ai-studio/handlers/generation.server';
 import {
 	handleSaveToLibrary,
@@ -29,8 +28,6 @@ import type {
 	BatchProcessingState,
 	ActionErrorResponse,
 } from '../features/ai-studio/types';
-import { ABTestManager } from '../features/ab-testing/components/ABTestManager';
-import type { ABTestCreateRequest } from '../features/ab-testing/types';
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
 	const { admin, session } = await authenticate.admin(request);
@@ -69,7 +66,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 		const productsJson = await productsResponse.json();
 		const products = productsJson.data?.products?.edges?.map((edge: any) => edge.node) || [];
 
-		return { product: null, abTests: [], activeTest: null, products, shop: session.shop };
+		return { product: null, products, shop: session.shop };
 	}
 
 	// Fetch product data
@@ -122,65 +119,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
 	const responseJson = await response.json();
 
-	// Fetch A/B tests for this product
-	const abTestsRaw = await db.aBTest.findMany({
-		where: {
-			shop: session.shop,
-			productId: productId,
-		},
-		include: {
-			variants: true,
-			events: true,
-		},
-		orderBy: { createdAt: 'desc' },
-	});
-
-	// Transform Prisma data to match TypeScript interfaces
-	const abTests = abTestsRaw.map(test => {
-		try {
-			return {
-				...test,
-				variants: test.variants.map(v => {
-					try {
-						// Handle various bad states
-						if (
-							!v.imageUrls ||
-							v.imageUrls === 'undefined' ||
-							v.imageUrls === 'null' ||
-							v.imageUrls === ''
-						) {
-							console.warn(`[AI Studio Loader] Variant ${v.id} has invalid imageUrls: ${v.imageUrls}`);
-							return { ...v, imageUrls: [] };
-						}
-						return { ...v, imageUrls: JSON.parse(v.imageUrls) };
-					} catch (parseError) {
-						console.error(
-							`[AI Studio Loader] Failed to parse imageUrls for variant ${v.id}:`,
-							parseError,
-							'Raw value:',
-							v.imageUrls,
-						);
-						return { ...v, imageUrls: [] };
-					}
-				}),
-				events: test.events.map(e => ({
-					...e,
-					revenue: e.revenue ? Number(e.revenue) : undefined,
-				})),
-			};
-		} catch (testError) {
-			console.error(`[AI Studio Loader] Failed to transform test ${test.id}:`, testError);
-			throw testError;
-		}
-	});
-
-	// Find active test (RUNNING or DRAFT)
-	const activeTest = abTests.find(test => test.status === 'RUNNING' || test.status === 'DRAFT') || null;
-
 	return {
 		product: responseJson.data?.product || null,
-		abTests,
-		activeTest,
 		products: [],
 		shop: session.shop,
 	};
@@ -297,182 +237,6 @@ export const action = async ({ request }: ActionFunctionArgs): Promise<Response>
 				console.log(`[ACTION:${requestId}] CompleteUpload handler completed`);
 				return completeUploadResult;
 
-			case 'createABTest': {
-				const name = String(formData.get('name') || '');
-				const variantScope = String(formData.get('variantScope') || 'PRODUCT');
-				const variantTestsJson = String(formData.get('variantTests') || '');
-				const variantAImages = String(formData.get('variantAImages') || '');
-				const variantBImages = String(formData.get('variantBImages') || '');
-				const trafficSplit = parseInt(String(formData.get('trafficSplit') || '50'));
-
-				if (!name || !productId) {
-					return json(
-						{ ok: false, error: 'Missing required fields' },
-						{ status: 400, headers: { 'Content-Type': 'application/json' } },
-					);
-				}
-
-				// Parse variant tests if scope is VARIANT
-				let variantTests: Array<{ shopifyVariantId: string; variantAImages: string[]; variantBImages: string[] }> = [];
-				if (variantScope === 'VARIANT' && variantTestsJson) {
-					try {
-						variantTests = JSON.parse(variantTestsJson);
-						if (!Array.isArray(variantTests) || variantTests.length === 0) {
-							return json(
-								{ ok: false, error: 'Variant tests must be a non-empty array' },
-								{ status: 400, headers: { 'Content-Type': 'application/json' } },
-							);
-						}
-					} catch (error) {
-						return json(
-							{ ok: false, error: 'Invalid variant tests format' },
-							{ status: 400, headers: { 'Content-Type': 'application/json' } },
-						);
-					}
-				} else if (variantScope === 'PRODUCT' && (!variantAImages || !variantBImages)) {
-					return json(
-						{ ok: false, error: 'Missing variant images for product-wide test' },
-						{ status: 400, headers: { 'Content-Type': 'application/json' } },
-					);
-				}
-
-				// Check for existing active test for this product
-				const existingActiveTest = await db.aBTest.findFirst({
-					where: {
-						shop: session.shop,
-						productId,
-						status: {
-							in: ['DRAFT', 'RUNNING'],
-						},
-					},
-				});
-
-				if (existingActiveTest) {
-					return json(
-						{
-							ok: false,
-							error: 'An active A/B test already exists for this product. Please complete or delete the existing test before creating a new one.',
-						},
-						{ status: 400, headers: { 'Content-Type': 'application/json' } },
-					);
-				}
-
-				try {
-					let test;
-
-					if (variantScope === 'VARIANT') {
-						// Create SINGLE test with multiple variant configurations
-						// Each Shopify variant gets both A and B test variants
-						const variantConfigs = variantTests.flatMap(vt => [
-							{
-								variant: 'A',
-								imageUrls: JSON.stringify(vt.variantAImages),
-								shopifyVariantId: vt.shopifyVariantId,
-							},
-							{
-								variant: 'B',
-								imageUrls: JSON.stringify(vt.variantBImages),
-								shopifyVariantId: vt.shopifyVariantId,
-							},
-						]);
-
-						test = await db.aBTest.create({
-							data: {
-								shop: session.shop,
-								productId,
-								name,
-								status: 'DRAFT',
-								variantScope: 'VARIANT',
-								trafficSplit,
-								variants: {
-									create: variantConfigs,
-								},
-							},
-							include: {
-								variants: true,
-							},
-						});
-
-						console.log(
-							`[A/B Test Created] Single test with ${variantConfigs.length} variant configs (${variantTests.length} Shopify variants x 2)`,
-						);
-					} else {
-						// Create product-wide test
-						test = await db.aBTest.create({
-							data: {
-								shop: session.shop,
-								productId,
-								name,
-								status: 'DRAFT',
-								variantScope: 'PRODUCT',
-								trafficSplit,
-								variants: {
-									create: [
-										{
-											variant: 'A',
-											imageUrls: variantAImages,
-											shopifyVariantId: null,
-										},
-										{
-											variant: 'B',
-											imageUrls: variantBImages,
-											shopifyVariantId: null,
-										},
-									],
-								},
-							},
-							include: {
-								variants: true,
-							},
-						});
-
-						console.log(`[A/B Test Created] Product-wide test with 2 variants (A/B)`);
-					}
-
-					return json({ ok: true, test });
-				} catch (error) {
-					console.error('Failed to create A/B test:', error);
-					return json({ ok: false, error: 'Failed to create A/B test' }, { status: 500 });
-				}
-			}
-
-			case 'startABTest':
-			case 'stopABTest':
-			case 'deleteABTest': {
-				const testId = String(formData.get('testId') || '');
-				if (!testId) {
-					return json(
-						{ ok: false, error: 'Missing test ID' },
-						{ status: 400, headers: { 'Content-Type': 'application/json' } },
-					);
-				}
-
-				if (intent === 'startABTest') {
-					const updatedTest = await db.aBTest.update({
-						where: { id: testId },
-						data: {
-							status: 'RUNNING',
-							startDate: new Date(),
-							updatedAt: new Date(),
-						},
-					});
-					return json({ ok: true, test: updatedTest });
-				} else if (intent === 'stopABTest') {
-					const updatedTest = await db.aBTest.update({
-						where: { id: testId },
-						data: {
-							status: 'COMPLETED',
-							endDate: new Date(),
-							updatedAt: new Date(),
-						},
-					});
-					return json({ ok: true, test: updatedTest });
-				} else {
-					await db.aBTest.delete({ where: { id: testId } });
-					return json({ ok: true });
-				}
-			}
-
 			case 'generate':
 			default: {
 				const healthCheck = checkAIProviderHealth();
@@ -512,18 +276,15 @@ export const action = async ({ request }: ActionFunctionArgs): Promise<Response>
 };
 
 export default function AIStudio() {
-	const { product, abTests, activeTest, products, shop } = useLoaderData<typeof loader>();
+	const { product, products, shop } = useLoaderData<typeof loader>();
 	const [searchParams] = useSearchParams();
 	const navigate = useNavigate();
-	const revalidator = useRevalidator();
 	const shopify = useAppBridge();
 	const fetcher = useFetcher<typeof action>();
 	const authenticatedAppFetch = useAuthenticatedAppFetch();
-	const [searchQuery, setSearchQuery] = useState('');
 
 	// Variant state management
 	const variants = (product?.variants?.nodes || []) as any[];
-	const [selectedVariantId, setSelectedVariantId] = useState<string | null>(null);
 
 	// State management
 	const [selectedImages, setSelectedImages] = useState<SelectedImage[]>([]);
@@ -807,23 +568,7 @@ export default function AIStudio() {
 			shopify.toast.show(String(data.error), { isError: true });
 			setPendingAction(null);
 		}
-
-		// Handle A/B test responses
-		const intent = fetcher.formData?.get?.('intent') as string;
-		if (data?.ok && intent === 'createABTest') {
-			shopify.toast.show('A/B test created successfully! 🎉');
-			revalidator.revalidate(); // Refresh loader data to show new test
-		} else if (data?.ok && intent === 'startABTest') {
-			shopify.toast.show('A/B test started successfully');
-			revalidator.revalidate();
-		} else if (data?.ok && intent === 'stopABTest') {
-			shopify.toast.show('A/B test stopped successfully');
-			revalidator.revalidate();
-		} else if (data?.ok && intent === 'deleteABTest') {
-			shopify.toast.show('A/B test deleted successfully');
-			revalidator.revalidate();
-		}
-	}, [fetcher.data, pendingAction, shopify, batchProcessingState.isProcessing, revalidator]);
+	}, [fetcher.data, pendingAction, shopify, batchProcessingState.isProcessing]);
 
 	const handlePublishImage = async (image: any) => {
 		const fd = new FormData();
@@ -843,175 +588,18 @@ export default function AIStudio() {
 		fetcher.submit(fd, { method: 'post' });
 	};
 
-	const handleABTestCreate = async (request: ABTestCreateRequest): Promise<void> => {
-		const fd = new FormData();
-		fd.set('intent', 'createABTest');
-		fd.set('name', request.name);
-		fd.set('productId', request.productId);
-		fd.set('variantScope', request.variantScope || 'PRODUCT');
-		fd.set('trafficSplit', String(request.trafficSplit || 50));
-
-		if (request.variantScope === 'VARIANT' && request.variantTests) {
-			fd.set('variantTests', JSON.stringify(request.variantTests));
-		} else {
-			fd.set('variantAImages', JSON.stringify(request.variantAImages || []));
-			fd.set('variantBImages', JSON.stringify(request.variantBImages || []));
-		}
-
-		fetcher.submit(fd, { method: 'post' });
-	};
-
-	const handleABTestAction = (testId: string, action: 'start' | 'stop' | 'delete') => {
-		const fd = new FormData();
-		fd.set('intent', `${action}ABTest`);
-		fd.set('testId', testId);
-
-		fetcher.submit(fd, { method: 'post' });
-	};
-
-	// Get all available images (original + generated + library)
-	const getAllImages = () => {
-		const originalImages = product?.media?.nodes?.map((node: any) => node.image?.url).filter(Boolean) || [];
-
-		const generatedImageUrls = generatedImages.map(img => img.imageUrl);
-
-		const libraryImageUrls = libraryItems.map(item => (typeof item === 'string' ? item : item.imageUrl));
-
-		// Note: libraryImageUrls are now also selectable as source images via ImageSelector
-		return [...originalImages, ...generatedImageUrls, ...libraryImageUrls];
-	};
-
 	if (!product) {
-		// Filter products based on search query
-		const filteredProducts =
-			products?.filter((p: any) => p.title.toLowerCase().includes(searchQuery.toLowerCase())) || [];
-
 		return (
 			<Page>
 				<TitleBar title='AI Image Studio' />
-				<BlockStack gap='500'>
-					<Card>
-						<BlockStack gap='400'>
-							<Text as='h2' variant='headingLg'>
-								Select a Product
-							</Text>
-							<Text as='p' tone='subdued'>
-								Choose a product to start generating AI images
-							</Text>
-							<TextField
-								label=''
-								value={searchQuery}
-								onChange={setSearchQuery}
-								placeholder='Search products...'
-								autoComplete='off'
-								clearButton
-								onClearButtonClick={() => setSearchQuery('')}
-							/>
-						</BlockStack>
-					</Card>
-
-					{filteredProducts.length === 0 ? (
-						<Card>
-							<EmptyState
-								heading='No products found'
-								image='https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png'
-							>
-								<p>
-									{searchQuery
-										? 'Try adjusting your search to find products'
-										: 'Create products in your store to use AI Studio'}
-								</p>
-							</EmptyState>
-						</Card>
-					) : (
-						<InlineGrid columns={{ xs: 1, sm: 2, md: 3, lg: 4 }} gap='400'>
-							{filteredProducts.map((product: any) => (
-								<Card key={product.id}>
-									<BlockStack gap='300'>
-										{product.featuredImage?.url ? (
-											<div
-												onClick={() =>
-													navigate(
-														`/app/ai-studio?productId=${encodeURIComponent(product.id)}`,
-													)
-												}
-												style={{
-													cursor: 'pointer',
-													borderRadius: '8px',
-													overflow: 'hidden',
-													aspectRatio: '1',
-													backgroundColor: '#F6F6F7',
-												}}
-											>
-												<img
-													src={product.featuredImage.url}
-													alt={product.featuredImage.altText || product.title}
-													style={{
-														width: '100%',
-														height: '100%',
-														objectFit: 'cover',
-													}}
-												/>
-											</div>
-										) : (
-											<div
-												onClick={() =>
-													navigate(
-														`/app/ai-studio?productId=${encodeURIComponent(product.id)}`,
-													)
-												}
-												style={{
-													cursor: 'pointer',
-													borderRadius: '8px',
-													aspectRatio: '1',
-													backgroundColor: '#F6F6F7',
-													display: 'flex',
-													alignItems: 'center',
-													justifyContent: 'center',
-												}}
-											>
-												<Text as='p' tone='subdued'>
-													No image
-												</Text>
-											</div>
-										)}
-										<BlockStack gap='200'>
-											<Text as='h3' variant='headingMd' truncate>
-												{product.title}
-											</Text>
-											<InlineStack align='space-between'>
-												<Text as='p' tone='subdued'>
-													{product.status}
-												</Text>
-												<button
-													onClick={() =>
-														navigate(
-															`/app/ai-studio?productId=${encodeURIComponent(
-																product.id,
-															)}`,
-														)
-													}
-													style={{
-														background: '#008060',
-														color: 'white',
-														border: 'none',
-														borderRadius: '6px',
-														padding: '8px 16px',
-														cursor: 'pointer',
-														fontSize: '14px',
-														fontWeight: '500',
-													}}
-												>
-													Select
-												</button>
-											</InlineStack>
-										</BlockStack>
-									</BlockStack>
-								</Card>
-							))}
-						</InlineGrid>
-					)}
-				</BlockStack>
+				<ProductSelector
+					products={products}
+					onSelectProduct={(id) => navigate(`/app/ai-studio?productId=${encodeURIComponent(id)}`)}
+					title="Select a Product"
+					description="Choose a product to start generating AI images"
+					emptyStateHeading="No products found"
+					emptyStateMessage="Create products in your store to use AI Studio"
+				/>
 			</Page>
 		);
 	}
@@ -1074,23 +662,11 @@ export default function AIStudio() {
 					</Modal>
 				)}
 
-				{/* AREA 1: A/B Test Results - Unchanged */}
-				<ABTestManager
-					productId={product?.id || ''}
-					availableImages={getAllImages()}
-					variants={variants}
-					existingTests={(abTests || []) as any}
-					activeTest={activeTest as any}
-					onTestCreate={handleABTestCreate}
-					onTestAction={handleABTestAction}
-					isCreating={false}
-				/>
-
-				{/* AREA 2: Product Gallery - Shows both published and library images */}
+				{/* Product Gallery - Shows both published and library images */}
 				<ProductGallery
 					images={product.media?.nodes || []}
 					libraryItems={libraryItems}
-					selectedVariantId={selectedVariantId}
+					selectedVariantId={null}
 					variants={variants}
 					onDelete={mediaId => {
 						const fd = new FormData();
@@ -1107,7 +683,7 @@ export default function AIStudio() {
 					isDeleting={pendingAction === 'deleteFromProduct'}
 				/>
 
-				{/* AREA 3: Image Generation Hub - New */}
+				{/* Image Generation Hub */}
 				<ImageGenerationHub
 					productId={product.id}
 					media={product.media?.nodes || []}
