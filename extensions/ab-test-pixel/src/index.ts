@@ -8,7 +8,9 @@ interface TestState {
 }
 
 register(({ analytics, browser }) => {
-  const APP_PROXY_BASE = '/apps/model-swap';
+  // Use correct API routes without base path
+  const ROTATION_API = '/api/rotation-state';
+  const TRACK_API = '/track';
   const STATE_KEY = 'ab_test_active';
   const SESSION_KEY = 'ab_test_session';
   const IMPRESSION_SYNC_PREFIX = 'ab_test_impression_';
@@ -91,7 +93,7 @@ register(({ analytics, browser }) => {
         query.set('variantId', variantId);
       }
 
-      const response = await fetch(`${APP_PROXY_BASE}/api/rotation-state?${query.toString()}`);
+      const response = await fetch(`${ROTATION_API}?${query.toString()}`);
       if (!response.ok) {
         return;
       }
@@ -137,7 +139,7 @@ register(({ analytics, browser }) => {
     if (!sessionId) return;
 
     try {
-      const response = await fetch(`${APP_PROXY_BASE}/track`, {
+      const response = await fetch(TRACK_API, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

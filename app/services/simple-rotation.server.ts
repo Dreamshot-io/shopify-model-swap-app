@@ -3,6 +3,7 @@ import db from '../db.server';
 import { AuditService } from './audit.server';
 import type { AdminApiContext } from '@shopify/shopify-app-remix/server';
 import { storeImagePermanently, getSafeImageUrl } from './image-storage.server';
+import { uploadR2ImageToShopify, isPrivateR2Url } from './shopify-image-upload.server';
 
 interface ImageData {
   url: string;
@@ -403,8 +404,24 @@ export class SimpleRotationService {
         `;
 
         // Use permanent URL if available, otherwise use original URL
-        const sourceUrl = getSafeImageUrl(image);
+        let sourceUrl = getSafeImageUrl(image);
         console.log(`[updateProductMedia] Creating image from:`, sourceUrl);
+
+        // Check if this is a private R2 URL that needs transfer
+        if (isPrivateR2Url(sourceUrl)) {
+          console.log(`[updateProductMedia] Detected private R2 URL, uploading via staged upload...`);
+          try {
+            sourceUrl = await uploadR2ImageToShopify(
+              admin,
+              sourceUrl,
+              `product-${productId}-img-${image.position}`
+            );
+            console.log(`[updateProductMedia] ✓ Uploaded to Shopify CDN:`, sourceUrl);
+          } catch (uploadError) {
+            console.error('[updateProductMedia] Failed to upload R2 image:', uploadError);
+            throw new Error(`Failed to transfer R2 image to Shopify: ${(uploadError as Error).message}`);
+          }
+        }
 
         const createResult = await admin.graphql(createQuery, {
           variables: {
@@ -558,8 +575,24 @@ export class SimpleRotationService {
       `;
 
       // Use permanent URL if available, otherwise original URL
-      const sourceUrl = getSafeImageUrl(heroImage);
+      let sourceUrl = getSafeImageUrl(heroImage);
       console.log(`[updateVariantHero] Creating hero image from:`, sourceUrl);
+
+      // Check if this is a private R2 URL that needs transfer
+      if (isPrivateR2Url(sourceUrl)) {
+        console.log(`[updateVariantHero] Detected private R2 URL, uploading via staged upload...`);
+        try {
+          sourceUrl = await uploadR2ImageToShopify(
+            admin,
+            sourceUrl,
+            `variant-${variantId}-hero`
+          );
+          console.log(`[updateVariantHero] ✓ Uploaded to Shopify CDN:`, sourceUrl);
+        } catch (uploadError) {
+          console.error('[updateVariantHero] Failed to upload R2 image:', uploadError);
+          throw new Error(`Failed to transfer R2 hero image to Shopify: ${(uploadError as Error).message}`);
+        }
+      }
 
       const createResult = await admin.graphql(createMediaQuery, {
         variables: {
