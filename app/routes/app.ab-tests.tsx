@@ -149,8 +149,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     };
   });
 
-  const activeTest = testsWithStats.find((t) => t.status === 'ACTIVE');
-  const draftTests = testsWithStats.filter((t) => t.status === 'DRAFT' || t.status === 'PAUSED');
+  const activeTest = testsWithStats.find((t) => t.status === 'ACTIVE' || t.status === 'PAUSED');
+  const draftTests = testsWithStats.filter((t) => t.status === 'DRAFT');
   const completedTests = testsWithStats.filter((t) => t.status === 'COMPLETED');
 
   return json({
@@ -321,10 +321,12 @@ export default function ABTests() {
   const shopify = useAppBridge();
   const [showCreateForm, setShowCreateForm] = useState(false);
 
-  // Show toast on success
+  // Show toast on success or error
   useEffect(() => {
     if (fetcher.data?.success && fetcher.data.message) {
       shopify.toast.show(fetcher.data.message);
+    } else if (fetcher.data?.success === false && fetcher.data.error) {
+      shopify.toast.show(fetcher.data.error, { isError: true });
     }
   }, [fetcher.data, shopify]);
 
@@ -396,15 +398,6 @@ export default function ABTests() {
       </TitleBar>
 
       <Layout>
-        {/* Error Banner (only errors, success uses toast) */}
-        {fetcher.data?.success === false && (
-          <Layout.Section>
-            <Banner tone="critical" title="Error">
-              <Text as="p">{fetcher.data.error}</Text>
-            </Banner>
-          </Layout.Section>
-        )}
-
         {/* Active Test Card */}
         {data.activeTest && (
           <Layout.Section>
@@ -416,7 +409,9 @@ export default function ABTests() {
                       <Text variant="headingLg" as="h2">
                         {data.activeTest.name}
                       </Text>
-                      <Badge tone="success">Active</Badge>
+                      <Badge tone={data.activeTest.status === 'ACTIVE' ? 'success' : 'attention'}>
+                        {data.activeTest.status}
+                      </Badge>
                       <Badge tone={data.activeTest.currentCase === 'BASE' ? 'info' : 'attention'}>
                         {data.activeTest.currentCase}
                       </Badge>
@@ -429,17 +424,28 @@ export default function ABTests() {
                     </Text>
                   </BlockStack>
                   <InlineStack gap="200">
-                    <Button
-                      size="slim"
-                      onClick={() => handleAction(data.activeTest!.id, 'pause')}
-                      loading={fetcher.state !== 'idle'}
-                    >
-                      Pause
-                    </Button>
+                    {data.activeTest.status === 'ACTIVE' ? (
+                      <Button
+                        size="slim"
+                        onClick={() => handleAction(data.activeTest!.id, 'pause')}
+                        loading={fetcher.state !== 'idle'}
+                      >
+                        Pause
+                      </Button>
+                    ) : (
+                      <Button
+                        size="slim"
+                        onClick={() => handleAction(data.activeTest!.id, 'start')}
+                        loading={fetcher.state !== 'idle'}
+                      >
+                        Resume
+                      </Button>
+                    )}
                     <Button
                       size="slim"
                       onClick={() => handleAction(data.activeTest!.id, 'rotate')}
                       loading={fetcher.state !== 'idle'}
+                      disabled={data.activeTest.status === 'PAUSED'}
                     >
                       Rotate Now
                     </Button>
@@ -477,44 +483,112 @@ export default function ABTests() {
                     Performance Metrics
                   </Text>
                   <DataTable
-                    columnContentTypes={['text', 'numeric', 'numeric']}
-                    headings={['Metric', 'Base (Control)', 'Test (Variant)']}
+                    columnContentTypes={['text', 'text', 'numeric', 'numeric', 'numeric', 'numeric', 'numeric', 'numeric']}
+                    headings={['', 'Preview', 'Impressions', 'Add to Carts', 'ATC Rate', 'Purchases', 'CVR', 'Revenue']}
                     rows={[
                       [
-                        'Impressions',
+                        'Base (Control)',
+                        <div key="base-preview" style={{ display: 'flex', gap: '4px', minWidth: '130px' }}>
+                          {(() => {
+                            // Try gallery images first
+                            let baseImages = data.activeTest.baseImages;
+                            if (typeof baseImages === 'string') {
+                              try { baseImages = JSON.parse(baseImages); } catch (e) { baseImages = []; }
+                            }
+
+                            // If no gallery images, try variant heroes
+                            const imagesToShow = Array.isArray(baseImages) && baseImages.length > 0
+                              ? baseImages
+                              : data.activeTest.variants?.length > 0
+                                ? data.activeTest.variants
+                                    .filter((v: any) => v.baseHeroImage)
+                                    .map((v: any) => {
+                                      const img = v.baseHeroImage;
+                                      return typeof img === 'string' ? JSON.parse(img) : img;
+                                    })
+                                : [];
+
+                            if ((imagesToShow as any[]).length === 0) {
+                              return <Text as="span" tone="subdued">No images</Text>;
+                            }
+
+                            return (imagesToShow as any[]).slice(0, 3).map((img: any, idx: number) => (
+                              <img
+                                key={idx}
+                                src={img?.url || img}
+                                alt=""
+                                style={{
+                                  width: '40px',
+                                  height: '40px',
+                                  objectFit: 'cover',
+                                  borderRadius: '4px',
+                                  border: '1px solid #E1E3E5',
+                                }}
+                              />
+                            ));
+                          })()}
+                        </div>,
                         data.activeTest.statistics.base.impressions.toString(),
-                        data.activeTest.statistics.test.impressions.toString(),
-                      ],
-                      [
-                        'Add to Carts',
                         data.activeTest.events.filter((e: any) => e.activeCase === 'BASE' && e.eventType === 'ADD_TO_CART').length.toString(),
-                        data.activeTest.events.filter((e: any) => e.activeCase === 'TEST' && e.eventType === 'ADD_TO_CART').length.toString(),
-                      ],
-                      [
-                        'ATC Rate',
                         data.activeTest.statistics.base.impressions > 0
                           ? `${((data.activeTest.events.filter((e: any) => e.activeCase === 'BASE' && e.eventType === 'ADD_TO_CART').length / data.activeTest.statistics.base.impressions) * 100).toFixed(2)}%`
                           : '0%',
-                        data.activeTest.statistics.test.impressions > 0
-                          ? `${((data.activeTest.events.filter((e: any) => e.activeCase === 'TEST' && e.eventType === 'ADD_TO_CART').length / data.activeTest.statistics.test.impressions) * 100).toFixed(2)}%`
-                          : '0%',
-                      ],
-                      [
-                        'Purchases',
                         data.activeTest.statistics.base.conversions.toString(),
-                        data.activeTest.statistics.test.conversions.toString(),
-                      ],
-                      [
-                        'Conversion Rate',
                         `${data.activeTest.statistics.base.cvr.toFixed(2)}%`,
-                        `${data.activeTest.statistics.test.cvr.toFixed(2)}%`,
-                      ],
-                      [
-                        'Revenue',
                         `$${data.activeTest.events
                           .filter((e: any) => e.activeCase === 'BASE' && e.eventType === 'PURCHASE' && e.revenue)
                           .reduce((sum: number, e: any) => sum + Number(e.revenue), 0)
                           .toFixed(2)}`,
+                      ],
+                      [
+                        'Test (Variant)',
+                        <div key="test-preview" style={{ display: 'flex', gap: '4px', minWidth: '130px' }}>
+                          {(() => {
+                            // Try gallery images first
+                            let testImages = data.activeTest.testImages;
+                            if (typeof testImages === 'string') {
+                              try { testImages = JSON.parse(testImages); } catch (e) { testImages = []; }
+                            }
+
+                            // If no gallery images, try variant heroes
+                            const imagesToShow = Array.isArray(testImages) && testImages.length > 0
+                              ? testImages
+                              : data.activeTest.variants?.length > 0
+                                ? data.activeTest.variants
+                                    .filter((v: any) => v.testHeroImage)
+                                    .map((v: any) => {
+                                      const img = v.testHeroImage;
+                                      return typeof img === 'string' ? JSON.parse(img) : img;
+                                    })
+                                : [];
+
+                            if ((imagesToShow as any[]).length === 0) {
+                              return <Text as="span" tone="subdued">No images</Text>;
+                            }
+
+                            return (imagesToShow as any[]).slice(0, 3).map((img: any, idx: number) => (
+                              <img
+                                key={idx}
+                                src={img?.url || img}
+                                alt=""
+                                style={{
+                                  width: '40px',
+                                  height: '40px',
+                                  objectFit: 'cover',
+                                  borderRadius: '4px',
+                                  border: '1px solid #E1E3E5',
+                                }}
+                              />
+                            ));
+                          })()}
+                        </div>,
+                        data.activeTest.statistics.test.impressions.toString(),
+                        data.activeTest.events.filter((e: any) => e.activeCase === 'TEST' && e.eventType === 'ADD_TO_CART').length.toString(),
+                        data.activeTest.statistics.test.impressions > 0
+                          ? `${((data.activeTest.events.filter((e: any) => e.activeCase === 'TEST' && e.eventType === 'ADD_TO_CART').length / data.activeTest.statistics.test.impressions) * 100).toFixed(2)}%`
+                          : '0%',
+                        data.activeTest.statistics.test.conversions.toString(),
+                        `${data.activeTest.statistics.test.cvr.toFixed(2)}%`,
                         `$${data.activeTest.events
                           .filter((e: any) => e.activeCase === 'TEST' && e.eventType === 'PURCHASE' && e.revenue)
                           .reduce((sum: number, e: any) => sum + Number(e.revenue), 0)
@@ -559,41 +633,81 @@ export default function ABTests() {
                   Draft Tests ({data.draftTests.length})
                 </Text>
                 <DataTable
-                  columnContentTypes={['text', 'text', 'numeric', 'numeric', 'text']}
-                  headings={['Name', 'Status', 'Base Images', 'Test Images', <div key="actions-header" style={{ textAlign: 'right' }}>Actions</div>]}
-                  rows={data.draftTests.map((test) => [
-                    test.name,
-                    <Badge key={`status-${test.id}`} tone={test.status === 'PAUSED' ? 'attention' : 'info'}>
-                      {test.status}
-                    </Badge>,
-                    Array.isArray(test.baseImages) ? test.baseImages.length.toString() : '0',
-                    Array.isArray(test.testImages) ? test.testImages.length.toString() : '0',
-                    <div key={`draft-actions-${test.id}`} style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                      <InlineStack gap="200">
-                        <Button
-                          size="slim"
-                          onClick={() => handleAction(test.id, 'start')}
-                          loading={fetcher.state !== 'idle'}
-                        >
-                          {test.status === 'PAUSED' ? 'Resume' : 'Start'}
-                        </Button>
-                        <Button
-                          size="slim"
-                          url={`/app/ab-tests/${test.id}`}
-                        >
-                          View Stats
-                        </Button>
-                        <Button
-                          size="slim"
-                          tone="critical"
-                          onClick={() => handleAction(test.id, 'delete')}
-                          loading={fetcher.state !== 'idle'}
-                        >
-                          Delete
-                        </Button>
-                      </InlineStack>
-                    </div>,
-                  ])}
+                  columnContentTypes={['text', 'text', 'text', 'numeric', 'numeric', 'text']}
+                  headings={['Preview', 'Name', 'Status', 'Base Images', 'Test Images', <div key="actions-header" style={{ textAlign: 'right' }}>Actions</div>]}
+                  rows={data.draftTests.map((test) => {
+                    const testImages = Array.isArray(test.testImages) ? test.testImages as any[] : [];
+                    const previewImages = testImages.slice(0, 3);
+
+                    return [
+                      <div key={`preview-${test.id}`} style={{ display: 'flex', gap: '4px' }}>
+                        {previewImages.map((img: any, idx: number) => (
+                          <img
+                            key={idx}
+                            src={img.url}
+                            alt=""
+                            style={{
+                              width: '40px',
+                              height: '40px',
+                              objectFit: 'cover',
+                              borderRadius: '4px',
+                              border: '1px solid #E1E3E5',
+                            }}
+                          />
+                        ))}
+                        {testImages.length > 3 && (
+                          <div
+                            style={{
+                              width: '40px',
+                              height: '40px',
+                              borderRadius: '4px',
+                              border: '1px solid #E1E3E5',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              backgroundColor: '#F6F6F7',
+                              fontSize: '12px',
+                              fontWeight: '600',
+                              color: '#6D7175',
+                            }}
+                          >
+                            +{testImages.length - 3}
+                          </div>
+                        )}
+                      </div>,
+                      test.name,
+                      <Badge key={`status-${test.id}`} tone={test.status === 'PAUSED' ? 'attention' : 'info'}>
+                        {test.status}
+                      </Badge>,
+                      Array.isArray(test.baseImages) ? test.baseImages.length.toString() : '0',
+                      Array.isArray(test.testImages) ? test.testImages.length.toString() : '0',
+                      <div key={`draft-actions-${test.id}`} style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                        <InlineStack gap="200">
+                          <Button
+                            size="slim"
+                            onClick={() => handleAction(test.id, 'start')}
+                            loading={fetcher.state !== 'idle'}
+                          >
+                            {test.status === 'PAUSED' ? 'Resume' : 'Start'}
+                          </Button>
+                          <Button
+                            size="slim"
+                            url={`/app/ab-tests/${test.id}`}
+                          >
+                            View Stats
+                          </Button>
+                          <Button
+                            size="slim"
+                            tone="critical"
+                            onClick={() => handleAction(test.id, 'delete')}
+                            loading={fetcher.state !== 'idle'}
+                          >
+                            Delete
+                          </Button>
+                        </InlineStack>
+                      </div>,
+                    ];
+                  })}
                 />
               </BlockStack>
             </Card>
@@ -636,32 +750,72 @@ export default function ABTests() {
                   Completed Tests ({data.completedTests.length})
                 </Text>
                 <DataTable
-                  columnContentTypes={['text', 'text', 'numeric', 'numeric', 'text']}
-                  headings={['Name', 'Winner', 'Lift', 'Conversions', <div key="actions-header-completed" style={{ textAlign: 'right' }}>Actions</div>]}
-                  rows={data.completedTests.map((test) => [
-                    test.name,
-                    test.statistics.lift > 0 ? 'Test' : test.statistics.lift < 0 ? 'Base' : 'Tie',
-                    `${test.statistics.lift >= 0 ? '+' : ''}${test.statistics.lift.toFixed(2)}%`,
-                    `${test.statistics.base.conversions} vs ${test.statistics.test.conversions}`,
-                    <div key={`completed-actions-${test.id}`} style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                      <InlineStack gap="200">
-                        <Button
-                          size="slim"
-                          url={`/app/ab-tests/${test.id}`}
-                        >
-                          View Stats
-                        </Button>
-                        <Button
-                          size="slim"
-                          tone="critical"
-                          onClick={() => handleAction(test.id, 'delete')}
-                          loading={fetcher.state !== 'idle'}
-                        >
-                          Delete
-                        </Button>
-                      </InlineStack>
-                    </div>,
-                  ])}
+                  columnContentTypes={['text', 'text', 'text', 'numeric', 'numeric', 'text']}
+                  headings={['Preview', 'Name', 'Winner', 'Lift', 'Conversions', <div key="actions-header-completed" style={{ textAlign: 'right' }}>Actions</div>]}
+                  rows={data.completedTests.map((test) => {
+                    const testImages = Array.isArray(test.testImages) ? test.testImages as any[] : [];
+                    const previewImages = testImages.slice(0, 3);
+
+                    return [
+                      <div key={`preview-${test.id}`} style={{ display: 'flex', gap: '4px' }}>
+                        {previewImages.map((img: any, idx: number) => (
+                          <img
+                            key={idx}
+                            src={img.url}
+                            alt=""
+                            style={{
+                              width: '40px',
+                              height: '40px',
+                              objectFit: 'cover',
+                              borderRadius: '4px',
+                              border: '1px solid #E1E3E5',
+                            }}
+                          />
+                        ))}
+                        {testImages.length > 3 && (
+                          <div
+                            style={{
+                              width: '40px',
+                              height: '40px',
+                              borderRadius: '4px',
+                              border: '1px solid #E1E3E5',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              backgroundColor: '#F6F6F7',
+                              fontSize: '12px',
+                              fontWeight: '600',
+                              color: '#6D7175',
+                            }}
+                          >
+                            +{testImages.length - 3}
+                          </div>
+                        )}
+                      </div>,
+                      test.name,
+                      test.statistics.lift > 0 ? 'Test' : test.statistics.lift < 0 ? 'Base' : 'Tie',
+                      `${test.statistics.lift >= 0 ? '+' : ''}${test.statistics.lift.toFixed(2)}%`,
+                      `${test.statistics.base.conversions} vs ${test.statistics.test.conversions}`,
+                      <div key={`completed-actions-${test.id}`} style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                        <InlineStack gap="200">
+                          <Button
+                            size="slim"
+                            url={`/app/ab-tests/${test.id}`}
+                          >
+                            View Stats
+                          </Button>
+                          <Button
+                            size="slim"
+                            tone="critical"
+                            onClick={() => handleAction(test.id, 'delete')}
+                            loading={fetcher.state !== 'idle'}
+                          >
+                            Delete
+                          </Button>
+                        </InlineStack>
+                      </div>,
+                    ];
+                  })}
                 />
               </BlockStack>
             </Card>

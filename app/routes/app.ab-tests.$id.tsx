@@ -148,10 +148,12 @@ export default function ABTestDetail() {
   const navigate = useNavigate();
   const shopify = useAppBridge();
 
-  // Show toast on success
+  // Show toast on success or error
   useEffect(() => {
     if (fetcher.data?.success && fetcher.data.message) {
       shopify.toast.show(fetcher.data.message);
+    } else if (fetcher.data?.success === false && fetcher.data.error) {
+      shopify.toast.show(fetcher.data.error, { isError: true });
     }
   }, [fetcher.data, shopify]);
 
@@ -200,15 +202,6 @@ export default function ABTestDetail() {
       }}
     >
       <Layout>
-        {/* Error Banner (success uses toast) */}
-        {fetcher.data?.success === false && (
-          <Layout.Section>
-            <Banner tone="critical" title="Error">
-              <Text as="p">{fetcher.data.error}</Text>
-            </Banner>
-          </Layout.Section>
-        )}
-
         <Layout.Section>
           <Card>
             <BlockStack gap="400">

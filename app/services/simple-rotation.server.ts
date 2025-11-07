@@ -92,7 +92,7 @@ export class SimpleRotationService {
           : (variant.testHeroImage as unknown as ImageData);
 
         if (heroImage) {
-          await this.updateVariantHero(admin, variant.shopifyVariantId, heroImage);
+          await this.updateVariantHero(admin, variant.shopifyVariantId, heroImage, test.productId);
           variantsUpdated++;
 
           // Log variant update
@@ -295,14 +295,35 @@ export class SimpleRotationService {
   private static async updateVariantHero(
     admin: AdminApiContext,
     variantId: string,
-    heroImage: ImageData
+    heroImage: ImageData,
+    productId?: string
   ): Promise<void> {
-    // First create the media on the product
-    const productIdMatch = variantId.match(/Product\/(\d+)/);
-    if (!productIdMatch) {
-      throw new Error(`Invalid variant ID format: ${variantId}`);
+    // Get product ID - either passed or query from variant
+    let productGid = productId;
+
+    if (!productGid) {
+      // Query variant to get its product
+      const variantQuery = `
+        query getVariantProduct($variantId: ID!) {
+          productVariant(id: $variantId) {
+            product {
+              id
+            }
+          }
+        }
+      `;
+
+      const variantResponse = await admin.graphql(variantQuery, {
+        variables: { variantId },
+      });
+
+      const variantData = await variantResponse.json();
+      productGid = variantData.data?.productVariant?.product?.id;
+
+      if (!productGid) {
+        throw new Error(`Could not find product for variant: ${variantId}`);
+      }
     }
-    const productGid = `gid://shopify/Product/${productIdMatch[1]}`;
 
     // Create media on product first
     const createMediaQuery = `
@@ -344,16 +365,20 @@ export class SimpleRotationService {
       throw new Error('Failed to get media ID after creation');
     }
 
-    // Attach media to variant
+    // Attach media to variant using productVariantsBulkUpdate
     const attachMediaQuery = `
-      mutation attachMediaToVariant($productId: ID!, $variantMedia: [ProductVariantMediaInput!]!) {
+      mutation attachMediaToVariant($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
         productVariantsBulkUpdate(
           productId: $productId,
-          variants: [{
-            id: $variantId,
-            mediaId: $newMediaId
-          }]
+          variants: $variants
         ) {
+          productVariants {
+            id
+            image {
+              id
+              url
+            }
+          }
           userErrors {
             field
             message
@@ -365,8 +390,10 @@ export class SimpleRotationService {
     const attachResult = await admin.graphql(attachMediaQuery, {
       variables: {
         productId: productGid,
-        variantId,
-        newMediaId,
+        variants: [{
+          id: variantId,
+          mediaId: newMediaId,
+        }],
       },
     });
 
