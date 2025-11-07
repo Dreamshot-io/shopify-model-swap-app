@@ -1,0 +1,11 @@
+{
+  "timestamp": "2025-11-07T11-39-00-900Z",
+  "counts": {
+    "abTests": 4,
+    "variants": 8,
+    "events": 1,
+    "rotationSlots": 1,
+    "rotationHistory": 1
+  },
+  "activeTests": []
+}

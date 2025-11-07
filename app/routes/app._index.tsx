@@ -14,27 +14,27 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const [generated, draftsSaved, draftsDeleted, published, recent] =
     await Promise.all([
       db.metricEvent.count({
-        where: { shop, type: "GENERATED", createdAt: { gte: since } },
+        where: { shop, eventType: "GENERATED", timestamp: { gte: since } },
       }),
       db.metricEvent.count({
-        where: { shop, type: "DRAFT_SAVED", createdAt: { gte: since } },
+        where: { shop, eventType: "DRAFT_SAVED", timestamp: { gte: since } },
       }),
       db.metricEvent.count({
-        where: { shop, type: "DRAFT_DELETED", createdAt: { gte: since } },
+        where: { shop, eventType: "DRAFT_DELETED", timestamp: { gte: since } },
       }),
       db.metricEvent.count({
-        where: { shop, type: "PUBLISHED", createdAt: { gte: since } },
+        where: { shop, eventType: "PUBLISHED", timestamp: { gte: since } },
       }),
       db.metricEvent.findMany({
         where: { shop },
-        orderBy: { createdAt: "desc" },
+        orderBy: { timestamp: "desc" },
         take: 10,
         select: {
           id: true,
-          type: true,
+          eventType: true,
           imageUrl: true,
           productId: true,
-          createdAt: true,
+          timestamp: true,
         },
       }),
     ]);
@@ -124,9 +124,9 @@ export default function Index() {
                 <BlockStack gap="200">
                   {recent.map((e: any) => (
                     <InlineStack key={e.id} align="space-between">
-                      <Text as="span">{e.type}</Text>
+                      <Text as="span">{e.eventType}</Text>
                       <Text as="span" tone="subdued">
-                        {new Date(e.createdAt).toLocaleString()}
+                        {new Date(e.timestamp).toLocaleString()}
                       </Text>
                     </InlineStack>
                   ))}

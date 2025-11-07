@@ -1,0 +1,177 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum ABTestStatus {
+  DRAFT
+  RUNNING
+  PAUSED
+  COMPLETED
+  ARCHIVED
+}
+
+enum ABTestEventType {
+  IMPRESSION
+  ADD_TO_CART
+  PURCHASE
+}
+
+enum EventType {
+  GENERATED
+  DRAFT_SAVED
+  DRAFT_DELETED
+  PUBLISHED
+  LIBRARY_SAVED
+  LIBRARY_DELETED
+  UPLOADED
+}
+
+enum RotationSlotStatus {
+  ACTIVE
+  PAUSED
+  DISABLED
+}
+
+enum RotationVariant {
+  CONTROL
+  TEST
+}
+
+enum RotationTrigger {
+  CRON
+  MANUAL
+  ROLLBACK
+}
+
+model Session {
+  id            String    @id
+  shop          String
+  state         String
+  isOnline      Boolean   @default(false)
+  scope         String?
+  expires       DateTime?
+  accessToken   String
+  userId        BigInt?
+  firstName     String?
+  lastName      String?
+  email         String?
+  accountOwner  Boolean   @default(false)
+  locale        String?
+  collaborator  Boolean?  @default(false)
+  emailVerified Boolean?  @default(false)
+}
+
+model MetricEvent {
+  id        String    @id @default(cuid())
+  shop      String
+  type      EventType
+  productId String?
+  variantId String? // Shopify variant ID (gid://shopify/ProductVariant/...)
+  imageUrl  String?
+  createdAt DateTime  @default(now())
+
+  // Performance index for variant queries
+  @@index([shop, productId, variantId])
+}
+
+model ABTest {
+  id           String          @id @default(cuid())
+  shop         String
+  productId    String
+  name         String
+  status       ABTestStatus    @default(DRAFT)
+  trafficSplit Int             @default(50)
+  variantScope String?         @default("PRODUCT") // "PRODUCT" or "VARIANT"
+  startDate    DateTime?
+  endDate      DateTime?
+  variants     ABTestVariant[]
+  events       ABTestEvent[]
+  rotationSlots RotationSlot[]
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  // Performance indexes for common queries
+  @@index([shop, status])
+  @@index([shop, productId])
+  @@index([status, startDate])
+}
+
+model ABTestVariant {
+  id               String  @id @default(cuid())
+  testId           String
+  variant          String  // "A" or "B" (test group, not product variant)
+  imageUrls        String  // JSON array stored as string
+  shopifyVariantId String? // Optional: Link to actual Shopify product variant
+  test             ABTest  @relation(fields: [testId], references: [id], onDelete: Cascade)
+  rotationSlotsA   RotationSlot[] @relation("RotationSlotVariantA")
+  rotationSlotsB   RotationSlot[] @relation("RotationSlotVariantB")
+
+  // Performance index for variant lookup
+  @@index([testId, variant])
+}
+
+model ABTestEvent {
+  id        String          @id @default(cuid())
+  testId    String
+  sessionId String
+  variant   String          // "A" or "B" (test group, not product variant)
+  eventType ABTestEventType
+  productId String
+  variantId String?         // Optional: Track which product variant was involved
+  revenue   Decimal?
+  createdAt DateTime        @default(now())
+  test      ABTest          @relation(fields: [testId], references: [id], onDelete: Cascade)
+
+  // Performance indexes for event queries
+  @@index([testId, sessionId])
+  @@index([testId, eventType])
+  @@index([testId, createdAt])
+}
+
+model RotationSlot {
+  id               String            @id @default(cuid())
+  shop             String
+  productId        String
+  shopifyVariantId String?
+  testId           String
+  variantAId       String?
+  variantBId       String?
+  status           RotationSlotStatus @default(ACTIVE)
+  activeVariant    RotationVariant    @default(CONTROL)
+  intervalMinutes  Int                @default(10)
+  lastSwitchAt     DateTime?
+  nextSwitchDueAt  DateTime?
+  controlMedia     Json
+  testMedia        Json
+  metadata         Json?
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+
+  test      ABTest         @relation(fields: [testId], references: [id], onDelete: Cascade)
+  variantA  ABTestVariant? @relation("RotationSlotVariantA", fields: [variantAId], references: [id])
+  variantB  ABTestVariant? @relation("RotationSlotVariantB", fields: [variantBId], references: [id])
+  history   RotationHistory[]
+
+  @@unique([shop, productId, shopifyVariantId])
+  @@index([shop, nextSwitchDueAt])
+  @@index([testId])
+}
+
+model RotationHistory {
+  id            String           @id @default(cuid())
+  slotId        String
+  switchedVariant RotationVariant
+  triggeredBy   RotationTrigger
+  switchedAt    DateTime         @default(now())
+  context       Json?
+
+  slot RotationSlot @relation(fields: [slotId], references: [id], onDelete: Cascade)
+
+  @@index([slotId, switchedAt])
+}

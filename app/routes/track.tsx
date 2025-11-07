@@ -1,10 +1,12 @@
 import type { ActionFunctionArgs } from '@remix-run/node';
 import { json } from '@remix-run/node';
-import { RotationVariant } from '@prisma/client';
 import { authenticate } from '../shopify.server';
 import db from '../db.server';
-import { variantAtTimestamp } from '../services/ab-test-rotation.store';
+import { AuditService } from '../services/audit.server';
 
+/**
+ * Track events from the web pixel (impressions, add-to-cart, purchases)
+ */
 export const action = async ({ request }: ActionFunctionArgs) => {
   if (request.method !== 'POST') {
     return json({ error: 'Method not allowed' }, { status: 405 });
@@ -19,9 +21,20 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     corsHeaders = cors?.headers || {};
 
     const body = await request.json();
-    const { testId, sessionId, eventType, revenue, productId, shopifyVariantId, occurredAt } = body ?? {};
+    const {
+      testId,
+      sessionId,
+      eventType,
+      activeCase,
+      revenue,
+      quantity,
+      productId,
+      variantId,
+      metadata,
+    } = body ?? {};
 
-    if (!testId || !sessionId || !eventType || !productId) {
+    // Validate required fields
+    if (!testId || !sessionId || !eventType || !productId || !activeCase) {
       return json(
         {
           error: 'Missing required fields',
@@ -30,12 +43,14 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             hasSessionId: Boolean(sessionId),
             hasEventType: Boolean(eventType),
             hasProductId: Boolean(productId),
+            hasActiveCase: Boolean(activeCase),
           },
         },
         { status: 400, headers: corsHeaders },
       );
     }
 
+    // Validate event type
     const validEventTypes = ['IMPRESSION', 'ADD_TO_CART', 'PURCHASE'];
     if (!validEventTypes.includes(eventType)) {
       return json(
@@ -44,6 +59,16 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       );
     }
 
+    // Validate active case
+    const validCases = ['BASE', 'TEST'];
+    if (!validCases.includes(activeCase)) {
+      return json(
+        { error: 'Invalid active case', received: activeCase, valid: validCases },
+        { status: 400, headers: corsHeaders },
+      );
+    }
+
+    // Verify test exists and belongs to this shop
     const test = await db.aBTest.findFirst({
       where: {
         id: testId,
@@ -58,91 +83,65 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       );
     }
 
-    const normalizedVariantId = normalizeVariantId(shopifyVariantId ?? null);
+    // Normalize variant ID if provided
+    const normalizedVariantId = normalizeVariantId(variantId ?? null);
 
-    const rotationSlot = await db.rotationSlot.findUnique({
-      where: {
-        shop_productId_shopifyVariantId: {
-          shop: shopDomain!,
-          productId,
-          shopifyVariantId: normalizedVariantId,
-        },
-      },
-      include: {
-        variantA: true,
-        variantB: true,
-      },
-    });
-
-    const effectiveSlot =
-      rotationSlot ||
-      (await db.rotationSlot.findUnique({
+    // Check for duplicate events (only for impressions to prevent double-counting)
+    if (eventType === 'IMPRESSION') {
+      const duplicateEvent = await db.aBTestEvent.findFirst({
         where: {
-          shop_productId_shopifyVariantId: {
-            shop: shopDomain!,
-            productId,
-            shopifyVariantId: null,
-          },
+          testId,
+          sessionId,
+          eventType,
+          productId,
         },
-        include: {
-          variantA: true,
-          variantB: true,
-        },
-      }));
+      });
 
-    if (!effectiveSlot) {
-      return json(
-        { error: 'Rotation slot not configured', productId, shopifyVariantId: normalizedVariantId },
-        { status: 404, headers: corsHeaders },
-      );
+      if (duplicateEvent) {
+        return json(
+          { success: true, message: 'Event already tracked', eventId: duplicateEvent.id },
+          { headers: corsHeaders },
+        );
+      }
     }
 
-    const eventTimestamp = occurredAt ? new Date(occurredAt) : new Date();
-    const rotationVariant =
-      (await variantAtTimestamp(effectiveSlot.id, eventTimestamp)) ?? effectiveSlot.activeVariant;
-
-    const abVariant = mapRotationToAbVariant(effectiveSlot, rotationVariant);
-
-    if (!abVariant) {
-      return json(
-        { error: 'Unable to resolve AB variant for rotation slot' },
-        { status: 500, headers: corsHeaders },
-      );
-    }
-
-    const duplicateEvent = await db.aBTestEvent.findFirst({
-      where: {
-        testId,
-        sessionId,
-        eventType,
-      },
-    });
-
-    if (duplicateEvent) {
-      return json(
-        { success: true, message: 'Event already tracked' },
-        { headers: corsHeaders },
-      );
-    }
-
+    // Create the event
     const createdEvent = await db.aBTestEvent.create({
       data: {
         testId,
         sessionId,
-        variant: abVariant.code,
         eventType,
+        activeCase, // What was showing when event occurred
         productId,
         variantId: normalizedVariantId,
         revenue: revenue ? Number.parseFloat(String(revenue)) : null,
+        quantity: quantity ? Number.parseInt(String(quantity), 10) : null,
+        metadata: metadata || {},
       },
     });
+
+    // Log significant events (purchases always, others sampled)
+    if (eventType === 'PURCHASE' || Math.random() < 0.1) {
+      await AuditService.logUserAction(
+        `CUSTOMER_${eventType}`,
+        sessionId,
+        shopDomain!,
+        {
+          testId,
+          activeCase,
+          productId,
+          variantId: normalizedVariantId,
+          revenue,
+        }
+      );
+    }
 
     return json(
       {
         success: true,
         eventId: createdEvent.id,
-        variant: abVariant.code,
-        rotationVariant,
+        activeCase,
+        message: `${eventType} event tracked successfully`,
       },
       { headers: corsHeaders },
     );
@@ -152,31 +151,21 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     }
 
     const message = error instanceof Error ? error.message : 'Internal server error';
+
+    // Log tracking errors
+    await AuditService.logApiError(
+      shopDomain || 'UNKNOWN',
+      '/track',
+      error as Error
+    );
+
     return json({ error: message }, { status: 500, headers: corsHeaders });
   }
 };
 
-export function mapRotationToAbVariant(
-  slot: {
-    variantA: { variant: 'A' | 'B' } | null;
-    variantB: { variant: 'A' | 'B' } | null;
-  },
-  rotationVariant: RotationVariant,
-): { code: 'A' | 'B' } | null {
-  if (rotationVariant === RotationVariant.CONTROL) {
-    if (slot.variantA?.variant === 'A' || slot.variantA?.variant === 'B') {
-      return { code: slot.variantA.variant };
-    }
-    return { code: 'A' };
-  }
-
-  if (slot.variantB?.variant === 'A' || slot.variantB?.variant === 'B') {
-    return { code: slot.variantB.variant };
-  }
-
-  return { code: 'B' };
-}
-
+/**
+ * Normalize variant ID to Shopify GID format
+ */
 export function normalizeVariantId(variantId: string | null): string | null {
   if (!variantId) return null;
   if (variantId.startsWith('gid://shopify/ProductVariant/')) {

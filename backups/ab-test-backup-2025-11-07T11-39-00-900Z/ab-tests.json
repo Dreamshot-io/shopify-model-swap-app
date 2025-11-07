@@ -1,0 +1,134 @@
+[
+  {
+    "id": "8c85ad3b-64b2-467a-8930-4de6fc5eebf6",
+    "shop": "genlabs-dev-store.myshopify.com",
+    "productId": "gid://shopify/Product/7793112285253",
+    "name": "Test",
+    "status": "RUNNING",
+    "trafficSplit": 50,
+    "variantScope": "PRODUCT",
+    "startDate": "2025-10-20T14:01:15.877Z",
+    "endDate": null,
+    "createdAt": "2025-10-20T14:01:10.086Z",
+    "updatedAt": "2025-10-20T14:01:15.877Z",
+    "variants": [
+      {
+        "id": "7eb82f25-13ff-428a-9169-684beb8b1d8a",
+        "testId": "8c85ad3b-64b2-467a-8930-4de6fc5eebf6",
+        "variant": "A",
+        "imageUrls": "[\"https://cdn.shopify.com/s/files/1/0684/2158/2917/files/tshirts.jpg?v=1759747434\",\"https://cdn.shopify.com/s/files/1/0684/2158/2917/files/blank-colored-t-shirts.jpg?v=1759747434\",\"https://cdn.shopify.com/s/files/1/0684/2158/2917/files/green-t-shirt.jpg?v=1759747434\"]",
+        "shopifyVariantId": null
+      },
+      {
+        "id": "b21eb5c4-3d5c-414d-8dd3-a88a4edf0b40",
+        "testId": "8c85ad3b-64b2-467a-8930-4de6fc5eebf6",
+        "variant": "B",
+        "imageUrls": "[\"https://cdn.shopify.com/s/files/1/0684/2158/2917/files/cobalt-blue-t-shirt.jpg?v=1759747434\",\"https://cdn.shopify.com/s/files/1/0684/2158/2917/files/grey-t-shirt.jpg?v=1759747434\",\"https://cdn.shopify.com/s/files/1/0684/2158/2917/files/purple-t-shirt.jpg?v=1759747434\"]",
+        "shopifyVariantId": null
+      }
+    ],
+    "events": []
+  },
+  {
+    "id": "fc618709-8103-4dd1-bc16-e4ef3b2f7926",
+    "shop": "genlabs-dev-store.myshopify.com",
+    "productId": "gid://shopify/Product/7809670938693",
+    "name": "Test",
+    "status": "RUNNING",
+    "trafficSplit": 50,
+    "variantScope": "PRODUCT",
+    "startDate": "2025-10-24T10:53:43.679Z",
+    "endDate": null,
+    "createdAt": "2025-10-24T10:53:38.632Z",
+    "updatedAt": "2025-10-24T10:53:43.679Z",
+    "variants": [
+      {
+        "id": "944f9bfd-8719-4acf-acd1-16437616f07c",
+        "testId": "fc618709-8103-4dd1-bc16-e4ef3b2f7926",
+        "variant": "A",
+        "imageUrls": "[\"https://cdn.shopify.com/s/files/1/0684/2158/2917/files/replicate-prediction-t92j7y4w7drm80ct2mwb1vc5em.jpg?v=1761292799\",\"https://v3b.fal.media/files/b/monkey/lxF08JdLYXpRdO9swdIOO.jpg\"]",
+        "shopifyVariantId": null
+      },
+      {
+        "id": "a9fea2c7-4519-4720-aaf9-b0ec0165443b",
+        "testId": "fc618709-8103-4dd1-bc16-e4ef3b2f7926",
+        "variant": "B",
+        "imageUrls": "[\"https://v3b.fal.media/files/b/zebra/fxCNBSXIAhN000mILd_jf.jpg\"]",
+        "shopifyVariantId": null
+      }
+    ],
+    "events": [
+      {
+        "id": "cmh4qgsyo0001jv040r76ebc0",
+        "testId": "fc618709-8103-4dd1-bc16-e4ef3b2f7926",
+        "sessionId": "session_jr7whk5dfpmh4o4k4l",
+        "variant": "B",
+        "eventType": "IMPRESSION",
+        "productId": "gid://shopify/Product/7809670938693",
+        "variantId": null,
+        "revenue": null,
+        "createdAt": "2025-10-24T10:53:48.575Z"
+      }
+    ]
+  },
+  {
+    "id": "6273de76-e0b4-4cc9-adb5-98252fa6a687",
+    "shop": "genlabs-dev-store.myshopify.com",
+    "productId": "gid://shopify/Product/7793112350789",
+    "name": "Test",
+    "status": "DRAFT",
+    "trafficSplit": 50,
+    "variantScope": "PRODUCT",
+    "startDate": null,
+    "endDate": null,
+    "createdAt": "2025-10-29T14:13:01.762Z",
+    "updatedAt": "2025-10-29T14:13:01.760Z",
+    "variants": [
+      {
+        "id": "0c585c2c-c5cc-4111-8e4a-5457710be6ef",
+        "testId": "6273de76-e0b4-4cc9-adb5-98252fa6a687",
+        "variant": "A",
+        "imageUrls": "[\"https://cdn.shopify.com/s/files/1/0684/2158/2917/files/kids-beanie.jpg?v=1759747437\"]",
+        "shopifyVariantId": null
+      },
+      {
+        "id": "ed084abf-12fb-4bcc-8e13-06ccb5cd3879",
+        "testId": "6273de76-e0b4-4cc9-adb5-98252fa6a687",
+        "variant": "B",
+        "imageUrls": "[\"https://v3b.fal.media/files/b/zebra/JX1vVmo_lFrJgwETYzw2y.jpg\"]",
+        "shopifyVariantId": null
+      }
+    ],
+    "events": []
+  },
+  {
+    "id": "cmhoouo81000d9ktbdaayrbe1",
+    "shop": "genlabs-dev-store.myshopify.com",
+    "productId": "gid://shopify/Product/7806848499781",
+    "name": "fdsafdsa",
+    "status": "RUNNING",
+    "trafficSplit": 50,
+    "variantScope": "PRODUCT",
+    "startDate": "2025-11-07T10:04:09.643Z",
+    "endDate": null,
+    "createdAt": "2025-11-07T10:03:59.905Z",
+    "updatedAt": "2025-11-07T10:04:09.643Z",
+    "variants": [
+      {
+        "id": "cmhoouo81000f9ktbzxoyvay8",
+        "testId": "cmhoouo81000d9ktbdaayrbe1",
+        "variant": "B",
+        "imageUrls": "[\"https://cdn.shopify.com/s/files/1/0684/2158/2917/files/rotation-image-0_c58bf8ce-2103-400d-9e2e-498ffa8bb308.jpg?v=1762509289\",\"https://cdn.shopify.com/s/files/1/0684/2158/2917/files/rotation-image-1_153f3e0a-3eda-4441-a5c2-f2eb8ea784fd.jpg?v=1762509289\",\"https://cdn.shopify.com/s/files/1/0684/2158/2917/files/rotation-image-3_b1c7f1dc-866a-498d-9339-02fdbc8e50d7.jpg?v=1762509289\",\"https://v3b.fal.media/files/b/panda/g6gV6C2QsAdQzt4uMJiBd.jpg\"]",
+        "shopifyVariantId": null
+      },
+      {
+        "id": "cmhoouo81000e9ktbaz7r5vfh",
+        "testId": "cmhoouo81000d9ktbdaayrbe1",
+        "variant": "A",
+        "imageUrls": "[\"https://cdn.shopify.com/s/files/1/0684/2158/2917/files/rotation-image-0_c58bf8ce-2103-400d-9e2e-498ffa8bb308.jpg?v=1762509289\",\"https://cdn.shopify.com/s/files/1/0684/2158/2917/files/replicate-prediction-jdts34phvdrme0ct07sr85mvwm-0.jpg?v=1762509289\",\"https://cdn.shopify.com/s/files/1/0684/2158/2917/files/replicate-prediction-jdts34phvdrme0ct07sr85mvwm-2.jpg?v=1762509289\",\"https://cdn.shopify.com/s/files/1/0684/2158/2917/files/replicate-prediction-jdts34phvdrme0ct07sr85mvwm-1_33cbca59-6b7b-4618-b5f8-63a6a2bd624c.jpg?v=1762509289\",\"https://cdn.shopify.com/s/files/1/0684/2158/2917/files/replicate-prediction-h1xqzznztsrme0ct07rta7gwmr-0.jpg?v=1762509289\",\"https://cdn.shopify.com/s/files/1/0684/2158/2917/files/replicate-prediction-h1xqzznztsrme0ct07rta7gwmr-2.jpg?v=1762509289\",\"https://cdn.shopify.com/s/files/1/0684/2158/2917/files/replicate-prediction-t0zaybn6t5rm80ct07vbqda6sw-0_088a6706-fd9d-412f-bf73-a3d63ca97da3.jpg?v=1762509289\",\"https://cdn.shopify.com/s/files/1/0684/2158/2917/files/replicate-prediction-t0zaybn6t5rm80ct07vbqda6sw-1_b94c3510-1c88-4dc0-9429-d746428a0a44.jpg?v=1762509289\",\"https://cdn.shopify.com/s/files/1/0684/2158/2917/files/rotation-image-1_153f3e0a-3eda-4441-a5c2-f2eb8ea784fd.jpg?v=1762509289\",\"https://cdn.shopify.com/s/files/1/0684/2158/2917/files/rotation-image-2_5be6f963-7a29-45f5-8e26-e9afbf5d0b8b.jpg?v=1762509289\",\"https://cdn.shopify.com/s/files/1/0684/2158/2917/files/rotation-image-3_b1c7f1dc-866a-498d-9339-02fdbc8e50d7.jpg?v=1762509289\"]",
+        "shopifyVariantId": null
+      }
+    ],
+    "events": []
+  }
+]

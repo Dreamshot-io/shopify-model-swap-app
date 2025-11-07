@@ -51,7 +51,7 @@ export async function handlePublish(
       data: {
         id: crypto.randomUUID(),
         shop,
-        type: "PUBLISHED",
+        eventType: "PUBLISHED",
         productId,
         imageUrl,
       },
@@ -121,7 +121,7 @@ export async function handleDeleteFromProduct(
       data: {
         id: crypto.randomUUID(),
         shop,
-        type: "MEDIA_DELETED",
+        eventType: "MEDIA_DELETED",
         productId,
       },
     });

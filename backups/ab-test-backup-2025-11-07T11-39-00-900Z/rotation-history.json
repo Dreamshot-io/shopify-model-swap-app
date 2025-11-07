@@ -1,0 +1,14 @@
+[
+  {
+    "id": "cmhoow3cx000j9ktb65k20k4n",
+    "slotId": "cmhoouvb6000h9ktb824ad3k9",
+    "switchedVariant": "TEST",
+    "triggeredBy": "MANUAL",
+    "switchedAt": "2025-11-07T10:05:05.647Z",
+    "context": {
+      "productId": "gid://shopify/Product/7806848499781",
+      "imageCount": 4,
+      "publishedVariant": "TEST"
+    }
+  }
+]

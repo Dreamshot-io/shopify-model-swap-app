@@ -1,14 +1,18 @@
 import type { LoaderFunctionArgs } from '@remix-run/node';
 import { json } from '@remix-run/node';
-import { RotationVariant } from '@prisma/client';
 import { authenticate } from '../shopify.server';
+import { SimpleRotationService } from '../services/simple-rotation.server';
+import { AuditService } from '../services/audit.server';
 import db from '../db.server';
-import { variantAtTimestamp } from '../services/ab-test-rotation.store';
 
+/**
+ * API endpoint for tracking pixel to get current rotation state
+ * Returns which case (BASE or TEST) is currently active for a product
+ */
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const url = new URL(request.url);
   const productId = url.searchParams.get('productId');
-  const shopifyVariantId = normalizeVariantId(url.searchParams.get('variantId'));
+  const variantId = normalizeVariantId(url.searchParams.get('variantId'));
 
   if (!productId) {
     return json({ error: 'Missing productId' }, { status: 400 });
@@ -18,27 +22,60 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     const { session, cors } = await authenticate.public.appProxy(request);
     const corsHeaders = cors?.headers || {};
 
-    const slot = await findRotationSlot(session.shop, productId, shopifyVariantId);
+    // Get rotation state for the product
+    const { testId, activeCase } = await SimpleRotationService.getRotationState(productId);
 
-    if (!slot) {
+    if (!testId) {
+      // No active test for this product
       return json(
-        { activeVariant: null, abVariant: null, testId: null },
+        {
+          testId: null,
+          activeCase: null,
+          variantCase: null,
+        },
         { headers: corsHeaders },
       );
     }
 
-    const now = new Date();
-    const rotationVariant = (await variantAtTimestamp(slot.id, now)) ?? slot.activeVariant;
-    const abVariant = mapRotationToAbVariant(slot.variantA?.variant, slot.variantB?.variant, rotationVariant);
+    // For variant-level tests, check if this specific variant has a different case
+    let variantCase = null;
+    if (variantId) {
+      const variant = await db.aBTestVariant.findUnique({
+        where: {
+          testId_shopifyVariantId: {
+            testId,
+            shopifyVariantId: variantId,
+          },
+        },
+      });
+
+      if (variant) {
+        // For now, variant follows the global test state
+        // In future, we could have per-variant rotation if needed
+        variantCase = activeCase;
+      }
+    }
+
+    // Log impression tracking initialization (sampled to avoid spam)
+    if (Math.random() < 0.01) { // 1% sampling
+      await AuditService.logUserAction(
+        'PIXEL_INITIALIZED',
+        'tracking-pixel',
+        session.shop,
+        {
+          productId,
+          variantId,
+          testId,
+          activeCase,
+        }
+      );
+    }
 
     return json(
       {
-        slotId: slot.id,
-        rotationVariant,
-        abVariant,
-        testId: slot.testId,
-        lastSwitchAt: slot.lastSwitchAt,
-        nextSwitchDueAt: slot.nextSwitchDueAt,
+        testId,
+        activeCase, // BASE or TEST
+        variantCase, // For variant-specific tests
       },
       { headers: corsHeaders },
     );
@@ -48,54 +85,21 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     }
 
     const message = error instanceof Error ? error.message : 'Internal server error';
+
+    // Log API errors
+    await AuditService.logApiError(
+      'SYSTEM',
+      '/api/rotation-state',
+      error as Error
+    );
+
     return json({ error: message }, { status: 500 });
   }
 };
 
-async function findRotationSlot(shop: string, productId: string, variantId: string | null) {
-  const exact = await db.rotationSlot.findUnique({
-    where: {
-      shop_productId_shopifyVariantId: {
-        shop,
-        productId,
-        shopifyVariantId: variantId,
-      },
-    },
-    include: {
-      variantA: true,
-      variantB: true,
-    },
-  });
-
-  if (exact) return exact;
-
-  return db.rotationSlot.findUnique({
-    where: {
-      shop_productId_shopifyVariantId: {
-        shop,
-        productId,
-        shopifyVariantId: null,
-      },
-    },
-    include: {
-      variantA: true,
-      variantB: true,
-    },
-  });
-}
-
-function mapRotationToAbVariant(
-  variantA: 'A' | 'B' | undefined,
-  variantB: 'A' | 'B' | undefined,
-  rotationVariant: RotationVariant,
-): 'A' | 'B' {
-  if (rotationVariant === RotationVariant.CONTROL) {
-    return variantA ?? 'A';
-  }
-
-  return variantB ?? 'B';
-}
-
+/**
+ * Normalize variant ID to Shopify GID format
+ */
 function normalizeVariantId(variantId: string | null): string | null {
   if (!variantId) return null;
   if (variantId.startsWith('gid://shopify/ProductVariant/')) {

@@ -1,3 +1,6 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
 generator client {
   provider = "prisma-client-js"
 }
@@ -6,47 +9,6 @@ datasource db {
   provider  = "postgresql"
   url       = env("DATABASE_URL")
   directUrl = env("DIRECT_URL")
-}
-
-enum ABTestStatus {
-  DRAFT
-  RUNNING
-  PAUSED
-  COMPLETED
-  ARCHIVED
-}
-
-enum ABTestEventType {
-  IMPRESSION
-  ADD_TO_CART
-  PURCHASE
-}
-
-enum EventType {
-  GENERATED
-  DRAFT_SAVED
-  DRAFT_DELETED
-  PUBLISHED
-  LIBRARY_SAVED
-  LIBRARY_DELETED
-  UPLOADED
-}
-
-enum RotationSlotStatus {
-  ACTIVE
-  PAUSED
-  DISABLED
-}
-
-enum RotationVariant {
-  CONTROL
-  TEST
-}
-
-enum RotationTrigger {
-  CRON
-  MANUAL
-  ROLLBACK
 }
 
 model Session {
@@ -67,111 +29,193 @@ model Session {
   emailVerified Boolean?  @default(false)
 }
 
-model MetricEvent {
-  id        String    @id @default(cuid())
-  shop      String
-  type      EventType
-  productId String?
-  variantId String? // Shopify variant ID (gid://shopify/ProductVariant/...)
-  imageUrl  String?
-  createdAt DateTime  @default(now())
-
-  // Performance index for variant queries
-  @@index([shop, productId, variantId])
-}
-
+// Core A/B Test model - simplified structure
 model ABTest {
-  id           String          @id @default(cuid())
-  shop         String
-  productId    String
-  name         String
-  status       ABTestStatus    @default(DRAFT)
-  trafficSplit Int             @default(50)
-  variantScope String?         @default("PRODUCT") // "PRODUCT" or "VARIANT"
-  startDate    DateTime?
-  endDate      DateTime?
-  variants     ABTestVariant[]
-  events       ABTestEvent[]
-  rotationSlots RotationSlot[]
-  createdAt    DateTime        @default(now())
-  updatedAt    DateTime        @updatedAt
+  id            String   @id @default(cuid())
+  shop          String
+  productId     String
+  name          String
+  status        String   @default("DRAFT") // DRAFT, ACTIVE, PAUSED, COMPLETED
+  trafficSplit  Int      @default(50)
 
-  // Performance indexes for common queries
+  // Image storage - simplified to JSON
+  baseImages    Json     // JSON array of base case images
+  testImages    Json     // JSON array of test case images
+
+  // Rotation management
+  currentCase   String   @default("BASE") // BASE or TEST
+  rotationHours Int      @default(24)      // Hours between rotations
+  lastRotation  DateTime?
+  nextRotation  DateTime?
+
+  // Metadata
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  createdBy     String   // User who created the test
+
+  // Relations
+  variants       ABTestVariant[]
+  events         ABTestEvent[]
+  auditLogs      AuditLog[]
+  rotationEvents RotationEvent[]
+
   @@index([shop, status])
   @@index([shop, productId])
-  @@index([status, startDate])
+  @@index([nextRotation])
 }
 
+// Variant-specific test configuration (for hero images)
 model ABTestVariant {
   id               String  @id @default(cuid())
   testId           String
-  variant          String  // "A" or "B" (test group, not product variant)
-  imageUrls        String  // JSON array stored as string
-  shopifyVariantId String? // Optional: Link to actual Shopify product variant
-  test             ABTest  @relation(fields: [testId], references: [id], onDelete: Cascade)
-  rotationSlotsA   RotationSlot[] @relation("RotationSlotVariantA")
-  rotationSlotsB   RotationSlot[] @relation("RotationSlotVariantB")
+  shopifyVariantId String  // Actual Shopify variant ID (e.g., gid://shopify/ProductVariant/123)
+  variantName      String  // Human-readable name (e.g., "Red / Large")
 
-  // Performance index for variant lookup
-  @@index([testId, variant])
-}
+  // Hero images only (not full galleries)
+  baseHeroImage    Json?   // JSON object with image data
+  testHeroImage    Json    // JSON object with test hero image
 
-model ABTestEvent {
-  id        String          @id @default(cuid())
-  testId    String
-  sessionId String
-  variant   String          // "A" or "B" (test group, not product variant)
-  eventType ABTestEventType
-  productId String
-  variantId String?         // Optional: Track which product variant was involved
-  revenue   Decimal?
-  createdAt DateTime        @default(now())
-  test      ABTest          @relation(fields: [testId], references: [id], onDelete: Cascade)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
-  // Performance indexes for event queries
-  @@index([testId, sessionId])
-  @@index([testId, eventType])
-  @@index([testId, createdAt])
-}
+  test ABTest @relation(fields: [testId], references: [id], onDelete: Cascade)
 
-model RotationSlot {
-  id               String            @id @default(cuid())
-  shop             String
-  productId        String
-  shopifyVariantId String?
-  testId           String
-  variantAId       String?
-  variantBId       String?
-  status           RotationSlotStatus @default(ACTIVE)
-  activeVariant    RotationVariant    @default(CONTROL)
-  intervalMinutes  Int                @default(10)
-  lastSwitchAt     DateTime?
-  nextSwitchDueAt  DateTime?
-  controlMedia     Json
-  testMedia        Json
-  metadata         Json?
-  createdAt        DateTime           @default(now())
-  updatedAt        DateTime           @updatedAt
-
-  test      ABTest         @relation(fields: [testId], references: [id], onDelete: Cascade)
-  variantA  ABTestVariant? @relation("RotationSlotVariantA", fields: [variantAId], references: [id])
-  variantB  ABTestVariant? @relation("RotationSlotVariantB", fields: [variantBId], references: [id])
-  history   RotationHistory[]
-
-  @@unique([shop, productId, shopifyVariantId])
-  @@index([shop, nextSwitchDueAt])
+  @@unique([testId, shopifyVariantId])
   @@index([testId])
 }
 
-model RotationHistory {
-  id            String           @id @default(cuid())
-  slotId        String
-  switchedVariant RotationVariant
-  triggeredBy   RotationTrigger
-  switchedAt    DateTime         @default(now())
-  context       Json?
+// Customer event tracking (impressions, conversions, purchases)
+model ABTestEvent {
+  id          String   @id @default(cuid())
+  testId      String
+  sessionId   String
+  eventType   String   // IMPRESSION, ADD_TO_CART, PURCHASE
+  activeCase  String   // BASE or TEST (what was showing when event occurred)
 
-  slot RotationSlot @relation(fields: [slotId], references: [id], onDelete: Cascade)
+  // Event details
+  productId   String
+  variantId   String?  // Shopify variant ID if applicable
+  revenue     Decimal? // For PURCHASE events
+  quantity    Int?     // For ADD_TO_CART and PURCHASE events
 
-  @@index([slotId, switchedAt])
+  // Context
+  metadata    Json?    // JSON with additional context (browser, referrer, etc.)
+  createdAt   DateTime @default(now())
+
+  test ABTest @relation(fields: [testId], references: [id], onDelete: Cascade)
+
+  @@index([testId, eventType, createdAt])
+  @@index([testId, sessionId])
+  @@index([testId, activeCase])
+}
+
+// Comprehensive audit logging for all system events
+model AuditLog {
+  id          String   @id @default(cuid())
+  testId      String?  // Null for system-wide events
+  entityType  String   // TEST, ROTATION, SYSTEM, USER_ACTION
+  eventType   String   // See comprehensive list in implementation
+  userId      String?  // Who triggered the event (null for system events)
+  shop        String
+  description String   // Human-readable description
+  metadata    Json     // JSON with detailed event data
+  timestamp   DateTime @default(now())
+
+  test ABTest? @relation(fields: [testId], references: [id], onDelete: Cascade)
+
+  @@index([testId, timestamp])
+  @@index([shop, eventType, timestamp])
+  @@index([userId, timestamp])
+  @@index([entityType, timestamp])
+}
+
+// Track rotation events specifically for attribution
+model RotationEvent {
+  id          String   @id @default(cuid())
+  testId      String
+  fromCase    String   // BASE or TEST
+  toCase      String   // BASE or TEST
+  triggeredBy String   // CRON, MANUAL, ROLLBACK, SYSTEM
+  userId      String?  // Who triggered it (if manual)
+
+  // Execution details
+  success     Boolean
+  error       String?  // Error message if failed
+  duration    Int      // Milliseconds to complete
+
+  // Additional context
+  metadata    Json?    // JSON with GraphQL responses, media IDs changed, etc.
+  timestamp   DateTime @default(now())
+
+  test ABTest @relation(fields: [testId], references: [id], onDelete: Cascade)
+
+  @@index([testId, timestamp])
+  @@index([triggeredBy, timestamp])
+}
+
+// Track metrics for analytics
+model MetricEvent {
+  id         String   @id @default(cuid())
+  shop       String
+  eventType  String   // GENERATED, DRAFT_SAVED, IMAGE_SELECTED, etc.
+  metadata   Json?    // JSON object with event-specific data
+  timestamp  DateTime @default(now())
+
+  // Common fields for AI operations
+  model      String?  // AI model used
+  prompt     String?  // Prompt text
+  productId  String?  // Related product
+  imageUrl   String?  // Generated image URL
+  duration   Int?     // Operation duration in ms
+
+  @@index([shop, eventType])
+  @@index([timestamp])
+}
+
+// Product suggestions configuration
+model ProductSuggestionRule {
+  id          String   @id @default(cuid())
+  shop        String
+  name        String
+  description String?
+
+  // Rule configuration
+  sourceField String   // product_type, vendor, tag, collection, metafield
+  operator    String   // equals, contains, starts_with, regex
+  value       String   // The value to match
+
+  // Suggestion settings
+  suggestionPrompt   String  // Template for AI prompt
+  maxSuggestions     Int     @default(3)
+  autoApply          Boolean @default(false)
+
+  // Metadata
+  isActive    Boolean  @default(true)
+  priority    Int      @default(0) // Higher priority rules run first
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([shop, name])
+  @@index([shop, isActive, priority])
+}
+
+// AI generation history
+model GenerationHistory {
+  id        String   @id @default(cuid())
+  shop      String
+  productId String
+
+  // Generation details
+  model     String   // AI model used
+  prompt    String   // Prompt text
+  imageUrl  String   // Generated image URL
+
+  // Metadata
+  status    String   // pending, completed, failed
+  error     String?  // Error message if failed
+  metadata  Json?    // JSON with additional data
+  createdAt DateTime @default(now())
+
+  @@index([shop, productId])
+  @@index([createdAt])
 }
