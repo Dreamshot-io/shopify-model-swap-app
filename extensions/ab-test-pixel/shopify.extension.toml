@@ -14,6 +14,11 @@ sale_of_data = "enabled"
 [settings]
 type = "object"
 
+[settings.fields.app_url]
+name = "App URL"
+description = "The URL of your Shopify app backend (e.g., https://shopify-txl.dreamshot.io)"
+type = "single_line_text_field"
+
 [settings.fields.enabled]
 name = "Enable A/B Testing"
 description = "Enable A/B testing tracking on your storefront"

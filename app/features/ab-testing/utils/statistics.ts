@@ -1,8 +1,9 @@
 import type { ABTestEvent, ABTestStats, SerializedABTestEvent } from '../types';
 
 export function calculateStatistics(events: ABTestEvent[] | SerializedABTestEvent[] | any[]): ABTestStats {
-	const variantAEvents = events.filter(e => e.variant === 'A');
-	const variantBEvents = events.filter(e => e.variant === 'B');
+	// Map activeCase to variant for statistics (BASE = A, TEST = B)
+	const variantAEvents = events.filter(e => e.activeCase === 'BASE' || e.variant === 'A');
+	const variantBEvents = events.filter(e => e.activeCase === 'TEST' || e.variant === 'B');
 
 	const variantAImpressions = variantAEvents.filter(e => e.eventType === 'IMPRESSION').length;
 	const variantBImpressions = variantBEvents.filter(e => e.eventType === 'IMPRESSION').length;

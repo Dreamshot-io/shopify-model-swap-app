@@ -11,6 +11,36 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session, admin } = await authenticate.admin(request);
   const shop = session.shop;
   const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+
+  // Auto-connect web pixel if not connected
+  try {
+    const appUrl = process.env.SHOPIFY_APP_URL || "https://shopify-txl.dreamshot.io";
+
+    // Try to create pixel (will fail if already exists, which is fine)
+    await admin.graphql(`
+      mutation webPixelCreate($webPixel: WebPixelInput!) {
+        webPixelCreate(webPixel: $webPixel) {
+          userErrors { field message code }
+          webPixel { id settings }
+        }
+      }
+    `, {
+      variables: {
+        webPixel: {
+          settings: {
+            app_url: appUrl,
+            enabled: "true",
+            debug: "false"
+          }
+        }
+      }
+    }).catch(err => {
+      // Ignore errors - pixel might already exist
+      console.log("Web pixel auto-connect attempted");
+    });
+  } catch (error) {
+    // Silent fail - don't break the app load
+  }
   const [generated, draftsSaved, draftsDeleted, published, recent] =
     await Promise.all([
       db.metricEvent.count({
