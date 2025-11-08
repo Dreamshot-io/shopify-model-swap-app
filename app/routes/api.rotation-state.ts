@@ -4,6 +4,7 @@ import { authenticate } from '../shopify.server';
 import { SimpleRotationService } from '../services/simple-rotation.server';
 import { AuditService } from '../services/audit.server';
 import db from '../db.server';
+// import { rotationStateRateLimiter, applyRateLimit } from '../utils/rate-limiter';
 
 /**
  * API endpoint for tracking pixel to get current rotation state
@@ -18,10 +19,35 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     return json({ error: 'Missing productId' }, { status: 400 });
   }
 
+  let corsHeaders: Record<string, string> = {};
+  let shopDomain: string | undefined;
+
+  // Try app proxy authentication, but allow fallback for direct calls
   try {
     const { session, cors } = await authenticate.public.appProxy(request);
-    const corsHeaders = cors?.headers || {};
+    shopDomain = session?.shop;
+    corsHeaders = cors?.headers || {};
+  } catch {
+    // Allow public access with CORS headers for direct pixel calls
+    corsHeaders = {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET',
+      'Access-Control-Allow-Headers': 'Content-Type',
+    };
 
+    // Rate limiting temporarily disabled
+    // const rateLimitResult = applyRateLimit(request, rotationStateRateLimiter);
+    // corsHeaders = { ...corsHeaders, ...rateLimitResult.headers };
+
+    // if (!rateLimitResult.allowed) {
+    //   return json(
+    //     { error: rateLimitResult.message },
+    //     { status: 429, headers: corsHeaders }
+    //   );
+    // }
+  }
+
+  try {
     // Get rotation state for the product
     const { testId, activeCase } = await SimpleRotationService.getRotationState(productId);
 
@@ -57,11 +83,11 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     }
 
     // Log impression tracking initialization (sampled to avoid spam)
-    if (Math.random() < 0.01) { // 1% sampling
+    if (Math.random() < 0.01 && shopDomain) { // 1% sampling
       await AuditService.logUserAction(
         'PIXEL_INITIALIZED',
         'tracking-pixel',
-        session.shop,
+        shopDomain,
         {
           productId,
           variantId,

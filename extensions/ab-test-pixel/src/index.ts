@@ -7,18 +7,34 @@ interface TestState {
   variantId?: string | null;
 }
 
-register(({ analytics, browser }) => {
-  const APP_PROXY_BASE = '/apps/model-swap';
+register(({ analytics, browser, settings }) => {
+  // Get app URL from settings, fallback to relative paths for development
+  const APP_URL = settings.app_url || '';
+  const ROTATION_API = `${APP_URL}/api/rotation-state`;
+  const TRACK_API = `${APP_URL}/track`;
   const STATE_KEY = 'ab_test_active';
   const SESSION_KEY = 'ab_test_session';
   const IMPRESSION_SYNC_PREFIX = 'ab_test_impression_';
+
+  // Debug logging if enabled
+  const DEBUG = settings.debug === 'true' || settings.debug === '1';
+  const log = (...args: any[]) => {
+    if (DEBUG) {
+      console.log('[A/B Test Pixel]', ...args);
+    }
+  };
+
+  log('Initialized', { APP_URL, ROTATION_API, TRACK_API });
 
   // Track product views
   analytics.subscribe('product_viewed', async event => {
     const productId = event.data?.product?.id;
     const variantId = event.data?.productVariant?.id ?? event.data?.productVariantId ?? null;
 
+    log('Product viewed', { productId, variantId });
+
     if (!productId) {
+      log('No productId, skipping');
       return;
     }
 
@@ -82,6 +98,7 @@ register(({ analytics, browser }) => {
   ): Promise<void> {
     const sessionId = getOrCreateSessionId();
     if (!sessionId) {
+      log('No session ID, cannot fetch test state');
       return;
     }
 
@@ -91,15 +108,23 @@ register(({ analytics, browser }) => {
         query.set('variantId', variantId);
       }
 
-      const response = await fetch(`${APP_PROXY_BASE}/api/rotation-state?${query.toString()}`);
+      const url = `${ROTATION_API}?${query.toString()}`;
+      log('Fetching test state from', url);
+
+      const response = await fetch(url);
+      log('Response status', response.status);
+
       if (!response.ok) {
+        log('Response not OK', response.status, response.statusText);
         return;
       }
 
       const result = await response.json();
+      log('Test state result', result);
 
       // No active test for this product
       if (!result?.testId || !result?.activeCase) {
+        log('No active test for this product');
         return;
       }
 
@@ -110,6 +135,8 @@ register(({ analytics, browser }) => {
         variantId: result.variantCase ? variantId : null,
       };
 
+      log('Storing test state', state);
+
       // Store state for this session
       browser.sessionStorage.setItem(STATE_KEY, JSON.stringify(state));
 
@@ -117,6 +144,7 @@ register(({ analytics, browser }) => {
       await trackImpression(state);
     } catch (error) {
       console.error('[A/B Test] Failed to fetch test state', error);
+      log('Error details', error);
     }
   }
 
@@ -134,39 +162,53 @@ register(({ analytics, browser }) => {
     }
   ) {
     const sessionId = getOrCreateSessionId();
-    if (!sessionId) return;
+    if (!sessionId) {
+      log('No session ID for tracking event');
+      return;
+    }
 
     try {
-      const response = await fetch(`${APP_PROXY_BASE}/track`, {
+      const payload = {
+        testId: state.testId,
+        sessionId,
+        eventType,
+        activeCase: state.activeCase,
+        productId: state.productId,
+        variantId: options?.variantId ?? state.variantId,
+        revenue: options?.revenue,
+        quantity: options?.quantity,
+        metadata: {
+          ...options?.metadata,
+          timestamp: new Date().toISOString(),
+          userAgent: navigator.userAgent,
+          screenWidth: window.screen.width,
+          screenHeight: window.screen.height,
+        },
+      };
+
+      log('Tracking event', eventType, 'to', TRACK_API, payload);
+
+      const response = await fetch(TRACK_API, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          testId: state.testId,
-          sessionId,
-          eventType,
-          activeCase: state.activeCase,
-          productId: state.productId,
-          variantId: options?.variantId ?? state.variantId,
-          revenue: options?.revenue,
-          quantity: options?.quantity,
-          metadata: {
-            ...options?.metadata,
-            timestamp: new Date().toISOString(),
-            userAgent: navigator.userAgent,
-            screenWidth: window.screen.width,
-            screenHeight: window.screen.height,
-          },
-        }),
+        body: JSON.stringify(payload),
       });
+
+      log('Track response status', response.status);
 
       if (!response.ok) {
         const error = await response.json();
         console.error('[A/B Test] Failed to track event:', error);
+        log('Track error response', error);
+      } else {
+        const result = await response.json();
+        log('Track success', result);
       }
     } catch (error) {
       console.error('[A/B Test] Failed to track event', error);
+      log('Track error details', error);
     }
   }
 
@@ -177,10 +219,15 @@ register(({ analytics, browser }) => {
     const syncKey = `${IMPRESSION_SYNC_PREFIX}${state.testId}`;
     const alreadyTracked = browser.sessionStorage.getItem(syncKey);
 
+    log('Checking impression tracking', { syncKey, alreadyTracked, currentCase: state.activeCase });
+
     if (alreadyTracked === state.activeCase) {
       // Already tracked impression for this test and case
+      log('Impression already tracked for this case');
       return;
     }
+
+    log('Tracking impression for test', state.testId, 'case', state.activeCase);
 
     await trackEvent(state, 'IMPRESSION', {
       metadata: {
@@ -191,6 +238,7 @@ register(({ analytics, browser }) => {
 
     // Mark as tracked
     browser.sessionStorage.setItem(syncKey, state.activeCase);
+    log('Marked impression as tracked');
   }
 
   /**

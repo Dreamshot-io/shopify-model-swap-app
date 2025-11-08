@@ -251,7 +251,7 @@ export const action = async ({ request }: ActionFunctionArgs): Promise<Response>
 					});
 				}
 
-				return handleGenerate(formData, session.shop);
+				return handleGenerate(formData, session.shop, admin);
 			}
 		}
 	} catch (globalError: any) {

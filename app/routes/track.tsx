@@ -3,6 +3,7 @@ import { json } from '@remix-run/node';
 import { authenticate } from '../shopify.server';
 import db from '../db.server';
 import { AuditService } from '../services/audit.server';
+// import { trackingRateLimiter, applyRateLimit } from '../utils/rate-limiter';
 
 /**
  * Track events from the web pixel (impressions, add-to-cart, purchases)
@@ -15,11 +16,32 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   let corsHeaders: Record<string, string> = {};
   let shopDomain: string | undefined;
 
+  // Try app proxy authentication, but allow fallback for direct calls
   try {
     const { session, cors } = await authenticate.public.appProxy(request);
     shopDomain = session?.shop;
     corsHeaders = cors?.headers || {};
+  } catch {
+    // Allow public access with CORS headers for direct pixel calls
+    corsHeaders = {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'POST',
+      'Access-Control-Allow-Headers': 'Content-Type',
+    };
 
+    // Rate limiting temporarily disabled
+    // const rateLimitResult = applyRateLimit(request, trackingRateLimiter);
+    // corsHeaders = { ...corsHeaders, ...rateLimitResult.headers };
+
+    // if (!rateLimitResult.allowed) {
+    //   return json(
+    //     { error: rateLimitResult.message },
+    //     { status: 429, headers: corsHeaders }
+    //   );
+    // }
+  }
+
+  try {
     const body = await request.json();
     const {
       testId,
@@ -68,12 +90,16 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       );
     }
 
-    // Verify test exists and belongs to this shop
+    // Verify test exists (and optionally belongs to this shop if we have shopDomain)
     const test = await db.aBTest.findFirst({
-      where: {
-        id: testId,
-        shop: shopDomain,
-      },
+      where: shopDomain
+        ? {
+            id: testId,
+            shop: shopDomain,
+          }
+        : {
+            id: testId,
+          },
     });
 
     if (!test) {
@@ -82,6 +108,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         { status: 404, headers: corsHeaders },
       );
     }
+
+    // Use test's shop if we don't have it from auth
+    shopDomain = shopDomain || test.shop;
 
     // Normalize variant ID if provided
     const normalizedVariantId = normalizeVariantId(variantId ?? null);

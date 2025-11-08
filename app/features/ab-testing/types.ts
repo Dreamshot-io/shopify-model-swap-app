@@ -16,12 +16,15 @@ export interface ABTestEvent {
 	id: string;
 	testId: string;
 	sessionId: string;
-	variant: 'A' | 'B';
+	activeCase: 'BASE' | 'TEST';  // What was showing when event occurred
+	variant?: 'A' | 'B';  // Optional for backward compatibility (A=BASE, B=TEST)
 	eventType: ABTestEventType;
 	productId: string;
 	variantId?: string | null;
 	revenue?: number;
+	quantity?: number;
 	orderId?: string;
+	metadata?: any;
 	createdAt: Date;
 }
 
@@ -94,6 +97,8 @@ export interface TrackingEvent {
 // Serialized types for Remix loaders (Dates become strings after json() serialization)
 export interface SerializedABTestEvent extends Omit<ABTestEvent, 'createdAt'> {
 	createdAt: string;
+	activeCase: 'BASE' | 'TEST';  // Ensure this is always present
+	variant?: 'A' | 'B';  // Optional for backward compatibility
 }
 
 export interface SerializedABTest
