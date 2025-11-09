@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from '@jest/globals';
-import { AIProviderFactory, FalAIProvider, initializeAIProviders } from './ai-providers';
+import { AIProviderFactory, FalAIProvider, ReplicateProvider, initializeAIProviders } from './ai-providers';
 
 // Mock process.env for browser environment test
 const originalProcess = globalThis.process;
@@ -19,23 +19,36 @@ describe('AI Providers', () => {
     it('should throw error when initializeAIProviders called in browser', () => {
       // Mock window to simulate browser environment
       (globalThis as any).window = {};
-      
+
       expect(() => {
-        initializeAIProviders('test-key');
+        initializeAIProviders('replicate-token', 'fal-key');
       }).toThrow('initializeAIProviders should only be called on the server');
-      
+
       delete (globalThis as any).window;
     });
 
-    it('should work in server environment', () => {
+    it('should work in server environment with both providers', () => {
       // Ensure we're in server environment (no window)
       delete (globalThis as any).window;
-      
+
       expect(() => {
-        initializeAIProviders('test-key');
+        initializeAIProviders('replicate-token', 'fal-key');
       }).not.toThrow();
-      
+
+      expect(AIProviderFactory.hasProvider('replicate')).toBe(true);
       expect(AIProviderFactory.hasProvider('fal.ai')).toBe(true);
+    });
+
+    it('should work with only Replicate provider', () => {
+      // Ensure we're in server environment (no window)
+      delete (globalThis as any).window;
+
+      expect(() => {
+        initializeAIProviders('replicate-token');
+      }).not.toThrow();
+
+      expect(AIProviderFactory.hasProvider('replicate')).toBe(true);
+      expect(AIProviderFactory.hasProvider('fal.ai')).toBe(false);
     });
   });
 
@@ -65,6 +78,53 @@ describe('AI Providers', () => {
     it('should handle empty API key gracefully', () => {
       const provider = new FalAIProvider('');
       expect(provider.name).toBe('fal.ai');
+    });
+  });
+
+  describe('ReplicateProvider', () => {
+    it('should create provider with API token', () => {
+      const provider = new ReplicateProvider('test-token');
+      expect(provider.name).toBe('replicate');
+    });
+
+    it('should be registered as default provider', () => {
+      delete (globalThis as any).window;
+      initializeAIProviders('replicate-token', 'fal-key');
+
+      const providers = AIProviderFactory.getAvailableProviders();
+      expect(providers).toContain('replicate');
+      expect(providers).toContain('fal.ai');
+    });
+
+    it('should work without fal.ai provider', () => {
+      delete (globalThis as any).window;
+      initializeAIProviders('replicate-token');
+
+      expect(AIProviderFactory.hasProvider('replicate')).toBe(true);
+      expect(AIProviderFactory.hasProvider('fal.ai')).toBe(false);
+    });
+  });
+
+  describe('Multi-Provider Support', () => {
+    it('should support both providers simultaneously', () => {
+      delete (globalThis as any).window;
+      initializeAIProviders('replicate-token', 'fal-key');
+
+      const replicateProvider = AIProviderFactory.getProvider('replicate');
+      const falProvider = AIProviderFactory.getProvider('fal.ai');
+
+      expect(replicateProvider.name).toBe('replicate');
+      expect(falProvider.name).toBe('fal.ai');
+    });
+
+    it('should list all available providers', () => {
+      delete (globalThis as any).window;
+      initializeAIProviders('replicate-token', 'fal-key');
+
+      const providers = AIProviderFactory.getAvailableProviders();
+      expect(providers).toHaveLength(2);
+      expect(providers).toContain('replicate');
+      expect(providers).toContain('fal.ai');
     });
   });
 });

@@ -1,14 +1,16 @@
-import { 
-  Button, 
-  InlineStack, 
-  Text, 
-  TextField, 
-  ProgressBar, 
+import {
+  Button,
+  InlineStack,
+  Text,
+  TextField,
+  ProgressBar,
   BlockStack,
-  Badge
+  Badge,
+  Select
 } from "@shopify/polaris";
 import { useState } from "react";
 import type { BatchProcessingState } from "../types";
+import type { AspectRatio } from "~/services/ai-providers";
 
 export function ModelPromptForm({
   disabled,
@@ -19,9 +21,10 @@ export function ModelPromptForm({
   disabled: boolean;
   selectedImageCount: number;
   batchProcessingState?: BatchProcessingState;
-  onGenerate: (prompt: string) => void;
+  onGenerate: (prompt: string, aspectRatio: AspectRatio) => void;
 }) {
   const [modelPrompt, setModelPrompt] = useState("");
+  const [aspectRatio, setAspectRatio] = useState<AspectRatio>("match_input_image");
 
   const getProgressText = () => {
     if (!batchProcessingState?.isProcessing) return "";
@@ -67,12 +70,30 @@ export function ModelPromptForm({
         placeholder="e.g., ginger woman, black male model, blonde model, elderly person..."
         multiline={3}
         helpText={
-          selectedImageCount > 1 
+          selectedImageCount > 1
             ? `This prompt will be applied to all ${selectedImageCount} selected images`
             : "Describe the person you want to see wearing this product"
         }
         autoComplete="off"
         disabled={batchProcessingState?.isProcessing}
+      />
+
+      <Select
+        label="Aspect Ratio"
+        options={[
+          { label: "Match Input Image", value: "match_input_image" },
+          { label: "16:9 (Widescreen)", value: "16:9" },
+          { label: "4:3 (Standard)", value: "4:3" },
+          { label: "3:2 (Classic Photo)", value: "3:2" },
+          { label: "1:1 (Square)", value: "1:1" },
+          { label: "2:3 (Portrait)", value: "2:3" },
+          { label: "3:4 (Portrait)", value: "3:4" },
+          { label: "9:16 (Vertical)", value: "9:16" },
+        ]}
+        value={aspectRatio}
+        onChange={(value) => setAspectRatio(value as AspectRatio)}
+        disabled={batchProcessingState?.isProcessing}
+        helpText="Choose the aspect ratio for the generated images"
       />
 
       {batchProcessingState?.isProcessing && (
@@ -94,11 +115,11 @@ export function ModelPromptForm({
         <Button
           variant="primary"
           size="large"
-          onClick={() => onGenerate(modelPrompt)}
+          onClick={() => onGenerate(modelPrompt, aspectRatio)}
           disabled={
-            disabled || 
-            !modelPrompt.trim() || 
-            selectedImageCount === 0 || 
+            disabled ||
+            !modelPrompt.trim() ||
+            selectedImageCount === 0 ||
             batchProcessingState?.isProcessing
           }
           loading={batchProcessingState?.isProcessing}

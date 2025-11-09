@@ -1,11 +1,15 @@
 import { fal } from "@fal-ai/client";
+import Replicate from "replicate";
 // Domain-driven design for AI image generation services
+
+export type AspectRatio = "match_input_image" | "16:9" | "4:3" | "3:2" | "1:1" | "2:3" | "3:4" | "9:16";
 
 export interface AIImageRequest {
   sourceImageUrl: string;
   prompt: string;
   productId: string;
   modelType?: "swap" | "generate" | "optimize";
+  aspectRatio?: AspectRatio;
 }
 
 export interface AIImageResponse {
@@ -81,6 +85,69 @@ export class FalAIProvider implements AIProvider {
   }
 }
 
+// Replicate (Seedream 4) Implementation
+export class ReplicateProvider implements AIProvider {
+  name = "replicate";
+  private readonly modelPath = "bytedance/seedream-4";
+  private replicate: Replicate;
+
+  constructor(private readonly apiToken: string) {
+    this.replicate = new Replicate({
+      auth: this.apiToken,
+    });
+  }
+
+  async generateImage(request: AIImageRequest): Promise<AIImageResponse> {
+    const input = {
+      prompt: request.prompt,
+      image_input: [request.sourceImageUrl],
+      aspect_ratio: request.aspectRatio || "match_input_image",
+      size: "4K",
+      enhance_prompt: true,
+      max_images: 1,
+      sequential_image_generation: "disabled",
+    };
+
+    const output = await this.replicate.run(this.modelPath, { input }) as any[];
+
+    if (!output || !Array.isArray(output) || output.length === 0) {
+      throw new Error("Replicate did not return any images");
+    }
+
+    const firstImage = output[0];
+    const imageUrl = typeof firstImage === 'string' ? firstImage : firstImage.url?.();
+
+    if (!imageUrl) {
+      throw new Error("Replicate did not return a valid image URL");
+    }
+
+    return {
+      id: `replicate_${Date.now()}`,
+      imageUrl,
+      confidence: 0.95,
+      metadata: {
+        provider: "replicate",
+        model: "seedream-4",
+        operation: "image_generation",
+        prompt: request.prompt,
+        aspectRatio: request.aspectRatio || "match_input_image",
+        quality: "4K",
+        enhancedPrompt: true,
+      },
+    };
+  }
+
+  async swapModel(request: AIImageRequest): Promise<AIImageResponse> {
+    // For Seedream 4, swap and generate are the same operation
+    return this.generateImage(request);
+  }
+
+  async optimizeImage(request: AIImageRequest): Promise<AIImageResponse> {
+    // Use generate for optimization as well
+    return this.generateImage(request);
+  }
+}
+
 // Factory for easy provider switching
 export class AIProviderFactory {
   private static providers: Map<string, AIProvider> = new Map();
@@ -110,13 +177,20 @@ export class AIProviderFactory {
   }
 }
 
-// Initialize with FAL.AI - SERVER ONLY
+// Initialize AI Providers - SERVER ONLY
 // This function should only be called in server-side contexts
-export const initializeAIProviders = (falKey: string) => {
+export const initializeAIProviders = (replicateToken: string, falKey?: string) => {
   if (typeof window !== 'undefined') {
     throw new Error('initializeAIProviders should only be called on the server');
   }
-  
-  const falProvider = new FalAIProvider(falKey);
-  AIProviderFactory.registerProvider("fal.ai", falProvider);
+
+  // Register Replicate as primary provider
+  const replicateProvider = new ReplicateProvider(replicateToken);
+  AIProviderFactory.registerProvider("replicate", replicateProvider);
+
+  // Register fal.ai as backup provider (if API key provided)
+  if (falKey) {
+    const falProvider = new FalAIProvider(falKey);
+    AIProviderFactory.registerProvider("fal.ai", falProvider);
+  }
 };

@@ -21,15 +21,17 @@ export function ensureAIProvidersInitialized(): void {
     throw new Error('AI providers should only be initialized on the server');
   }
 
+  const replicateToken = process.env.REPLICATE_API_TOKEN;
   const falKey = process.env.FAL_KEY;
-  if (!falKey) {
-    throw new Error('FAL_KEY environment variable is required but not set');
+
+  if (!replicateToken) {
+    throw new Error('REPLICATE_API_TOKEN environment variable is required but not set');
   }
 
   try {
-    initializeAIProviders(falKey);
+    initializeAIProviders(replicateToken, falKey);
     isInitialized = true;
-    console.log('✅ AI providers initialized successfully');
+    console.log('✅ AI providers initialized successfully (Replicate primary, fal.ai backup)');
   } catch (error) {
     console.error('❌ Failed to initialize AI providers:', error);
     throw new Error(`Failed to initialize AI providers: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -40,7 +42,7 @@ export function ensureAIProvidersInitialized(): void {
  * Get an AI provider instance (server-side only)
  * Automatically ensures providers are initialized
  */
-export function getAIProvider(name: string = "fal.ai") {
+export function getAIProvider(name: string = "replicate") {
   ensureAIProvidersInitialized();
   return AIProviderFactory.getProvider(name);
 }
@@ -64,9 +66,9 @@ export async function generateAIImage(request: AIImageRequest): Promise<AIImageR
 
     // Ensure providers are initialized
     ensureAIProvidersInitialized();
-    
-    // Get AI provider
-    const aiProvider = AIProviderFactory.getProvider("fal.ai");
+
+    // Get AI provider (default to Replicate)
+    const aiProvider = AIProviderFactory.getProvider("replicate");
     
     // Generate image based on model type
     let result: AIImageResponse;
@@ -105,21 +107,21 @@ export async function generateAIImage(request: AIImageRequest): Promise<AIImageR
  */
 export function checkAIProviderHealth(): { healthy: boolean; error?: string } {
   try {
-    if (!process.env.FAL_KEY) {
-      return { healthy: false, error: 'FAL_KEY environment variable is not set' };
+    if (!process.env.REPLICATE_API_TOKEN) {
+      return { healthy: false, error: 'REPLICATE_API_TOKEN environment variable is not set' };
     }
 
     ensureAIProvidersInitialized();
-    
-    if (!AIProviderFactory.hasProvider("fal.ai")) {
-      return { healthy: false, error: 'fal.ai provider is not registered' };
+
+    if (!AIProviderFactory.hasProvider("replicate")) {
+      return { healthy: false, error: 'Replicate provider is not registered' };
     }
 
     return { healthy: true };
   } catch (error) {
-    return { 
-      healthy: false, 
-      error: error instanceof Error ? error.message : 'Unknown health check error' 
+    return {
+      healthy: false,
+      error: error instanceof Error ? error.message : 'Unknown health check error'
     };
   }
 }

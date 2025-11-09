@@ -354,7 +354,7 @@ export default function AIStudio() {
 	};
 
 	// Handle batch model swap generation
-	const handleGenerate = async (prompt: string) => {
+	const handleGenerate = async (prompt: string, aspectRatio: string) => {
 		if (selectedImages.length === 0 || !prompt.trim()) {
 			shopify.toast.show('Please select at least one image and enter a model description', { isError: true });
 			return;
@@ -387,6 +387,7 @@ export default function AIStudio() {
 				fd.set('sourceImageUrl', image.url);
 				fd.set('prompt', prompt);
 				fd.set('productId', product?.id || '');
+				fd.set('aspectRatio', aspectRatio);
 
 				console.log(
 					`[BATCH ${i + 1}/${selectedImages.length}] Starting generation for:`,

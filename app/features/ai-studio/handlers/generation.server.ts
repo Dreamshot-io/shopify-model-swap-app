@@ -15,6 +15,7 @@ export async function handleGenerate(
   const sourceImageUrl = String(formData.get("sourceImageUrl") || "");
   const prompt = String(formData.get("prompt") || "");
   const productId = String(formData.get("productId") || "");
+  const aspectRatio = String(formData.get("aspectRatio") || "match_input_image");
 
   if (!sourceImageUrl || !prompt) {
     const errorResponse: ActionErrorResponse = {
@@ -30,6 +31,7 @@ export async function handleGenerate(
       prompt,
       productId,
       modelType: "swap",
+      aspectRatio: aspectRatio as any,
     });
 
     try {
