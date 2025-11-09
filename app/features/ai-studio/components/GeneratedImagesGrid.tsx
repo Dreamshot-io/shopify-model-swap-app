@@ -1,4 +1,4 @@
-import { Button, Card, Grid, Text, BlockStack } from "@shopify/polaris";
+import { Button, Grid, Text, BlockStack } from "@shopify/polaris";
 import type { GeneratedImage } from "../types";
 
 export function GeneratedImagesGrid({
@@ -16,8 +16,16 @@ export function GeneratedImagesGrid({
 }) {
   if (!images?.length) return null;
   return (
-    <Card>
-      <BlockStack gap="400">
+    <div
+      style={{
+        backgroundColor: '#FFFFFF',
+        border: '1px solid #E1E3E5',
+        borderRadius: 0,
+        boxShadow: '0 1px 3px rgba(0, 0, 0, 0.05)',
+        padding: '20px',
+      }}
+    >
+      <BlockStack gap="300">
         <Text as="h3" variant="headingMd">
           Generated Images ({images.length})
         </Text>
@@ -27,7 +35,15 @@ export function GeneratedImagesGrid({
             const imageKey = image.id || `generated-${index}`;
 
             return (
-              <Card key={imageKey}>
+              <div
+                key={imageKey}
+                style={{
+                  backgroundColor: '#FFFFFF',
+                  border: '1px solid #E1E3E5',
+                  borderRadius: 0,
+                  padding: '16px',
+                }}
+              >
                 <BlockStack gap="300">
                   <div>
                     <img
@@ -71,11 +87,11 @@ export function GeneratedImagesGrid({
                   </Button>
                 </BlockStack>
               </BlockStack>
-            </Card>
+            </div>
             );
           })}
         </Grid>
       </BlockStack>
-    </Card>
+    </div>
   );
 }

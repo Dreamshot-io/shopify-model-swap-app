@@ -1,21 +1,14 @@
-import { useNavigate } from '@remix-run/react';
-import { InlineStack, Button, Text } from '@shopify/polaris';
+import { InlineStack } from '@shopify/polaris';
 
-interface ProductNavigationTabsProps {
-  productId: string;
-  currentPage: 'ai-studio' | 'ab-tests';
+interface GenerationModeTabsProps {
+  currentMode: 'ai-generation' | 'manual-upload';
+  onModeChange: (mode: 'ai-generation' | 'manual-upload') => void;
 }
 
-export function ProductNavigationTabs({
-  productId,
-  currentPage,
-}: ProductNavigationTabsProps) {
-  const navigate = useNavigate();
-
-  const handleNavigate = (page: 'ai-studio' | 'ab-tests') => {
-    navigate(`/app/${page}?productId=${encodeURIComponent(productId)}`);
-  };
-
+export function GenerationModeTabs({
+  currentMode,
+  onModeChange,
+}: GenerationModeTabsProps) {
   return (
     <div
       style={{
@@ -27,58 +20,58 @@ export function ProductNavigationTabs({
     >
       <InlineStack gap="400" align="start">
         <button
-          onClick={() => handleNavigate('ai-studio')}
+          onClick={() => onModeChange('ai-generation')}
           style={{
             background: 'none',
             border: 'none',
             padding: '12px 16px',
             cursor: 'pointer',
             borderBottom:
-              currentPage === 'ai-studio' ? '2px solid #008060' : '2px solid transparent',
-            color: currentPage === 'ai-studio' ? '#008060' : '#6D7175',
-            fontWeight: currentPage === 'ai-studio' ? '600' : '400',
+              currentMode === 'ai-generation' ? '2px solid #008060' : '2px solid transparent',
+            color: currentMode === 'ai-generation' ? '#008060' : '#6D7175',
+            fontWeight: currentMode === 'ai-generation' ? '600' : '400',
             fontSize: '14px',
             transition: 'all 0.2s ease',
           }}
           onMouseEnter={(e) => {
-            if (currentPage !== 'ai-studio') {
+            if (currentMode !== 'ai-generation') {
               e.currentTarget.style.color = '#202223';
             }
           }}
           onMouseLeave={(e) => {
-            if (currentPage !== 'ai-studio') {
+            if (currentMode !== 'ai-generation') {
               e.currentTarget.style.color = '#6D7175';
             }
           }}
         >
-          🎨 AI Studio
+          🎭 AI Generation
         </button>
         <button
-          onClick={() => handleNavigate('ab-tests')}
+          onClick={() => onModeChange('manual-upload')}
           style={{
             background: 'none',
             border: 'none',
             padding: '12px 16px',
             cursor: 'pointer',
             borderBottom:
-              currentPage === 'ab-tests' ? '2px solid #008060' : '2px solid transparent',
-            color: currentPage === 'ab-tests' ? '#008060' : '#6D7175',
-            fontWeight: currentPage === 'ab-tests' ? '600' : '400',
+              currentMode === 'manual-upload' ? '2px solid #008060' : '2px solid transparent',
+            color: currentMode === 'manual-upload' ? '#008060' : '#6D7175',
+            fontWeight: currentMode === 'manual-upload' ? '600' : '400',
             fontSize: '14px',
             transition: 'all 0.2s ease',
           }}
           onMouseEnter={(e) => {
-            if (currentPage !== 'ab-tests') {
+            if (currentMode !== 'manual-upload') {
               e.currentTarget.style.color = '#202223';
             }
           }}
           onMouseLeave={(e) => {
-            if (currentPage !== 'ab-tests') {
+            if (currentMode !== 'manual-upload') {
               e.currentTarget.style.color = '#6D7175';
             }
           }}
         >
-          🧪 A/B Tests
+          📤 Manual Upload
         </button>
       </InlineStack>
     </div>

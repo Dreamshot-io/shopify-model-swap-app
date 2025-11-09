@@ -48,7 +48,7 @@ export function ModelPromptForm({
   };
 
   return (
-    <BlockStack gap="400">
+    <BlockStack gap="300">
       <InlineStack gap="300" align="space-between" wrap={false}>
         <Text as="h3" variant="headingMd">
           Model Description

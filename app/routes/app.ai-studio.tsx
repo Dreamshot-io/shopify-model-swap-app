@@ -8,7 +8,6 @@ import { authenticate } from '../shopify.server';
 import { checkAIProviderHealth } from '../services/ai-providers.server';
 import { ImagePreviewModal } from '../features/ai-studio/components/ImagePreviewModal';
 import { ImageGenerationHub } from '../features/ai-studio/components/ImageGenerationHub';
-import { ProductGallery } from '../features/ai-studio/components/ProductGallery';
 import { ProductSelector, ProductNavigationTabs } from '../features/shared/components';
 import { handleGenerate } from '../features/ai-studio/handlers/generation.server';
 import {
@@ -300,7 +299,7 @@ export default function AIStudio() {
 	const [previewBase, setPreviewBase] = useState<string | null>(null);
 	const [libraryItems, setLibraryItems] = useState<LibraryItem[]>([]);
 	const [pendingAction, setPendingAction] = useState<
-		null | 'generate' | 'publish' | 'saveToLibrary' | 'deleteFromLibrary' | 'deleteFromProduct'
+		null | 'generate' | 'publish' | 'saveToLibrary' | 'deleteFromLibrary'
 	>(null);
 	const [libraryItemToDelete, setLibraryItemToDelete] = useState<string | null>(null);
 
@@ -628,7 +627,7 @@ export default function AIStudio() {
 
 			<ProductNavigationTabs productId={product.id} currentPage="ai-studio" />
 
-			<BlockStack gap='500'>
+			<BlockStack gap='300'>
 				{previewImage && (
 					<ImagePreviewModal url={previewImage} baseUrl={previewBase} onClose={() => setPreviewImage(null)} />
 				)}
@@ -663,27 +662,6 @@ export default function AIStudio() {
 						</BlockStack>
 					</Modal>
 				)}
-
-				{/* Product Gallery - Shows both published and library images */}
-				<ProductGallery
-					images={product.media?.nodes || []}
-					libraryItems={libraryItems}
-					selectedVariantId={null}
-					variants={variants}
-					onDelete={mediaId => {
-						const fd = new FormData();
-						fd.set('intent', 'deleteFromProduct');
-						fd.set('mediaId', mediaId);
-						fd.set('productId', product?.id || '');
-						setPendingAction('deleteFromProduct');
-						fetcher.submit(fd, { method: 'post' });
-					}}
-					onPublishFromLibrary={url => handlePublishFromLibrary(url)}
-					onRemoveFromLibrary={url => {
-						setLibraryItemToDelete(url);
-					}}
-					isDeleting={pendingAction === 'deleteFromProduct'}
-				/>
 
 				{/* Image Generation Hub */}
 				<ImageGenerationHub

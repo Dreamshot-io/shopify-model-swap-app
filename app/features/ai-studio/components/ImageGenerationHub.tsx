@@ -1,9 +1,10 @@
 import { useState, useCallback } from "react";
-import { Card, Tabs, BlockStack } from "@shopify/polaris";
+import { BlockStack } from "@shopify/polaris";
 import { ImageSelector } from "./ImageSelector";
 import { ModelPromptForm } from "./ModelPromptForm";
 import { GeneratedImagesGrid } from "./GeneratedImagesGrid";
 import { ImageUploader } from "./ImageUploader";
+import { GenerationModeTabs } from "./GenerationModeTabs";
 import type {
   LibraryItem,
   GeneratedImage,
@@ -57,73 +58,72 @@ export function ImageGenerationHub({
   isBusy,
   pendingAction,
 }: ImageGenerationHubProps) {
-  const [selectedTab, setSelectedTab] = useState(0);
+  const [currentMode, setCurrentMode] = useState<'ai-generation' | 'manual-upload'>('ai-generation');
 
-  const handleTabChange = useCallback(
-    (selectedTabIndex: number) => setSelectedTab(selectedTabIndex),
+  const handleModeChange = useCallback(
+    (mode: 'ai-generation' | 'manual-upload') => setCurrentMode(mode),
     [],
   );
 
-  const tabs = [
-    {
-      id: "ai-generation",
-      content: "AI Generation",
-      panelID: "ai-generation-panel",
-    },
-    {
-      id: "manual-upload",
-      content: "Manual Upload",
-      panelID: "manual-upload-panel",
-    },
-  ];
-
   return (
-    <Card>
-      <BlockStack gap="400">
-        <Tabs tabs={tabs} selected={selectedTab} onSelect={handleTabChange}>
-          {selectedTab === 0 && (
-            <BlockStack gap="500">
-              <ImageSelector
-                media={media}
-                libraryItems={libraryItems}
-                generatedImages={generatedImages}
-                selectedImages={selectedImages}
-                onSelect={onImageSelect}
-                onClearSelection={onClearSelection}
-              />
+    <>
+      <GenerationModeTabs currentMode={currentMode} onModeChange={handleModeChange} />
+      <div
+        style={{
+          backgroundColor: '#FFFFFF',
+          border: '1px solid #E1E3E5',
+          borderRadius: 0,
+          boxShadow: '0 1px 3px rgba(0, 0, 0, 0.05)',
+        }}
+      >
+        <div style={{ padding: '20px' }}>
+          <BlockStack gap="300">
+            {currentMode === 'ai-generation' && (
+              <BlockStack gap="300">
+                <ImageSelector
+                  media={media}
+                  libraryItems={libraryItems}
+                  generatedImages={generatedImages}
+                  selectedImages={selectedImages}
+                  onSelect={onImageSelect}
+                  onClearSelection={onClearSelection}
+                  onPublishFromLibrary={onPublishFromLibrary}
+                  onRemoveFromLibrary={onRemoveFromLibrary}
+                />
 
-              <ModelPromptForm
-                disabled={selectedImages.length === 0}
-                selectedImageCount={selectedImages.length}
-                batchProcessingState={batchProcessingState}
-                onGenerate={onGenerate}
-              />
+                <ModelPromptForm
+                  disabled={selectedImages.length === 0}
+                  selectedImageCount={selectedImages.length}
+                  batchProcessingState={batchProcessingState}
+                  onGenerate={onGenerate}
+                />
 
-              <GeneratedImagesGrid
-                images={generatedImages}
-                onPublish={onPublish}
-                onSaveToLibrary={onSaveToLibrary}
-                onPreview={onPreview}
-                isBusy={
-                  pendingAction === "publish" ||
-                  pendingAction === "saveToLibrary"
-                }
-              />
-            </BlockStack>
-          )}
+                <GeneratedImagesGrid
+                  images={generatedImages}
+                  onPublish={onPublish}
+                  onSaveToLibrary={onSaveToLibrary}
+                  onPreview={onPreview}
+                  isBusy={
+                    pendingAction === "publish" ||
+                    pendingAction === "saveToLibrary"
+                  }
+                />
+              </BlockStack>
+            )}
 
-          {selectedTab === 1 && (
-            <BlockStack gap="400">
-              <ImageUploader
-                productId={productId}
-                onSuccess={onUploadSuccess}
-                maxFiles={5}
-                maxSizeMB={20}
-              />
-            </BlockStack>
-          )}
-        </Tabs>
-      </BlockStack>
-    </Card>
+            {currentMode === 'manual-upload' && (
+              <BlockStack gap="300">
+                <ImageUploader
+                  productId={productId}
+                  onSuccess={onUploadSuccess}
+                  maxFiles={5}
+                  maxSizeMB={20}
+                />
+              </BlockStack>
+            )}
+          </BlockStack>
+        </div>
+      </div>
+    </>
   );
 }
