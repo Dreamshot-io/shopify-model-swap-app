@@ -9,7 +9,7 @@ import { checkAIProviderHealth } from '../services/ai-providers.server';
 import { ImagePreviewModal } from '../features/ai-studio/components/ImagePreviewModal';
 import { ImageGenerationHub } from '../features/ai-studio/components/ImageGenerationHub';
 import { ProductGallery } from '../features/ai-studio/components/ProductGallery';
-import { ProductSelector } from '../features/shared/components';
+import { ProductSelector, ProductNavigationTabs } from '../features/shared/components';
 import { handleGenerate } from '../features/ai-studio/handlers/generation.server';
 import {
 	handleSaveToLibrary,
@@ -625,6 +625,8 @@ export default function AIStudio() {
 					View in Store
 				</button>
 			</TitleBar>
+
+			<ProductNavigationTabs productId={product.id} currentPage="ai-studio" />
 
 			<BlockStack gap='500'>
 				{previewImage && (
