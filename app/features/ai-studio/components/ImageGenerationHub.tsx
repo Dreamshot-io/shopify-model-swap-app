@@ -11,6 +11,7 @@ import type {
   SelectedImage,
   BatchProcessingState,
 } from "../types";
+import type { AspectRatio } from "../../../services/ai-providers";
 
 interface MediaNode {
   id: string;
@@ -26,7 +27,7 @@ interface ImageGenerationHubProps {
   batchProcessingState: BatchProcessingState;
   onImageSelect: (image: SelectedImage) => void;
   onClearSelection: () => void;
-  onGenerate: (prompt: string) => Promise<void>;
+  onGenerate: (prompt: string, aspectRatio: AspectRatio, imageCount: number) => Promise<void>;
   onPublish: (img: GeneratedImage) => void;
   onSaveToLibrary: (img: GeneratedImage) => void;
   onPreview: (img: GeneratedImage) => void;

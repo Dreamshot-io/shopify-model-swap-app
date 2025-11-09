@@ -223,15 +223,11 @@ export function ImageSelector({
     };
   }) || [];
 
-  // Prepare generated images for rendering
-  const generatedImagesList = generatedImages?.map((image, index) => ({
-    id: image.id || `generated-${index}`,
-    url: image.imageUrl,
-    altText: "AI generated image (Session)",
-    isAIGenerated: true,
-  })) || [];
+  // Don't show generated images from current session in the selector
+  // They're already displayed in the "Generated Images" section below
+  const generatedImagesList: any[] = [];
 
-  const totalImages = (media?.length || 0) + libraryImages.length + generatedImagesList.length;
+  const totalImages = (media?.length || 0) + libraryImages.length;
 
   return (
     <>
@@ -266,17 +262,6 @@ export function ImageSelector({
             false
           );
         })}
-
-        {/* Generated images from current session (AI Generated) */}
-        {generatedImagesList.map((item) =>
-          renderImageItem(
-            item.id,
-            item.url,
-            item.altText,
-            item.isAIGenerated,
-            'session'
-          )
-        )}
 
         {/* Library images (AI Generated) */}
         {libraryImages.map((item) =>

@@ -1,4 +1,4 @@
-import { Button, Grid, Text, BlockStack } from "@shopify/polaris";
+import { Button, Grid, Text, BlockStack, Card } from "@shopify/polaris";
 import type { GeneratedImage } from "../types";
 
 export function GeneratedImagesGrid({
@@ -15,17 +15,10 @@ export function GeneratedImagesGrid({
   isBusy?: boolean;
 }) {
   if (!images?.length) return null;
+
   return (
-    <div
-      style={{
-        backgroundColor: '#FFFFFF',
-        border: '1px solid #E1E3E5',
-        borderRadius: 0,
-        boxShadow: '0 1px 3px rgba(0, 0, 0, 0.05)',
-        padding: '20px',
-      }}
-    >
-      <BlockStack gap="300">
+    <Card>
+      <BlockStack gap="400">
         <Text as="h3" variant="headingMd">
           Generated Images ({images.length})
         </Text>
@@ -35,33 +28,25 @@ export function GeneratedImagesGrid({
             const imageKey = image.id || `generated-${index}`;
 
             return (
-              <div
-                key={imageKey}
-                style={{
-                  backgroundColor: '#FFFFFF',
-                  border: '1px solid #E1E3E5',
-                  borderRadius: 0,
-                  padding: '16px',
-                }}
-              >
-                <BlockStack gap="300">
-                  <div>
-                    <img
-                      src={image.imageUrl}
-                      alt={`Generated variant ${index + 1}`}
-                      style={{
-                        width: "100%",
-                        height: "auto",
-                        display: "block",
-                        borderRadius: "8px",
-                        border: "1px solid #E1E3E5",
-                      }}
-                    />
-                  </div>
-                <Text as="p" alignment="center">
-                  Confidence:{" "}
-                  <strong>{Math.round(image.confidence * 100)}%</strong>
-                </Text>
+              <BlockStack key={imageKey} gap="300">
+                <div
+                  style={{
+                    position: 'relative',
+                    overflow: 'hidden',
+                    borderRadius: '8px',
+                    backgroundColor: '#F6F6F7',
+                  }}
+                >
+                  <img
+                    src={image.imageUrl}
+                    alt={`Generated variant ${index + 1}`}
+                    style={{
+                      width: "100%",
+                      height: "auto",
+                      display: "block",
+                    }}
+                  />
+                </div>
                 <BlockStack gap="200">
                   <Button
                     onClick={() => onPublish(image)}
@@ -69,29 +54,28 @@ export function GeneratedImagesGrid({
                     fullWidth
                     disabled={!!isBusy}
                   >
-                    🚀 Publish to Product
+                    Publish to Product
                   </Button>
                   <Button
                     onClick={() => onSaveToLibrary(image)}
                     fullWidth
                     disabled={!!isBusy}
                   >
-                    💾 Save to Library
+                    Save to Library
                   </Button>
                   <Button
                     onClick={() => onPreview(image)}
                     fullWidth
                     disabled={!!isBusy}
                   >
-                    🔍 Preview
+                    Preview
                   </Button>
                 </BlockStack>
               </BlockStack>
-            </div>
             );
           })}
         </Grid>
       </BlockStack>
-    </div>
+    </Card>
   );
 }
