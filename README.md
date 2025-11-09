@@ -57,12 +57,15 @@ Required variables in `.env`:
 - `FAL_KEY` - fal.ai API key
 - `SHOPIFY_APP_URL` - App URL for Shopify configuration
 - `SCOPES` - Comma-separated Shopify API scopes
-- `DATABASE_URL` - Postgres connection string (local: see `prd/DEV-DB-POSTGRES.md`; hosted: may require `?sslmode=require`)
+- `DATABASE_URL` - PostgreSQL connection string
+  - Local: `postgresql://postgres:postgres@localhost:5432/dreamshot?schema=public` (see `prd/DEV-DB-POSTGRES.md`)
+  - Hosted: May require `?sslmode=require`
+- `DIRECT_URL` - (Optional) Only needed when using connection pooling on Vercel (see `prd/VERCEL-ENV.md`)
 
 ## Tech Stack
 
 - **Framework**: Remix (React-based full-stack)
-- **Database**: Prisma ORM with SQLite
+- **Database**: Prisma ORM with PostgreSQL
 - **UI**: Shopify Polaris design system
 - **AI**: fal.ai for image generation/editing
 - **TypeScript**: Full type safety
@@ -72,6 +75,7 @@ Required variables in `.env`:
 ```bash
 npm install          # Install dependencies
 bun run dev          # Start development server
+cloudflared tunnel run
 bun run dev:stable   # Start with stable ngrok URL
 bun run setup        # Setup database (Prisma generate + migrate)
 bun run build        # Build for production

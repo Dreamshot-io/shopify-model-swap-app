@@ -8,7 +8,8 @@ generator client {
 datasource db {
   provider  = "postgresql"
   url       = env("DATABASE_URL")
-  directUrl = env("DIRECT_URL")
+  // directUrl only needed when using connection pooling (e.g., Vercel Postgres with Prisma Accelerate)
+  // For local development, DATABASE_URL is sufficient
 }
 
 model Session {
