@@ -5,7 +5,6 @@
  */
 
 import db from '../app/db.server';
-import { SimpleRotationService } from '../app/services/simple-rotation.server';
 
 async function testCronRotation() {
   console.log('🔄 Testing Cron Rotation System\n');
@@ -60,7 +59,10 @@ async function testCronRotation() {
           console.log(`  Shop: ${test.shop}`);
           console.log(`  Product: ${test.productId}`);
           console.log(`  Current Case: ${test.currentCase}`);
-          console.log(`  Rotation Interval: ${test.rotationHours}h`);
+          const rotationDisplay = test.rotationHours < 1
+            ? `${Math.round(test.rotationHours * 60)}m`
+            : `${test.rotationHours}h`;
+          console.log(`  Rotation Interval: ${rotationDisplay}`);
           console.log(`  Next Rotation: ${test.nextRotation?.toISOString() || 'Not scheduled'}`);
 
           if (timeUntilRotation !== null) {
@@ -86,7 +88,10 @@ async function testCronRotation() {
         console.log(`  Current Case: ${test.currentCase}`);
         console.log(`  Will rotate to: ${test.currentCase === 'BASE' ? 'TEST' : 'BASE'}`);
         console.log(`  Next Rotation: ${test.nextRotation?.toISOString()}`);
-        console.log(`  Rotation Interval: ${test.rotationHours}h`);
+        const rotationDisplay = test.rotationHours < 1
+          ? `${Math.round(test.rotationHours * 60)}m`
+          : `${test.rotationHours}h`;
+        console.log(`  Rotation Interval: ${rotationDisplay}`);
 
         // Check if test has required images
         const baseImages = test.baseImages as any[] || [];

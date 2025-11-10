@@ -31,27 +31,27 @@ model Session {
 
 // Core A/B Test model - simplified structure
 model ABTest {
-  id            String   @id @default(cuid())
-  shop          String
-  productId     String
-  name          String
-  status        String   @default("DRAFT") // DRAFT, ACTIVE, PAUSED, COMPLETED
-  trafficSplit  Int      @default(50)
+  id           String @id @default(cuid())
+  shop         String
+  productId    String
+  name         String
+  status       String @default("DRAFT") // DRAFT, ACTIVE, PAUSED, COMPLETED
+  trafficSplit Int    @default(50)
 
   // Image storage - simplified to JSON
-  baseImages    Json     // JSON array of base case images
-  testImages    Json     // JSON array of test case images
+  baseImages Json // JSON array of base case images
+  testImages Json // JSON array of test case images
 
   // Rotation management
-  currentCase   String   @default("BASE") // BASE or TEST
-  rotationHours Int      @default(24)      // Hours between rotations
+  currentCase   String    @default("BASE") // BASE or TEST
+  rotationHours Float     @default(0.5) // Hours between rotations (0.5 = 30 minutes)
   lastRotation  DateTime?
   nextRotation  DateTime?
 
   // Metadata
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  createdBy     String   // User who created the test
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String // User who created the test
 
   // Relations
   variants       ABTestVariant[]
@@ -66,17 +66,17 @@ model ABTest {
 
 // Variant-specific test configuration (for hero images)
 model ABTestVariant {
-  id               String  @id @default(cuid())
+  id               String @id @default(cuid())
   testId           String
-  shopifyVariantId String  // Actual Shopify variant ID (e.g., gid://shopify/ProductVariant/123)
-  variantName      String  // Human-readable name (e.g., "Red / Large")
+  shopifyVariantId String // Actual Shopify variant ID (e.g., gid://shopify/ProductVariant/123)
+  variantName      String // Human-readable name (e.g., "Red / Large")
 
   // Hero images only (not full galleries)
-  baseHeroImage    Json?   // JSON object with image data
-  testHeroImage    Json    // JSON object with test hero image
+  baseHeroImage Json? // JSON object with image data
+  testHeroImage Json // JSON object with test hero image
 
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   test ABTest @relation(fields: [testId], references: [id], onDelete: Cascade)
 
@@ -86,21 +86,21 @@ model ABTestVariant {
 
 // Customer event tracking (impressions, conversions, purchases)
 model ABTestEvent {
-  id          String   @id @default(cuid())
-  testId      String
-  sessionId   String
-  eventType   String   // IMPRESSION, ADD_TO_CART, PURCHASE
-  activeCase  String   // BASE or TEST (what was showing when event occurred)
+  id         String @id @default(cuid())
+  testId     String
+  sessionId  String
+  eventType  String // IMPRESSION, ADD_TO_CART, PURCHASE
+  activeCase String // BASE or TEST (what was showing when event occurred)
 
   // Event details
-  productId   String
-  variantId   String?  // Shopify variant ID if applicable
-  revenue     Decimal? // For PURCHASE events
-  quantity    Int?     // For ADD_TO_CART and PURCHASE events
+  productId String
+  variantId String? // Shopify variant ID if applicable
+  revenue   Decimal? // For PURCHASE events
+  quantity  Int? // For ADD_TO_CART and PURCHASE events
 
   // Context
-  metadata    Json?    // JSON with additional context (browser, referrer, etc.)
-  createdAt   DateTime @default(now())
+  metadata  Json? // JSON with additional context (browser, referrer, etc.)
+  createdAt DateTime @default(now())
 
   test ABTest @relation(fields: [testId], references: [id], onDelete: Cascade)
 
@@ -112,13 +112,13 @@ model ABTestEvent {
 // Comprehensive audit logging for all system events
 model AuditLog {
   id          String   @id @default(cuid())
-  testId      String?  // Null for system-wide events
-  entityType  String   // TEST, ROTATION, SYSTEM, USER_ACTION
-  eventType   String   // See comprehensive list in implementation
-  userId      String?  // Who triggered the event (null for system events)
+  testId      String? // Null for system-wide events
+  entityType  String // TEST, ROTATION, SYSTEM, USER_ACTION
+  eventType   String // See comprehensive list in implementation
+  userId      String? // Who triggered the event (null for system events)
   shop        String
-  description String   // Human-readable description
-  metadata    Json     // JSON with detailed event data
+  description String // Human-readable description
+  metadata    Json // JSON with detailed event data
   timestamp   DateTime @default(now())
 
   test ABTest? @relation(fields: [testId], references: [id], onDelete: Cascade)
@@ -131,21 +131,21 @@ model AuditLog {
 
 // Track rotation events specifically for attribution
 model RotationEvent {
-  id          String   @id @default(cuid())
+  id          String  @id @default(cuid())
   testId      String
-  fromCase    String   // BASE or TEST
-  toCase      String   // BASE or TEST
-  triggeredBy String   // CRON, MANUAL, ROLLBACK, SYSTEM
-  userId      String?  // Who triggered it (if manual)
+  fromCase    String // BASE or TEST
+  toCase      String // BASE or TEST
+  triggeredBy String // CRON, MANUAL, ROLLBACK, SYSTEM
+  userId      String? // Who triggered it (if manual)
 
   // Execution details
-  success     Boolean
-  error       String?  // Error message if failed
-  duration    Int      // Milliseconds to complete
+  success  Boolean
+  error    String? // Error message if failed
+  duration Int // Milliseconds to complete
 
   // Additional context
-  metadata    Json?    // JSON with GraphQL responses, media IDs changed, etc.
-  timestamp   DateTime @default(now())
+  metadata  Json? // JSON with GraphQL responses, media IDs changed, etc.
+  timestamp DateTime @default(now())
 
   test ABTest @relation(fields: [testId], references: [id], onDelete: Cascade)
 
@@ -155,18 +155,18 @@ model RotationEvent {
 
 // Track metrics for analytics
 model MetricEvent {
-  id         String   @id @default(cuid())
-  shop       String
-  eventType  String   // GENERATED, DRAFT_SAVED, IMAGE_SELECTED, etc.
-  metadata   Json?    // JSON object with event-specific data
-  timestamp  DateTime @default(now())
+  id        String   @id @default(cuid())
+  shop      String
+  eventType String // GENERATED, DRAFT_SAVED, IMAGE_SELECTED, etc.
+  metadata  Json? // JSON object with event-specific data
+  timestamp DateTime @default(now())
 
   // Common fields for AI operations
-  model      String?  // AI model used
-  prompt     String?  // Prompt text
-  productId  String?  // Related product
-  imageUrl   String?  // Generated image URL
-  duration   Int?     // Operation duration in ms
+  model     String? // AI model used
+  prompt    String? // Prompt text
+  productId String? // Related product
+  imageUrl  String? // Generated image URL
+  duration  Int? // Operation duration in ms
 
   @@index([shop, eventType])
   @@index([timestamp])
@@ -174,26 +174,26 @@ model MetricEvent {
 
 // Product suggestions configuration
 model ProductSuggestionRule {
-  id          String   @id @default(cuid())
+  id          String  @id @default(cuid())
   shop        String
   name        String
   description String?
 
   // Rule configuration
-  sourceField String   // product_type, vendor, tag, collection, metafield
-  operator    String   // equals, contains, starts_with, regex
-  value       String   // The value to match
+  sourceField String // product_type, vendor, tag, collection, metafield
+  operator    String // equals, contains, starts_with, regex
+  value       String // The value to match
 
   // Suggestion settings
-  suggestionPrompt   String  // Template for AI prompt
-  maxSuggestions     Int     @default(3)
-  autoApply          Boolean @default(false)
+  suggestionPrompt String // Template for AI prompt
+  maxSuggestions   Int     @default(3)
+  autoApply        Boolean @default(false)
 
   // Metadata
-  isActive    Boolean  @default(true)
-  priority    Int      @default(0) // Higher priority rules run first
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  isActive  Boolean  @default(true)
+  priority  Int      @default(0) // Higher priority rules run first
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([shop, name])
   @@index([shop, isActive, priority])
@@ -201,19 +201,19 @@ model ProductSuggestionRule {
 
 // AI generation history
 model GenerationHistory {
-  id        String   @id @default(cuid())
+  id        String @id @default(cuid())
   shop      String
   productId String
 
   // Generation details
-  model     String   // AI model used
-  prompt    String   // Prompt text
-  imageUrl  String   // Generated image URL
+  model    String // AI model used
+  prompt   String // Prompt text
+  imageUrl String // Generated image URL
 
   // Metadata
-  status    String   // pending, completed, failed
-  error     String?  // Error message if failed
-  metadata  Json?    // JSON with additional data
+  status    String // pending, completed, failed
+  error     String? // Error message if failed
+  metadata  Json? // JSON with additional data
   createdAt DateTime @default(now())
 
   @@index([shop, productId])

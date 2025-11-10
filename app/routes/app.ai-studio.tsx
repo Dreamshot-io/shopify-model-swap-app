@@ -8,8 +8,7 @@ import { authenticate } from '../shopify.server';
 import { checkAIProviderHealth } from '../services/ai-providers.server';
 import { ImagePreviewModal } from '../features/ai-studio/components/ImagePreviewModal';
 import { ImageGenerationHub } from '../features/ai-studio/components/ImageGenerationHub';
-import { ProductGallery } from '../features/ai-studio/components/ProductGallery';
-import { ProductSelector } from '../features/shared/components';
+import { ProductSelector, ProductNavigationTabs } from '../features/shared/components';
 import { handleGenerate } from '../features/ai-studio/handlers/generation.server';
 import {
 	handleSaveToLibrary,
@@ -300,7 +299,7 @@ export default function AIStudio() {
 	const [previewBase, setPreviewBase] = useState<string | null>(null);
 	const [libraryItems, setLibraryItems] = useState<LibraryItem[]>([]);
 	const [pendingAction, setPendingAction] = useState<
-		null | 'generate' | 'publish' | 'saveToLibrary' | 'deleteFromLibrary' | 'deleteFromProduct'
+		null | 'generate' | 'publish' | 'saveToLibrary' | 'deleteFromLibrary'
 	>(null);
 	const [libraryItemToDelete, setLibraryItemToDelete] = useState<string | null>(null);
 
@@ -354,18 +353,20 @@ export default function AIStudio() {
 		setSelectedImages([]);
 	};
 
-	// Handle batch model swap generation
-	const handleGenerate = async (prompt: string) => {
+	// Handle batch model swap generation with multiple variations per image (PARALLEL)
+	const handleGenerate = async (prompt: string, aspectRatio: string, imageCount: number = 1) => {
 		if (selectedImages.length === 0 || !prompt.trim()) {
 			shopify.toast.show('Please select at least one image and enter a model description', { isError: true });
 			return;
 		}
 
+		const totalImages = selectedImages.length * imageCount;
+
 		// Initialize batch processing state
 		setBatchProcessingState({
 			isProcessing: true,
 			currentIndex: 0,
-			totalImages: selectedImages.length,
+			totalImages: totalImages,
 			completedImages: [],
 			failedImages: [],
 		});
@@ -373,116 +374,144 @@ export default function AIStudio() {
 		// Set pending action to indicate batch generation is in progress
 		setPendingAction('generate');
 
-		// Process images sequentially
+		// Create all generation tasks upfront
+		const generationTasks = [];
+		let globalIndex = 0;
+
 		for (let i = 0; i < selectedImages.length; i++) {
 			const image = selectedImages[i];
 
-			// Update current processing index
-			setBatchProcessingState(prev => ({
-				...prev,
-				currentIndex: i,
-			}));
+			for (let j = 0; j < imageCount; j++) {
+				const currentGlobalIndex = globalIndex;
+				const sourceImageIndex = i;
+				const variationIndex = j;
 
-			try {
-				const fd = new FormData();
-				fd.set('sourceImageUrl', image.url);
-				fd.set('prompt', prompt);
-				fd.set('productId', product?.id || '');
-
-				console.log(
-					`[BATCH ${i + 1}/${selectedImages.length}] Starting generation for:`,
-					image.url.substring(0, 50) + '...',
-				);
-
-				// DEBUG: Test if API routes work at all
-				if (i === 0) {
+				// Create a promise for each generation
+				const task = (async () => {
+					const taskId = `${currentGlobalIndex + 1}/${totalImages}`;
 					try {
-						console.log('[DEBUG] Testing /api/test endpoint...');
-						const testRes = await authenticatedAppFetch('/api/test', {
-							method: 'POST',
+						const fd = new FormData();
+						fd.set('sourceImageUrl', image.url);
+						fd.set('prompt', prompt);
+						fd.set('productId', product?.id || '');
+						fd.set('aspectRatio', aspectRatio);
+
+						console.log(
+							`[GEN:${taskId}] Starting variation ${variationIndex + 1}/${imageCount} for image ${sourceImageIndex + 1}/${selectedImages.length}`,
+						);
+						console.log(`[GEN:${taskId}] Request params:`, {
+							sourceImageUrl: image.url?.substring(0, 50) + '...',
+							prompt: prompt.substring(0, 50) + '...',
+							productId: product?.id || 'missing',
+							aspectRatio,
 						});
-						console.log('[DEBUG] Test response:', testRes.status, await testRes.text());
-					} catch (e) {
-						console.error('[DEBUG] Test failed:', e);
+
+						const response = await authenticatedAppFetch('/api/generate', {
+							method: 'POST',
+							body: fd,
+						});
+
+						console.log(`[GEN:${taskId}] Response status: ${response.status}, ok: ${response.ok}`);
+
+						// Check if response is JSON before parsing
+						const contentType = response.headers.get('content-type');
+						console.log(`[GEN:${taskId}] Content-Type: ${contentType}`);
+
+						if (!contentType || !contentType.includes('application/json')) {
+							const text = await response.text();
+							console.error(`[GEN:${taskId}] Non-JSON response:`, text.substring(0, 200));
+							if (response.status === 401 || response.status === 302) {
+								throw new Error('Session expired. Please reload the page.');
+							}
+							throw new Error(`Server error (${response.status}). Please try again.`);
+						}
+
+						const result = await response.json();
+						console.log(`[GEN:${taskId}] Response body:`, {
+							ok: result.ok,
+							hasResult: !!result.result,
+							error: result.error,
+							debug: result.debug,
+						});
+
+						if (!result.ok && result.needsAuth) {
+							throw new Error('Session expired. Please reload the page.');
+						}
+
+						if (result.ok && result.result) {
+							const generatedImage: GeneratedImage = {
+								id: result.result.id || `batch_${Date.now()}_${currentGlobalIndex}`,
+								imageUrl: result.result.imageUrl,
+								confidence: result.result.confidence || 0.9,
+								metadata: {
+									...result.result.metadata,
+									sourceImage: image,
+									prompt,
+									batchIndex: currentGlobalIndex + 1,
+									batchTotal: totalImages,
+									sourceImageIndex: sourceImageIndex + 1,
+									variationIndex: variationIndex + 1,
+									totalVariations: imageCount,
+									generatedAt: new Date().toISOString(),
+								},
+							};
+
+							// Update state with completed image
+							setBatchProcessingState(prev => ({
+								...prev,
+								completedImages: [...prev.completedImages, generatedImage],
+							}));
+
+							setGeneratedImages(prev => [...prev, generatedImage]);
+
+							return { success: true, image: generatedImage };
+						} else {
+							const error = result.error || 'Unknown error';
+							console.error(`[GEN:${taskId}] Generation failed:`, {
+								error,
+								debug: result.debug,
+								fullResult: result,
+							});
+							setBatchProcessingState(prev => ({
+								...prev,
+								failedImages: [
+									...prev.failedImages,
+									{ imageUrl: image.url, error },
+								],
+							}));
+							return { success: false, error };
+						}
+					} catch (error) {
+						const taskId = `${currentGlobalIndex + 1}/${totalImages}`;
+						console.error(`[GEN:${taskId}] Exception caught:`, {
+							error,
+							message: error instanceof Error ? error.message : String(error),
+							stack: error instanceof Error ? error.stack : undefined,
+							variationIndex: variationIndex + 1,
+							sourceImageIndex: sourceImageIndex + 1,
+						});
+						const errorMessage = error instanceof Error ? error.message : 'Network error';
+
+						setBatchProcessingState(prev => ({
+							...prev,
+							failedImages: [
+								...prev.failedImages,
+								{ imageUrl: image.url, error: errorMessage },
+							],
+						}));
+
+						return { success: false, error: errorMessage };
 					}
-				}
+				})();
 
-				// Get session token for authenticated request
-				const response = await authenticatedAppFetch('/api/generate', {
-					method: 'POST',
-					body: fd,
-				});
-
-				console.log(
-					`[BATCH ${i + 1}] Response status: ${response.status}, content-type: ${response.headers.get('content-type')}`,
-				);
-
-				// Check if response is JSON before parsing
-				const contentType = response.headers.get('content-type');
-				if (!contentType || !contentType.includes('application/json')) {
-					// Check if it's an auth redirect (typically 401 or 302)
-					if (response.status === 401 || response.status === 302) {
-						throw new Error('Session expired. Please reload the page.');
-					}
-					throw new Error(`Server error (${response.status}). Please try again.`);
-				}
-
-				const result = await response.json();
-
-				// Check for auth error in JSON response
-				if (!result.ok && result.needsAuth) {
-					throw new Error('Session expired. Please reload the page.');
-				}
-
-				if (result.ok && result.result) {
-					// Add successful result - ensure proper structure
-					const generatedImage: GeneratedImage = {
-						id: result.result.id || `batch_${Date.now()}_${i}`,
-						imageUrl: result.result.imageUrl,
-						confidence: result.result.confidence || 0.9,
-						metadata: {
-							...result.result.metadata,
-							sourceImage: image,
-							prompt,
-							batchIndex: i + 1,
-							batchTotal: selectedImages.length,
-							generatedAt: new Date().toISOString(),
-						},
-					};
-
-					setBatchProcessingState(prev => ({
-						...prev,
-						completedImages: [...prev.completedImages, generatedImage],
-					}));
-
-					setGeneratedImages(prev => [...prev, generatedImage]);
-				} else {
-					// Add failed result
-					setBatchProcessingState(prev => ({
-						...prev,
-						failedImages: [
-							...prev.failedImages,
-							{
-								imageUrl: image.url,
-								error: result.error || 'Unknown error',
-							},
-						],
-					}));
-				}
-			} catch (error) {
-				console.error(`❌ Model swap failed for image ${i + 1}:`, error);
-				setBatchProcessingState(prev => ({
-					...prev,
-					failedImages: [
-						...prev.failedImages,
-						{
-							imageUrl: image.url,
-							error: error instanceof Error ? error.message : 'Network error',
-						},
-					],
-				}));
+				generationTasks.push(task);
+				globalIndex++;
 			}
 		}
+
+		// Execute all generations in parallel
+		console.log(`[PARALLEL] Starting ${generationTasks.length} generations in parallel...`);
+		await Promise.all(generationTasks);
 
 		// Complete batch processing and show completion toast
 		setBatchProcessingState(prev => {
@@ -491,7 +520,7 @@ export default function AIStudio() {
 
 			// Show completion toast
 			if (failedCount === 0) {
-				shopify.toast.show(`Successfully generated ${completedCount} AI images! 🎉`);
+				shopify.toast.show(`Successfully generated ${completedCount} AI images!`);
 			} else if (completedCount > 0) {
 				shopify.toast.show(`Generated ${completedCount} images successfully, ${failedCount} failed`, {
 					isError: false,
@@ -626,7 +655,9 @@ export default function AIStudio() {
 				</button>
 			</TitleBar>
 
-			<BlockStack gap='500'>
+			<ProductNavigationTabs productId={product.id} currentPage="ai-studio" />
+
+			<BlockStack gap='300'>
 				{previewImage && (
 					<ImagePreviewModal url={previewImage} baseUrl={previewBase} onClose={() => setPreviewImage(null)} />
 				)}
@@ -661,27 +692,6 @@ export default function AIStudio() {
 						</BlockStack>
 					</Modal>
 				)}
-
-				{/* Product Gallery - Shows both published and library images */}
-				<ProductGallery
-					images={product.media?.nodes || []}
-					libraryItems={libraryItems}
-					selectedVariantId={null}
-					variants={variants}
-					onDelete={mediaId => {
-						const fd = new FormData();
-						fd.set('intent', 'deleteFromProduct');
-						fd.set('mediaId', mediaId);
-						fd.set('productId', product?.id || '');
-						setPendingAction('deleteFromProduct');
-						fetcher.submit(fd, { method: 'post' });
-					}}
-					onPublishFromLibrary={url => handlePublishFromLibrary(url)}
-					onRemoveFromLibrary={url => {
-						setLibraryItemToDelete(url);
-					}}
-					isDeleting={pendingAction === 'deleteFromProduct'}
-				/>
 
 				{/* Image Generation Hub */}
 				<ImageGenerationHub

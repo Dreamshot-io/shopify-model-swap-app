@@ -19,8 +19,10 @@ bun run db:logs
 Set `DATABASE_URL` in `.env` to:
 
 ```
-postgresql://postgres:postgres@localhost:5432/dreamshot?schema=public
+DATABASE_URL="postgresql://postgres:postgres@localhost:5432/dreamshot?schema=public"
 ```
+
+**Note**: For local development, you only need `DATABASE_URL`. The `DIRECT_URL` environment variable is only required when using connection pooling (e.g., on Vercel with Supabase).
 
 ### Initialize Schema
 

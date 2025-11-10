@@ -20,12 +20,22 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     // Parse form data
     const formData = await request.formData();
     const productId = String(formData.get("productId") || "");
+    const sourceImageUrl = String(formData.get("sourceImageUrl") || "");
+    const prompt = String(formData.get("prompt") || "");
+    const aspectRatio = String(formData.get("aspectRatio") || "");
 
-    console.log(`[API.GENERATE:${requestId}] Generating for product: ${productId}`);
+    console.log(`[API.GENERATE:${requestId}] Form data parsed:`, {
+      productId: productId || 'missing',
+      sourceImageUrl: sourceImageUrl ? sourceImageUrl.substring(0, 50) + '...' : 'missing',
+      prompt: prompt ? prompt.substring(0, 50) + '...' : 'missing',
+      aspectRatio: aspectRatio || 'missing',
+    });
 
     // Check AI service health
     const healthCheck = checkAIProviderHealth();
+    console.log(`[API.GENERATE:${requestId}] Health check:`, healthCheck);
     if (!healthCheck.healthy) {
+      console.error(`[API.GENERATE:${requestId}] Health check failed:`, healthCheck.error);
       const errorResponse: ActionErrorResponse = {
         ok: false,
         error: `AI service unavailable: ${healthCheck.error}`,
@@ -37,12 +47,21 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     }
 
     // Generate image
+    console.log(`[API.GENERATE:${requestId}] Calling handleGenerate...`);
     const result = await handleGenerate(formData, session.shop);
-    console.log(`[API.GENERATE:${requestId}] Generation complete`);
+    console.log(`[API.GENERATE:${requestId}] Generation complete:`, {
+      ok: result instanceof Response ? 'Response object' : result.ok,
+      hasResult: result instanceof Response ? 'N/A' : !!result.result,
+    });
 
     return result;
   } catch (error: any) {
-    console.error(`[API.GENERATE:${requestId}] Error:`, error);
+    console.error(`[API.GENERATE:${requestId}] Error:`, {
+      message: error?.message,
+      stack: error?.stack,
+      name: error?.constructor?.name,
+      error,
+    });
 
     const errorResponse: ActionErrorResponse = {
       ok: false,

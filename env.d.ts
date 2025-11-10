@@ -8,6 +8,7 @@ interface ImportMetaEnv {
   readonly S3_SECRET_KEY: string;
   readonly S3_REGION: string;
   readonly S3_BUCKET: string;
+  readonly R2_PUBLIC_DOMAIN?: string; // Optional - auto-derived from S3_ENDPOINT
   readonly FAL_KEY: string;
 }
 

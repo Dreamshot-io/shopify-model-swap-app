@@ -25,6 +25,8 @@ S3_ACCESS_KEY=
 S3_SECRET_KEY=
 S3_REGION=
 S3_BUCKET=
+# R2_PUBLIC_DOMAIN is optional - will be auto-derived from S3_ENDPOINT
+# Only set if using a custom domain: R2_PUBLIC_DOMAIN=https://your-custom-domain.com
 
 # Optional
 SHOP_CUSTOM_DOMAIN=

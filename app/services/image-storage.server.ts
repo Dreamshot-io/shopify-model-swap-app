@@ -45,11 +45,46 @@ export async function storeImagesBatch(
 }
 
 /**
+ * Derive public R2 domain from private endpoint (same logic as storage.server.ts)
+ */
+function getPublicR2Domain(): string {
+  if (process.env.R2_PUBLIC_DOMAIN) {
+    return process.env.R2_PUBLIC_DOMAIN;
+  }
+  const endpoint = process.env.S3_ENDPOINT || '';
+  const match = endpoint.match(/https?:\/\/([^.]+)\.r2\.cloudflarestorage\.com/);
+  if (match && match[1]) {
+    return `https://pub-${match[1]}.r2.dev`;
+  }
+  return endpoint;
+}
+
+/**
  * Check if URL is a permanent storage URL (not Shopify CDN)
  */
 export function isPermanentUrl(url: string): boolean {
   const endpoint = process.env.S3_ENDPOINT || '';
-  return url.includes(endpoint) || url.includes('r2.cloudflarestorage.com');
+  const publicDomain = getPublicR2Domain();
+
+  // Check for private R2 endpoint
+  if (url.includes(endpoint) || url.includes('r2.cloudflarestorage.com')) {
+    return true;
+  }
+
+  // Check for public R2 domain (pub-xxx.r2.dev or custom domain)
+  if (publicDomain) {
+    const domainPattern = publicDomain.replace(/^https?:\/\//, '').replace(/\/$/, '');
+    if (url.includes(domainPattern)) {
+      return true;
+    }
+  }
+
+  // Check for standard public R2 pattern
+  if (url.includes('pub-') && url.includes('.r2.dev')) {
+    return true;
+  }
+
+  return false;
 }
 
 /**

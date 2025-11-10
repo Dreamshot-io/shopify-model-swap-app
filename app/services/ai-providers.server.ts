@@ -21,15 +21,17 @@ export function ensureAIProvidersInitialized(): void {
     throw new Error('AI providers should only be initialized on the server');
   }
 
+  const replicateToken = process.env.REPLICATE_API_TOKEN;
   const falKey = process.env.FAL_KEY;
-  if (!falKey) {
-    throw new Error('FAL_KEY environment variable is required but not set');
+
+  if (!replicateToken) {
+    throw new Error('REPLICATE_API_TOKEN environment variable is required but not set');
   }
 
   try {
-    initializeAIProviders(falKey);
+    initializeAIProviders(replicateToken, falKey);
     isInitialized = true;
-    console.log('✅ AI providers initialized successfully');
+    console.log('✅ AI providers initialized successfully (Replicate primary, fal.ai backup)');
   } catch (error) {
     console.error('❌ Failed to initialize AI providers:', error);
     throw new Error(`Failed to initialize AI providers: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -40,7 +42,7 @@ export function ensureAIProvidersInitialized(): void {
  * Get an AI provider instance (server-side only)
  * Automatically ensures providers are initialized
  */
-export function getAIProvider(name: string = "fal.ai") {
+export function getAIProvider(name: string = "replicate") {
   ensureAIProvidersInitialized();
   return AIProviderFactory.getProvider(name);
 }
@@ -50,8 +52,12 @@ export function getAIProvider(name: string = "fal.ai") {
  * Includes comprehensive error handling and validation
  */
 export async function generateAIImage(request: AIImageRequest): Promise<AIImageResponse> {
+  const requestId = crypto.randomUUID().slice(0, 8);
+  console.log(`[AI_PROVIDER:${requestId}] generateAIImage called`);
+
   try {
     // Validate request
+    console.log(`[AI_PROVIDER:${requestId}] Validating request...`);
     if (!request.sourceImageUrl) {
       throw new Error('Source image URL is required');
     }
@@ -61,16 +67,30 @@ export async function generateAIImage(request: AIImageRequest): Promise<AIImageR
     if (!request.productId) {
       throw new Error('Product ID is required');
     }
+    console.log(`[AI_PROVIDER:${requestId}] Validation passed:`, {
+      sourceImageUrl: request.sourceImageUrl.substring(0, 50) + '...',
+      prompt: request.prompt.substring(0, 50) + '...',
+      productId: request.productId,
+      modelType: request.modelType || 'swap',
+      aspectRatio: request.aspectRatio,
+    });
 
     // Ensure providers are initialized
+    console.log(`[AI_PROVIDER:${requestId}] Ensuring providers initialized...`);
     ensureAIProvidersInitialized();
-    
-    // Get AI provider
-    const aiProvider = AIProviderFactory.getProvider("fal.ai");
-    
+    console.log(`[AI_PROVIDER:${requestId}] Providers initialized`);
+
+    // Get AI provider (default to Replicate)
+    console.log(`[AI_PROVIDER:${requestId}] Getting provider: replicate`);
+    const aiProvider = AIProviderFactory.getProvider("replicate");
+    console.log(`[AI_PROVIDER:${requestId}] Provider obtained: ${aiProvider.name}`);
+
     // Generate image based on model type
     let result: AIImageResponse;
-    switch (request.modelType) {
+    const operation = request.modelType || "swap";
+    console.log(`[AI_PROVIDER:${requestId}] Calling provider.${operation}...`);
+
+    switch (operation) {
       case "generate":
         result = await aiProvider.generateImage(request);
         break;
@@ -83,15 +103,28 @@ export async function generateAIImage(request: AIImageRequest): Promise<AIImageR
         break;
     }
 
+    console.log(`[AI_PROVIDER:${requestId}] Provider call completed:`, {
+      hasImageUrl: !!result.imageUrl,
+      imageUrl: result.imageUrl ? result.imageUrl.substring(0, 50) + '...' : 'missing',
+      id: result.id,
+      confidence: result.confidence,
+    });
+
     // Validate result
     if (!result.imageUrl) {
+      console.error(`[AI_PROVIDER:${requestId}] Result validation failed: no imageUrl`);
       throw new Error('AI provider did not return a valid image URL');
     }
 
+    console.log(`[AI_PROVIDER:${requestId}] ✓ Generation successful`);
     return result;
   } catch (error) {
-    console.error('❌ AI image generation failed:', error);
-    
+    console.error(`[AI_PROVIDER:${requestId}] ❌ AI image generation failed:`, {
+      message: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      error,
+    });
+
     // Re-throw with a standardized error structure
     if (error instanceof Error) {
       throw error;
@@ -105,21 +138,21 @@ export async function generateAIImage(request: AIImageRequest): Promise<AIImageR
  */
 export function checkAIProviderHealth(): { healthy: boolean; error?: string } {
   try {
-    if (!process.env.FAL_KEY) {
-      return { healthy: false, error: 'FAL_KEY environment variable is not set' };
+    if (!process.env.REPLICATE_API_TOKEN) {
+      return { healthy: false, error: 'REPLICATE_API_TOKEN environment variable is not set' };
     }
 
     ensureAIProvidersInitialized();
-    
-    if (!AIProviderFactory.hasProvider("fal.ai")) {
-      return { healthy: false, error: 'fal.ai provider is not registered' };
+
+    if (!AIProviderFactory.hasProvider("replicate")) {
+      return { healthy: false, error: 'Replicate provider is not registered' };
     }
 
     return { healthy: true };
   } catch (error) {
-    return { 
-      healthy: false, 
-      error: error instanceof Error ? error.message : 'Unknown health check error' 
+    return {
+      healthy: false,
+      error: error instanceof Error ? error.message : 'Unknown health check error'
     };
   }
 }

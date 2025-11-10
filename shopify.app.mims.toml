@@ -1,8 +1,8 @@
 # Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
 
-client_id = "a37f0ea132844ccc3c8e104205da4c41"
-name = "dreamshot-model-swap"
-application_url = "https://app-dev.dreamshot.io"
+client_id = "0f2dad9ef09a47e618f180f7eed5a399"
+name = "dreamshot-model-mims"
+application_url = "https://shopify-model-swap-mims.vercel.app"
 embedded = true
 handle = "dreamshot-model-swap"
 
@@ -34,13 +34,13 @@ scopes = "read_orders,write_files,write_products,write_pixels,write_script_tags"
 
 [auth]
 redirect_urls = [
-  "https://app-dev.dreamshot.io/auth/callback",
-  "https://app-dev.dreamshot.io/auth/shopify/callback",
-  "https://app-dev.dreamshot.io/api/auth/callback"
+  "https://shopify-model-swap-mims.vercel.app/auth/callback",
+  "https://shopify-model-swap-mims.vercel.app/auth/shopify/callback",
+  "https://shopify-model-swap-mims.vercel.app/api/auth/callback"
 ]
 
 [app_proxy]
-url = "https://app-dev.dreamshot.io"
+url = "https://shopify-model-swap-mims.vercel.app"
 subpath = "model-swap"
 prefix = "apps"
 

@@ -186,7 +186,7 @@ export class SimpleRotationService {
 
       // Update test state
       const nextRotation = new Date();
-      nextRotation.setHours(nextRotation.getHours() + test.rotationHours);
+      nextRotation.setTime(nextRotation.getTime() + test.rotationHours * 3600000);
 
       await db.aBTest.update({
         where: { id: testId },
@@ -882,7 +882,7 @@ export class SimpleRotationService {
 
     // Set next rotation time
     const nextRotation = new Date();
-    nextRotation.setHours(nextRotation.getHours() + test.rotationHours);
+    nextRotation.setTime(nextRotation.getTime() + test.rotationHours * 3600000);
 
     await db.aBTest.update({
       where: { id: testId },
