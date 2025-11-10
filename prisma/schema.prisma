@@ -45,7 +45,7 @@ model ABTest {
 
   // Rotation management
   currentCase   String   @default("BASE") // BASE or TEST
-  rotationHours Int      @default(24)      // Hours between rotations
+  rotationHours Float    @default(0.5)    // Hours between rotations (0.5 = 30 minutes)
   lastRotation  DateTime?
   nextRotation  DateTime?
 

@@ -142,6 +142,19 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   }
 };
 
+function formatRotationHours(hours: number): string {
+  if (hours < 1) {
+    const minutes = Math.round(hours * 60);
+    return `${minutes} minute${minutes !== 1 ? 's' : ''}`;
+  }
+  if (hours === Math.floor(hours)) {
+    return `${hours} hour${hours !== 1 ? 's' : ''}`;
+  }
+  const wholeHours = Math.floor(hours);
+  const minutes = Math.round((hours - wholeHours) * 60);
+  return `${wholeHours} hour${wholeHours !== 1 ? 's' : ''} ${minutes} minute${minutes !== 1 ? 's' : ''}`;
+}
+
 export default function ABTestDetail() {
   const { test, statistics } = useLoaderData<typeof loader>();
   const fetcher = useFetcher();
@@ -215,7 +228,7 @@ export default function ABTestDetail() {
                     Product: {test.productId}
                   </Text>
                   <Text as="p" tone="subdued">
-                    Rotation: Every {test.rotationHours} hours
+                    Rotation: Every {formatRotationHours(test.rotationHours)}
                   </Text>
                   {test.nextRotation && (
                     <Text as="p" tone="subdued">

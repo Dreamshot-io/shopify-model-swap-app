@@ -38,7 +38,10 @@ async function main() {
     console.log('   Status: ' + test.status);
     console.log('   Current Case: ' + test.currentCase);
     console.log('   Traffic Split: ' + test.trafficSplit + '%');
-    console.log('   Rotation Hours: ' + test.rotationHours);
+    const rotationDisplay = test.rotationHours < 1
+      ? `${Math.round(test.rotationHours * 60)} minutes`
+      : `${test.rotationHours} hour${test.rotationHours !== 1 ? 's' : ''}`;
+    console.log('   Rotation Interval: ' + rotationDisplay);
     console.log('   Last Rotation: ' + (test.lastRotation || 'Never'));
     console.log('   Next Rotation: ' + (test.nextRotation || 'Not scheduled'));
     console.log('   Variants: ' + test.variants.length);

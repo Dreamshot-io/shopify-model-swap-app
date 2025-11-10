@@ -275,7 +275,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           );
         }
 
-        // Create the test (hardcoded to 24 hour rotation)
+        // Create the test (default 30 minute rotation)
         const test = await db.aBTest.create({
           data: {
             shop: session.shop,
@@ -286,7 +286,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             baseImages: baseImages,
             testImages: testImages,
             currentCase: "BASE",
-            rotationHours: 24, // Default 24 hours
+            rotationHours: 0.5, // Default 30 minutes
             createdBy: session.id,
           },
         });
@@ -381,6 +381,19 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     );
   }
 };
+
+function formatRotationHours(hours: number): string {
+  if (hours < 1) {
+    const minutes = Math.round(hours * 60);
+    return `${minutes} minute${minutes !== 1 ? 's' : ''}`;
+  }
+  if (hours === Math.floor(hours)) {
+    return `${hours} hour${hours !== 1 ? 's' : ''}`;
+  }
+  const wholeHours = Math.floor(hours);
+  const minutes = Math.round((hours - wholeHours) * 60);
+  return `${wholeHours} hour${wholeHours !== 1 ? 's' : ''} ${minutes} minute${minutes !== 1 ? 's' : ''}`;
+}
 
 export default function ABTests() {
   const data = useLoaderData<typeof loader>();
@@ -706,7 +719,7 @@ export default function ABTests() {
                   {/* Row 2: Rotation Info and Tooltip */}
                   <InlineStack gap="200" align="start">
                     <Text as="p" tone="subdued">
-                      Rotation: Every {data.activeTest.rotationHours} hours
+                      Rotation: Every {formatRotationHours(data.activeTest.rotationHours)}
                       {data.activeTest.nextRotation &&
                         countdown &&
                         ` • Next rotation in: ${countdown}`}
