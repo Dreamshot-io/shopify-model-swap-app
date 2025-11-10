@@ -12,12 +12,24 @@ export async function handleGenerate(
   shop: string,
   admin?: AdminApiContext,
 ) {
+  const requestId = crypto.randomUUID().slice(0, 8);
+  console.log(`[HANDLER:${requestId}] handleGenerate called for shop: ${shop}`);
+
   const sourceImageUrl = String(formData.get("sourceImageUrl") || "");
   const prompt = String(formData.get("prompt") || "");
   const productId = String(formData.get("productId") || "");
   const aspectRatio = String(formData.get("aspectRatio") || "match_input_image");
 
+  console.log(`[HANDLER:${requestId}] Parsed inputs:`, {
+    sourceImageUrl: sourceImageUrl ? sourceImageUrl.substring(0, 50) + '...' : 'missing',
+    prompt: prompt ? prompt.substring(0, 50) + '...' : 'missing',
+    productId: productId || 'missing',
+    aspectRatio,
+    hasAdmin: !!admin,
+  });
+
   if (!sourceImageUrl || !prompt) {
+    console.error(`[HANDLER:${requestId}] Validation failed: missing sourceImageUrl or prompt`);
     const errorResponse: ActionErrorResponse = {
       ok: false,
       error: "Missing sourceImageUrl or prompt",
@@ -26,6 +38,7 @@ export async function handleGenerate(
   }
 
   try {
+    console.log(`[HANDLER:${requestId}] Calling generateAIImage...`);
     const result = await generateAIImage({
       sourceImageUrl,
       prompt,
@@ -33,8 +46,14 @@ export async function handleGenerate(
       modelType: "swap",
       aspectRatio: aspectRatio as any,
     });
+    console.log(`[HANDLER:${requestId}] generateAIImage succeeded:`, {
+      hasImageUrl: !!result.imageUrl,
+      imageUrl: result.imageUrl ? result.imageUrl.substring(0, 50) + '...' : 'missing',
+      id: result.id,
+    });
 
     try {
+      console.log(`[HANDLER:${requestId}] Logging metric event...`);
       await db.metricEvent.create({
         data: {
           id: crypto.randomUUID(),
@@ -44,14 +63,15 @@ export async function handleGenerate(
           imageUrl: result.imageUrl,
         },
       });
+      console.log(`[HANDLER:${requestId}] Metric event logged`);
     } catch (loggingError) {
-      console.warn("Failed to log generation event:", loggingError);
+      console.warn(`[HANDLER:${requestId}] Failed to log generation event:`, loggingError);
     }
 
     // Auto-publish to product media if admin context is available
     if (admin && productId) {
       try {
-        console.log('[generation] Auto-publishing to product media...');
+        console.log(`[HANDLER:${requestId}] Auto-publishing to product media...`);
 
         const publishMutation = `
           mutation ProductCreateMedia($productId: ID!, $media: [CreateMediaInput!]!) {
@@ -86,12 +106,12 @@ export async function handleGenerate(
         const publishData = await publishResponse.json();
 
         if (publishData.data?.productCreateMedia?.mediaUserErrors?.length > 0) {
-          console.warn('[generation] Auto-publish errors:', publishData.data.productCreateMedia.mediaUserErrors);
+          console.warn(`[HANDLER:${requestId}] Auto-publish errors:`, publishData.data.productCreateMedia.mediaUserErrors);
         } else if (publishData.data?.productCreateMedia?.media?.[0]) {
-          console.log('[generation] ✓ Auto-published to product media:', publishData.data.productCreateMedia.media[0].id);
+          console.log(`[HANDLER:${requestId}] ✓ Auto-published to product media:`, publishData.data.productCreateMedia.media[0].id);
         }
       } catch (publishError) {
-        console.warn('[generation] Auto-publish failed:', publishError);
+        console.warn(`[HANDLER:${requestId}] Auto-publish failed:`, publishError);
         // Don't fail the generation if auto-publish fails
       }
     }
@@ -104,9 +124,15 @@ export async function handleGenerate(
       },
     };
 
+    console.log(`[HANDLER:${requestId}] Returning success response`);
     return json(successResponse);
   } catch (error: any) {
-    console.error("[generation] AI image generation failed:", error);
+    console.error(`[HANDLER:${requestId}] AI image generation failed:`, {
+      message: error?.message,
+      stack: error?.stack,
+      name: error?.constructor?.name,
+      error,
+    });
 
     const errorResponse: ActionErrorResponse = {
       ok: false,

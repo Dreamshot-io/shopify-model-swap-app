@@ -43,28 +43,60 @@ export class FalAIProvider implements AIProvider {
   }
 
   async swapModel(request: AIImageRequest): Promise<AIImageResponse> {
-    const result = await fal.subscribe(this.modelPath, {
-      input: {
-        prompt: request.prompt,
-        image_urls: [request.sourceImageUrl],
-        output_format: "jpeg",
-        num_images: 1,
-      },
-      logs: true,
-      onQueueUpdate: (update: any) => {
-        if (update?.status === "IN_PROGRESS" && Array.isArray(update?.logs)) {
-          for (const log of update.logs) {
-            // eslint-disable-next-line no-console
-            console.log(`[fal.ai]`, log.message || log);
-          }
-        }
-      },
+    const requestId = crypto.randomUUID().slice(0, 8);
+    console.log(`[FAL_AI:${requestId}] swapModel called`);
+    console.log(`[FAL_AI:${requestId}] Input:`, {
+      prompt: request.prompt.substring(0, 50) + '...',
+      sourceImageUrl: request.sourceImageUrl.substring(0, 50) + '...',
+      modelPath: this.modelPath,
     });
 
+    let result: any;
+    try {
+      console.log(`[FAL_AI:${requestId}] Calling fal.subscribe(${this.modelPath})...`);
+      result = await fal.subscribe(this.modelPath, {
+        input: {
+          prompt: request.prompt,
+          image_urls: [request.sourceImageUrl],
+          output_format: "jpeg",
+          num_images: 1,
+        },
+        logs: true,
+        onQueueUpdate: (update: any) => {
+          if (update?.status === "IN_PROGRESS" && Array.isArray(update?.logs)) {
+            for (const log of update.logs) {
+              console.log(`[FAL_AI:${requestId}]`, log.message || log);
+            }
+          }
+        },
+      });
+      console.log(`[FAL_AI:${requestId}] fal.subscribe completed:`, {
+        hasData: !!result?.data,
+        hasImages: !!result?.data?.images,
+        imagesLength: result?.data?.images?.length,
+        requestId: result?.requestId,
+      });
+    } catch (apiError: any) {
+      console.error(`[FAL_AI:${requestId}] fal.subscribe failed:`, {
+        message: apiError?.message,
+        status: apiError?.status,
+        error: apiError,
+      });
+      throw apiError;
+    }
+
     const firstImageUrl = result?.data?.images?.[0]?.url as string;
+    console.log(`[FAL_AI:${requestId}] Processing result:`, {
+      hasFirstImage: !!result?.data?.images?.[0],
+      firstImageUrl: firstImageUrl ? firstImageUrl.substring(0, 50) + '...' : 'missing',
+    });
+
     if (!firstImageUrl) {
+      console.error(`[FAL_AI:${requestId}] No image URL found:`, { result });
       throw new Error("fal.ai did not return an image URL");
     }
+
+    console.log(`[FAL_AI:${requestId}] ✓ Image URL extracted`);
 
     return {
       id: result.requestId || `fal_${Date.now()}`,
@@ -98,6 +130,15 @@ export class ReplicateProvider implements AIProvider {
   }
 
   async generateImage(request: AIImageRequest): Promise<AIImageResponse> {
+    const requestId = crypto.randomUUID().slice(0, 8);
+    console.log(`[REPLICATE:${requestId}] generateImage called`);
+    console.log(`[REPLICATE:${requestId}] Input:`, {
+      prompt: request.prompt.substring(0, 50) + '...',
+      sourceImageUrl: request.sourceImageUrl.substring(0, 50) + '...',
+      aspectRatio: request.aspectRatio,
+      modelPath: this.modelPath,
+    });
+
     const input = {
       prompt: request.prompt,
       image_input: [request.sourceImageUrl],
@@ -108,18 +149,95 @@ export class ReplicateProvider implements AIProvider {
       sequential_image_generation: "disabled",
     };
 
-    const output = await this.replicate.run(this.modelPath, { input }) as any[];
+    console.log(`[REPLICATE:${requestId}] Calling replicate.run(${this.modelPath})...`);
+    let output: any[];
+    try {
+      output = await this.replicate.run(this.modelPath, { input }) as any[];
+      console.log(`[REPLICATE:${requestId}] Replicate API call completed:`, {
+        outputType: Array.isArray(output) ? 'array' : typeof output,
+        outputLength: Array.isArray(output) ? output.length : 'N/A',
+        firstItemType: Array.isArray(output) && output[0] ? typeof output[0] : 'N/A',
+      });
+    } catch (apiError: any) {
+      console.error(`[REPLICATE:${requestId}] Replicate API call failed:`, {
+        message: apiError?.message,
+        status: apiError?.status,
+        statusText: apiError?.statusText,
+        response: apiError?.response,
+        error: apiError,
+      });
+      throw apiError;
+    }
 
     if (!output || !Array.isArray(output) || output.length === 0) {
+      console.error(`[REPLICATE:${requestId}] Invalid output:`, { output });
       throw new Error("Replicate did not return any images");
     }
 
     const firstImage = output[0];
-    const imageUrl = typeof firstImage === 'string' ? firstImage : firstImage.url?.();
+    let firstImageValue = 'N/A';
+    try {
+      if (typeof firstImage === 'object' && firstImage !== null) {
+        firstImageValue = JSON.stringify(firstImage).substring(0, 200);
+      } else {
+        firstImageValue = String(firstImage).substring(0, 200);
+      }
+    } catch (e) {
+      firstImageValue = String(firstImage);
+    }
 
-    if (!imageUrl) {
+    console.log(`[REPLICATE:${requestId}] Processing first image:`, {
+      type: typeof firstImage,
+      isString: typeof firstImage === 'string',
+      hasUrl: typeof firstImage === 'object' && 'url' in firstImage,
+      urlType: typeof firstImage === 'object' && firstImage !== null ? typeof firstImage.url : 'N/A',
+      firstImageKeys: typeof firstImage === 'object' && firstImage !== null ? Object.keys(firstImage) : 'N/A',
+      firstImageValue,
+    });
+
+    let imageUrl: string;
+    if (typeof firstImage === 'string') {
+      imageUrl = firstImage;
+    } else if (typeof firstImage === 'object' && firstImage !== null) {
+      // Handle different URL formats from Replicate
+      if (typeof firstImage.url === 'string') {
+        imageUrl = firstImage.url;
+      } else if (typeof firstImage.url === 'function') {
+        // URL might be a function that returns a Promise or string
+        try {
+          const urlResult = firstImage.url();
+          // Check if it's a Promise-like object
+          if (urlResult && typeof urlResult === 'object' && 'then' in urlResult) {
+            imageUrl = await urlResult;
+          } else {
+            imageUrl = String(urlResult);
+          }
+        } catch (err) {
+          console.error(`[REPLICATE:${requestId}] Error calling url():`, err);
+          throw new Error("Failed to extract image URL from Replicate response");
+        }
+      } else if ('url' in firstImage && firstImage.url !== null && firstImage.url !== undefined) {
+        // URL might be nested or another type
+        imageUrl = String(firstImage.url);
+      } else {
+        // Try to stringify or get the first property
+        imageUrl = String(firstImage);
+      }
+    } else {
+      imageUrl = String(firstImage);
+    }
+
+    // Ensure imageUrl is actually a string
+    if (typeof imageUrl !== 'string' || !imageUrl) {
+      console.error(`[REPLICATE:${requestId}] No valid image URL found:`, {
+        firstImage,
+        imageUrl,
+        imageUrlType: typeof imageUrl,
+      });
       throw new Error("Replicate did not return a valid image URL");
     }
+
+    console.log(`[REPLICATE:${requestId}] ✓ Image URL extracted:`, imageUrl.substring(0, 50) + '...');
 
     return {
       id: `replicate_${Date.now()}`,

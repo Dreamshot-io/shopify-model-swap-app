@@ -52,8 +52,12 @@ export function getAIProvider(name: string = "replicate") {
  * Includes comprehensive error handling and validation
  */
 export async function generateAIImage(request: AIImageRequest): Promise<AIImageResponse> {
+  const requestId = crypto.randomUUID().slice(0, 8);
+  console.log(`[AI_PROVIDER:${requestId}] generateAIImage called`);
+
   try {
     // Validate request
+    console.log(`[AI_PROVIDER:${requestId}] Validating request...`);
     if (!request.sourceImageUrl) {
       throw new Error('Source image URL is required');
     }
@@ -63,16 +67,30 @@ export async function generateAIImage(request: AIImageRequest): Promise<AIImageR
     if (!request.productId) {
       throw new Error('Product ID is required');
     }
+    console.log(`[AI_PROVIDER:${requestId}] Validation passed:`, {
+      sourceImageUrl: request.sourceImageUrl.substring(0, 50) + '...',
+      prompt: request.prompt.substring(0, 50) + '...',
+      productId: request.productId,
+      modelType: request.modelType || 'swap',
+      aspectRatio: request.aspectRatio,
+    });
 
     // Ensure providers are initialized
+    console.log(`[AI_PROVIDER:${requestId}] Ensuring providers initialized...`);
     ensureAIProvidersInitialized();
+    console.log(`[AI_PROVIDER:${requestId}] Providers initialized`);
 
     // Get AI provider (default to Replicate)
+    console.log(`[AI_PROVIDER:${requestId}] Getting provider: replicate`);
     const aiProvider = AIProviderFactory.getProvider("replicate");
-    
+    console.log(`[AI_PROVIDER:${requestId}] Provider obtained: ${aiProvider.name}`);
+
     // Generate image based on model type
     let result: AIImageResponse;
-    switch (request.modelType) {
+    const operation = request.modelType || "swap";
+    console.log(`[AI_PROVIDER:${requestId}] Calling provider.${operation}...`);
+
+    switch (operation) {
       case "generate":
         result = await aiProvider.generateImage(request);
         break;
@@ -85,15 +103,28 @@ export async function generateAIImage(request: AIImageRequest): Promise<AIImageR
         break;
     }
 
+    console.log(`[AI_PROVIDER:${requestId}] Provider call completed:`, {
+      hasImageUrl: !!result.imageUrl,
+      imageUrl: result.imageUrl ? result.imageUrl.substring(0, 50) + '...' : 'missing',
+      id: result.id,
+      confidence: result.confidence,
+    });
+
     // Validate result
     if (!result.imageUrl) {
+      console.error(`[AI_PROVIDER:${requestId}] Result validation failed: no imageUrl`);
       throw new Error('AI provider did not return a valid image URL');
     }
 
+    console.log(`[AI_PROVIDER:${requestId}] ✓ Generation successful`);
     return result;
   } catch (error) {
-    console.error('❌ AI image generation failed:', error);
-    
+    console.error(`[AI_PROVIDER:${requestId}] ❌ AI image generation failed:`, {
+      message: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      error,
+    });
+
     // Re-throw with a standardized error structure
     if (error instanceof Error) {
       throw error;

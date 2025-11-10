@@ -1119,7 +1119,10 @@ export default function ABTests() {
                           >
                             {test.status === "PAUSED" ? "Resume" : "Start"}
                           </Button>
-                          <Button size="slim" url={`/app/ab-tests/${test.id}`}>
+                          <Button
+                            size="slim"
+                            onClick={() => navigate(`/app/ab-tests/${test.id}`)}
+                          >
                             View Stats
                           </Button>
                           <Button
@@ -1255,7 +1258,10 @@ export default function ABTests() {
                         style={{ display: "flex", justifyContent: "flex-end" }}
                       >
                         <InlineStack gap="200">
-                          <Button size="slim" url={`/app/ab-tests/${test.id}`}>
+                          <Button
+                            size="slim"
+                            onClick={() => navigate(`/app/ab-tests/${test.id}`)}
+                          >
                             View Stats
                           </Button>
                           <Button

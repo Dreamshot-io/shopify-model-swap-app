@@ -11,14 +11,15 @@ Set these in the Vercel dashboard (Project Settings → Environment Variables):
 - `DATABASE_URL` (PostgreSQL connection string - use pooled URL for Vercel)
 - `DIRECT_URL` (Direct PostgreSQL connection string - only needed if using Prisma Accelerate or connection pooling)
 - `FAL_KEY`
-- `S3_ENDPOINT`
+- `S3_ENDPOINT` (private R2 endpoint, e.g., https://xxx.r2.cloudflarestorage.com)
 - `S3_ACCESS_KEY`
 - `S3_SECRET_KEY`
-- `S3_REGION`
+- `S3_REGION` (usually "auto" for R2)
 - `S3_BUCKET`
 
 ### Optional
 
+- `R2_PUBLIC_DOMAIN` (public R2 domain - auto-derived from S3_ENDPOINT, only set if using custom domain)
 - `SHOP_CUSTOM_DOMAIN` (if using custom shop domain handling)
 
 ### Notes

@@ -388,6 +388,7 @@ export default function AIStudio() {
 
 				// Create a promise for each generation
 				const task = (async () => {
+					const taskId = `${currentGlobalIndex + 1}/${totalImages}`;
 					try {
 						const fd = new FormData();
 						fd.set('sourceImageUrl', image.url);
@@ -396,21 +397,29 @@ export default function AIStudio() {
 						fd.set('aspectRatio', aspectRatio);
 
 						console.log(
-							`[PARALLEL ${currentGlobalIndex + 1}/${totalImages}] Starting variation ${variationIndex + 1}/${imageCount} for image ${sourceImageIndex + 1}/${selectedImages.length}`,
+							`[GEN:${taskId}] Starting variation ${variationIndex + 1}/${imageCount} for image ${sourceImageIndex + 1}/${selectedImages.length}`,
 						);
+						console.log(`[GEN:${taskId}] Request params:`, {
+							sourceImageUrl: image.url?.substring(0, 50) + '...',
+							prompt: prompt.substring(0, 50) + '...',
+							productId: product?.id || 'missing',
+							aspectRatio,
+						});
 
 						const response = await authenticatedAppFetch('/api/generate', {
 							method: 'POST',
 							body: fd,
 						});
 
-						console.log(
-							`[PARALLEL ${currentGlobalIndex + 1}] Response status: ${response.status}`,
-						);
+						console.log(`[GEN:${taskId}] Response status: ${response.status}, ok: ${response.ok}`);
 
 						// Check if response is JSON before parsing
 						const contentType = response.headers.get('content-type');
+						console.log(`[GEN:${taskId}] Content-Type: ${contentType}`);
+
 						if (!contentType || !contentType.includes('application/json')) {
+							const text = await response.text();
+							console.error(`[GEN:${taskId}] Non-JSON response:`, text.substring(0, 200));
 							if (response.status === 401 || response.status === 302) {
 								throw new Error('Session expired. Please reload the page.');
 							}
@@ -418,6 +427,12 @@ export default function AIStudio() {
 						}
 
 						const result = await response.json();
+						console.log(`[GEN:${taskId}] Response body:`, {
+							ok: result.ok,
+							hasResult: !!result.result,
+							error: result.error,
+							debug: result.debug,
+						});
 
 						if (!result.ok && result.needsAuth) {
 							throw new Error('Session expired. Please reload the page.');
@@ -452,6 +467,11 @@ export default function AIStudio() {
 							return { success: true, image: generatedImage };
 						} else {
 							const error = result.error || 'Unknown error';
+							console.error(`[GEN:${taskId}] Generation failed:`, {
+								error,
+								debug: result.debug,
+								fullResult: result,
+							});
 							setBatchProcessingState(prev => ({
 								...prev,
 								failedImages: [
@@ -462,7 +482,14 @@ export default function AIStudio() {
 							return { success: false, error };
 						}
 					} catch (error) {
-						console.error(`Variation ${variationIndex + 1} of image ${sourceImageIndex + 1} failed:`, error);
+						const taskId = `${currentGlobalIndex + 1}/${totalImages}`;
+						console.error(`[GEN:${taskId}] Exception caught:`, {
+							error,
+							message: error instanceof Error ? error.message : String(error),
+							stack: error instanceof Error ? error.stack : undefined,
+							variationIndex: variationIndex + 1,
+							sourceImageIndex: sourceImageIndex + 1,
+						});
 						const errorMessage = error instanceof Error ? error.message : 'Network error';
 
 						setBatchProcessingState(prev => ({

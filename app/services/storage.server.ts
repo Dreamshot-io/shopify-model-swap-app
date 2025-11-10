@@ -15,6 +15,35 @@ for (const key of requiredEnv) {
   }
 }
 
+/**
+ * Derive public R2 domain from private endpoint
+ * R2 format: https://<account-id>.r2.cloudflarestorage.com -> https://pub-<account-id>.r2.dev
+ */
+function getPublicR2Domain(): string {
+  // If explicitly set, use it (for custom domains)
+  if (process.env.R2_PUBLIC_DOMAIN) {
+    return process.env.R2_PUBLIC_DOMAIN;
+  }
+
+  // Derive from S3_ENDPOINT
+  const endpoint = process.env.S3_ENDPOINT;
+  if (!endpoint) {
+    throw new Error("S3_ENDPOINT is required");
+  }
+
+  // Extract account ID from private endpoint: https://<account-id>.r2.cloudflarestorage.com
+  const match = endpoint.match(/https?:\/\/([^.]+)\.r2\.cloudflarestorage\.com/);
+  if (match && match[1]) {
+    const accountId = match[1];
+    return `https://pub-${accountId}.r2.dev`;
+  }
+
+  // Fallback: try to use endpoint as-is (might work for some setups)
+  // eslint-disable-next-line no-console
+  console.warn(`[storage] Could not derive public R2 domain from S3_ENDPOINT. Using endpoint as fallback.`);
+  return endpoint;
+}
+
 const s3Client = new S3Client({
   region: process.env.S3_REGION || "auto",
   endpoint: process.env.S3_ENDPOINT,
@@ -67,8 +96,16 @@ export async function uploadImageFromUrlToR2(
   // eslint-disable-next-line no-console
   console.log(`[storage] Upload completed`, { etag: (putRes as any)?.ETag });
 
-  // Public URL to the object. Ensure your bucket/policies allow public reads in your environment.
-  const publicUrl = `${process.env.S3_ENDPOINT}/${process.env.S3_BUCKET}/${key}`;
+  // Public URL to the object using public R2 domain (auto-derived from S3_ENDPOINT)
+  const publicDomain = getPublicR2Domain();
+
+  // Ensure public domain doesn't have trailing slash
+  const baseUrl = publicDomain.replace(/\/$/, "");
+  const publicUrl = `${baseUrl}/${process.env.S3_BUCKET}/${key}`;
+
+  // eslint-disable-next-line no-console
+  console.log(`[storage] Generated public URL:`, publicUrl);
+
   // Basic reachability check without auth (what fal.ai will see)
   try {
     const head = await fetch(publicUrl, { method: "HEAD" });
