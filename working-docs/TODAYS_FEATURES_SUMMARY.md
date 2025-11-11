@@ -155,7 +155,7 @@ curl -X POST https://shopify.dreamshot.io/api/rotation
 ### Event Tracking
 - `/scripts/monitor-events.ts` - Real-time event monitor
 - `/scripts/check-abtestevents.ts` - Query event records
-- `/scripts/test-tracking.ts` - Test event tracking
+- `/scripts/check-real-events.ts` - Filter real vs test events
 
 ### Database Inspection
 - `/scripts/check-abtests.ts` - View all tests
