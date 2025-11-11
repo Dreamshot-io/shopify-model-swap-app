@@ -83,7 +83,10 @@
       "Bash(timeout 30 bun run dev:*)",
       "Bash(npm ls:*)",
       "Bash(open \"https://admin.shopify.com/store/charming-heroic-vulture/apps/dreamshot-model-swap/app/ai-studio\")",
-      "Bash(bun install)"
+      "Bash(bun install)",
+      "mcp__supabase__execute_sql",
+      "mcp__supabase__list_tables",
+      "mcp__supabase__search_docs"
     ],
     "deny": []
   }
