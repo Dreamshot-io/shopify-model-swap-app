@@ -1054,9 +1054,17 @@ export class SimpleRotationService {
     const capturedImages: ImageData[] = [];
 
     for (const [index, edge] of media.entries()) {
-      const shopifyUrl = edge.node.image.url;
+      const imageNode = edge?.node?.image;
+      if (!imageNode?.url) {
+        console.warn(`[captureBaseImages] Skipping media index ${index}: missing image URL`, {
+          mediaId: edge?.node?.id,
+        });
+        continue;
+      }
+
+      const shopifyUrl = imageNode.url;
       const mediaId = edge.node.id;
-      const altText = edge.node.image.altText;
+      const altText = imageNode.altText;
 
       try {
         // Download and upload to our permanent storage

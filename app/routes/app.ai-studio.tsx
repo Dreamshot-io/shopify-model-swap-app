@@ -526,7 +526,9 @@ export default function AIStudio() {
 					isError: false,
 				});
 			} else {
-				shopify.toast.show(`Failed to generate images. Please try again.`, {
+				// Use the first error message from failed images, or fallback to generic message
+				const firstError = prev.failedImages.length > 0 ? prev.failedImages[0].error : 'Failed to generate images. Please try again.';
+				shopify.toast.show(firstError, {
 					isError: true,
 				});
 			}

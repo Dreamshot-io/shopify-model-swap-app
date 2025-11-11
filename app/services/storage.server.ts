@@ -1,4 +1,5 @@
-import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import { S3Client, PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 const requiredEnv = [
   "S3_ENDPOINT",
@@ -16,32 +17,31 @@ for (const key of requiredEnv) {
 }
 
 /**
- * Derive public R2 domain from private endpoint
- * R2 format: https://<account-id>.r2.cloudflarestorage.com -> https://pub-<account-id>.r2.dev
+ * Generate a private R2 URL for an object
+ * Format: https://<account-id>.r2.cloudflarestorage.com/<bucket>/<key>
  */
-function getPublicR2Domain(): string {
-  // If explicitly set, use it (for custom domains)
-  if (process.env.R2_PUBLIC_DOMAIN) {
-    return process.env.R2_PUBLIC_DOMAIN;
-  }
-
-  // Derive from S3_ENDPOINT
+function getPrivateR2Url(bucket: string, key: string): string {
   const endpoint = process.env.S3_ENDPOINT;
   if (!endpoint) {
     throw new Error("S3_ENDPOINT is required");
   }
 
-  // Extract account ID from private endpoint: https://<account-id>.r2.cloudflarestorage.com
-  const match = endpoint.match(/https?:\/\/([^.]+)\.r2\.cloudflarestorage\.com/);
-  if (match && match[1]) {
-    const accountId = match[1];
-    return `https://pub-${accountId}.r2.dev`;
-  }
+  // Ensure endpoint doesn't have trailing slash
+  const baseUrl = endpoint.replace(/\/$/, "");
+  return `${baseUrl}/${bucket}/${key}`;
+}
 
-  // Fallback: try to use endpoint as-is (might work for some setups)
-  // eslint-disable-next-line no-console
-  console.warn(`[storage] Could not derive public R2 domain from S3_ENDPOINT. Using endpoint as fallback.`);
-  return endpoint;
+/**
+ * Generate a signed URL for temporary public access to an R2 object
+ * Useful when external services need to access the file
+ */
+export async function getSignedR2Url(bucket: string, key: string, expiresIn: number = 3600): Promise<string> {
+  const command = new GetObjectCommand({
+    Bucket: bucket,
+    Key: key,
+  });
+
+  return await getSignedUrl(s3Client, command, { expiresIn });
 }
 
 const s3Client = new S3Client({
@@ -90,36 +90,16 @@ export async function uploadImageFromUrlToR2(
       Key: key,
       Body: buffer,
       ContentType: contentType,
-      ACL: "public-read",
+      // Removed ACL: "public-read" - using private storage with signed URLs when needed
     }),
   );
   // eslint-disable-next-line no-console
   console.log(`[storage] Upload completed`, { etag: (putRes as any)?.ETag });
 
-  // Public URL to the object using public R2 domain (auto-derived from S3_ENDPOINT)
-  const publicDomain = getPublicR2Domain();
-
-  // Ensure public domain doesn't have trailing slash
-  const baseUrl = publicDomain.replace(/\/$/, "");
-  const publicUrl = `${baseUrl}/${process.env.S3_BUCKET}/${key}`;
-
+  // Return private R2 URL (private endpoint)
+  const privateUrl = getPrivateR2Url(process.env.S3_BUCKET!, key);
   // eslint-disable-next-line no-console
-  console.log(`[storage] Generated public URL:`, publicUrl);
+  console.log(`[storage] Generated private R2 URL:`, privateUrl);
 
-  // Basic reachability check without auth (what fal.ai will see)
-  try {
-    const head = await fetch(publicUrl, { method: "HEAD" });
-    // eslint-disable-next-line no-console
-    console.log(`[storage] Public HEAD`, {
-      status: head.status,
-      contentType: head.headers.get("content-type"),
-      contentLength: head.headers.get("content-length"),
-    });
-  } catch (err) {
-    // eslint-disable-next-line no-console
-    console.warn(`[storage] Public HEAD failed`, {
-      error: (err as Error).message,
-    });
-  }
-  return publicUrl;
+  return privateUrl;
 }

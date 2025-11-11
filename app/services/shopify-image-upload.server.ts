@@ -204,43 +204,11 @@ export async function uploadR2ImagesBatch(
 }
 
 /**
- * Derive public R2 domain from private endpoint (same logic as storage.server.ts)
- */
-function getPublicR2Domain(): string {
-  if (process.env.R2_PUBLIC_DOMAIN) {
-    return process.env.R2_PUBLIC_DOMAIN;
-  }
-  const endpoint = process.env.S3_ENDPOINT || '';
-  const match = endpoint.match(/https?:\/\/([^.]+)\.r2\.cloudflarestorage\.com/);
-  if (match && match[1]) {
-    return `https://pub-${match[1]}.r2.dev`;
-  }
-  return endpoint;
-}
-
-/**
  * Check if URL needs R2 transfer
- * Returns true if URL is a private R2 endpoint
+ * Returns true if URL is a private R2 endpoint (needs transfer to Shopify CDN)
  */
 export function isPrivateR2Url(url: string): boolean {
   // Private R2 URLs contain r2.cloudflarestorage.com (private endpoint)
-  if (url.includes('.r2.cloudflarestorage.com')) {
-    return true; // This is the private S3-compatible endpoint
-  }
-
-  // Check for public R2 URLs that don't need transfer
-  const publicDomain = getPublicR2Domain();
-  if (publicDomain) {
-    const domainPattern = publicDomain.replace(/^https?:\/\//, '').replace(/\/$/, '');
-    if (url.includes(domainPattern)) {
-      return false; // This is a public R2 URL (custom domain or pub-xxx.r2.dev)
-    }
-  }
-
-  // Check for standard public R2 pattern
-  if (url.includes('pub-') && url.includes('.r2.dev')) {
-    return false; // This is a public R2 URL
-  }
-
-  return false; // Not an R2 URL at all
+  // These need to be transferred to Shopify CDN since they're not publicly accessible
+  return url.includes('.r2.cloudflarestorage.com');
 }
