@@ -62,7 +62,7 @@ echo "ROTATION_CRON_TOKEN=your-secret-token" >> .env
 
 2. **Call endpoint manually**:
 ```bash
-curl -X POST https://shopify-txl.dreamshot.io/api/rotation \
+curl -X POST https://shopify.dreamshot.io/api/rotation \
   -H "Authorization: Bearer your-secret-token" \
   -H "Content-Type: application/json"
 ```

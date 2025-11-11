@@ -26,7 +26,7 @@ Click on the pixel and configure these settings:
 
 | Setting | Value | Description |
 |---------|-------|-------------|
-| **App URL** | `https://shopify-txl.dreamshot.io` | Your app backend URL (NO trailing slash) |
+| **App URL** | `https://shopify.dreamshot.io` | Your app backend URL (NO trailing slash) |
 | **Enable A/B Testing** | `true` | Must be "true" to enable tracking |
 | **Debug Mode** | `true` | Shows console logs for debugging |
 
@@ -44,7 +44,7 @@ When working correctly, you should see:
 ```
 [A/B Test Pixel] Initialized
 [A/B Test Pixel] Product viewed {productId: "...", variantId: "..."}
-[A/B Test Pixel] Fetching test state from https://shopify-txl.dreamshot.io/api/rotation-state?productId=...
+[A/B Test Pixel] Fetching test state from https://shopify.dreamshot.io/api/rotation-state?productId=...
 [A/B Test Pixel] Test state result {testId: "...", activeCase: "BASE"}
 [A/B Test Pixel] Storing test state
 [A/B Test Pixel] Checking impression tracking
@@ -61,7 +61,7 @@ When working correctly, you should see:
 
 #### ❌ "No app_url configured"
 - App URL setting is missing or empty
-- Fix: Add `https://shopify-txl.dreamshot.io` in pixel settings
+- Fix: Add `https://shopify.dreamshot.io` in pixel settings
 
 #### ❌ CORS/Network Errors
 - Check Network tab for failed requests

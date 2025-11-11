@@ -45,12 +45,12 @@ analytics.subscribe('product_added_to_cart', async event => {
 ### Test Impressions (Deduplicated)
 ```bash
 # First visit → Tracked ✅
-curl -X POST "https://shopify-txl.dreamshot.io/track" \
+curl -X POST "https://shopify.dreamshot.io/track" \
   -d '{"sessionId": "session1", "eventType": "IMPRESSION", ...}'
 # Result: SUCCESS
 
 # Same session refresh → NOT tracked ❌
-curl -X POST "https://shopify-txl.dreamshot.io/track" \
+curl -X POST "https://shopify.dreamshot.io/track" \
   -d '{"sessionId": "session1", "eventType": "IMPRESSION", ...}'
 # Result: SUCCESS (but deduplicated on server)
 ```
@@ -58,12 +58,12 @@ curl -X POST "https://shopify-txl.dreamshot.io/track" \
 ### Test Add to Cart (NOT Deduplicated)
 ```bash
 # First add → Tracked ✅
-curl -X POST "https://shopify-txl.dreamshot.io/track" \
+curl -X POST "https://shopify.dreamshot.io/track" \
   -d '{"sessionId": "session1", "eventType": "ADD_TO_CART", ...}'
 # Result: SUCCESS
 
 # Second add same session → ALSO tracked ✅
-curl -X POST "https://shopify-txl.dreamshot.io/track" \
+curl -X POST "https://shopify.dreamshot.io/track" \
   -d '{"sessionId": "session1", "eventType": "ADD_TO_CART", ...}'
 # Result: SUCCESS (new event created!)
 ```

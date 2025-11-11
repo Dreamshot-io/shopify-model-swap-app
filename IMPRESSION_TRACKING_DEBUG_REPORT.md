@@ -18,7 +18,7 @@ Impressions showed 0 even though:
 
 ### How Web Pixels Work
 - Web pixels run on the **customer storefront** (e.g., `genlabs-dev-store.myshopify.com`)
-- They need to call the **app backend** (e.g., `shopify-txl.dreamshot.io`)
+- They need to call the **app backend** (e.g., `shopify.dreamshot.io`)
 - Relative URLs like `/api/rotation-state` resolve to the storefront domain, not the app domain
 
 ### The Bug
@@ -44,9 +44,9 @@ const TRACK_API = `${APP_URL}/track`;                   // Full URL!
 ```
 
 Now the pixel calls:
-1. `shopify-txl.dreamshot.io/api/rotation-state` ✓
+1. `shopify.dreamshot.io/api/rotation-state` ✓
 2. Receives test state
-3. Tracks impression to `shopify-txl.dreamshot.io/track` ✓
+3. Tracks impression to `shopify.dreamshot.io/track` ✓
 4. Event saved to database ✓
 
 ## Changes Made
@@ -58,7 +58,7 @@ Added new setting for app URL:
 ```toml
 [settings.fields.app_url]
 name = "App URL"
-description = "The URL of your Shopify app backend (e.g., https://shopify-txl.dreamshot.io)"
+description = "The URL of your Shopify app backend (e.g., https://shopify.dreamshot.io)"
 type = "single_line_text_field"
 ```
 
@@ -100,7 +100,7 @@ shopify app deploy
 Navigate to: **Settings > Customer events > Web pixels > ab-test-pixel**
 
 Set the following values:
-- **App URL**: `https://shopify-txl.dreamshot.io` (your production domain)
+- **App URL**: `https://shopify.dreamshot.io` (your production domain)
 - **Debug Mode**: `true` (for testing, disable in production)
 - **Enable A/B Testing**: `true`
 
@@ -112,9 +112,9 @@ Set the following values:
 
 Expected console output:
 ```
-[A/B Test Pixel] Initialized { APP_URL: "https://shopify-txl.dreamshot.io", ... }
+[A/B Test Pixel] Initialized { APP_URL: "https://shopify.dreamshot.io", ... }
 [A/B Test Pixel] Product viewed { productId: "gid://shopify/Product/XXX", ... }
-[A/B Test Pixel] Fetching test state from https://shopify-txl.dreamshot.io/api/rotation-state?productId=...
+[A/B Test Pixel] Fetching test state from https://shopify.dreamshot.io/api/rotation-state?productId=...
 [A/B Test Pixel] Response status 200
 [A/B Test Pixel] Test state result { testId: "clxxx", activeCase: "BASE", ... }
 [A/B Test Pixel] Tracking impression for test clxxx case BASE
@@ -123,8 +123,8 @@ Expected console output:
 ```
 
 4. Check Network tab:
-   - Should see GET to `https://shopify-txl.dreamshot.io/api/rotation-state`
-   - Should see POST to `https://shopify-txl.dreamshot.io/track`
+   - Should see GET to `https://shopify.dreamshot.io/api/rotation-state`
+   - Should see POST to `https://shopify.dreamshot.io/track`
    - Both should return 200 OK
 
 ### 4. Verify Database
@@ -225,7 +225,7 @@ Should show increasing impression counts.
 
 ### Issue 3: 404 Errors
 **Cause**: Wrong app URL or routes not deployed
-**Solution**: 
+**Solution**:
 - Verify app URL is correct (check shopify.app.toml `application_url`)
 - Ensure latest version is deployed to Shopify
 

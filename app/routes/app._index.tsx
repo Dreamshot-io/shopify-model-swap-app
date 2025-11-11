@@ -10,7 +10,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   // Auto-connect web pixel if not connected
   try {
     const appUrl =
-      process.env.SHOPIFY_APP_URL || "https://shopify-txl.dreamshot.io";
+      process.env.SHOPIFY_APP_URL || "https://shopify.dreamshot.io";
 
     // Try to create pixel (will fail if already exists, which is fine)
     await admin

@@ -65,7 +65,7 @@ bun run scripts/test-rotation-state.ts <productId>
 bun run scripts/trigger-rotation-now.ts
 
 # 3. Check logs
-curl https://shopify-txl.dreamshot.io/api/rotation-state?productId=<id>
+curl https://shopify.dreamshot.io/api/rotation-state?productId=<id>
 ```
 
 ### Task: Cron job failing
@@ -74,7 +74,7 @@ curl https://shopify-txl.dreamshot.io/api/rotation-state?productId=<id>
 bun run scripts/check-sessions.ts
 
 # 2. Test endpoint
-curl -X POST https://shopify-txl.dreamshot.io/api/rotation
+curl -X POST https://shopify.dreamshot.io/api/rotation
 
 # 3. Check error logs
 Look for "[Cron Admin] GraphQL request failed" in logs

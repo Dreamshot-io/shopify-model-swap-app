@@ -88,7 +88,7 @@ async function testPixelConfig() {
   console.log('2. Find "ab-test-pixel" and click to configure');
   console.log('3. Set these values:');
   console.log();
-  console.log('   App URL:           https://shopify-txl.dreamshot.io');
+  console.log('   App URL:           https://shopify.dreamshot.io');
   console.log('   Enable A/B Testing: true');
   console.log('   Debug Mode:        true');
   console.log();
@@ -129,7 +129,7 @@ async function testPixelConfig() {
   console.log('Sending test impression...');
 
   try {
-    const response = await fetch('https://shopify-txl.dreamshot.io/track', {
+    const response = await fetch('https://shopify.dreamshot.io/track', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(testPayload)

@@ -6,7 +6,7 @@ Since the web pixel can't be connected, here are working alternatives:
 
 **Status: Ready to use!**
 
-Visit: https://shopify-txl.dreamshot.io/app/script-tags
+Visit: https://shopify.dreamshot.io/app/script-tags
 
 Click "Install Tracking Script" and it will automatically track:
 - Product views (impressions)
@@ -23,7 +23,7 @@ Add this to your theme's `theme.liquid` file before `</body>`:
   // Only run on product pages
   if (!window.location.pathname.includes('/products/')) return;
 
-  const APP_URL = 'https://shopify-txl.dreamshot.io';
+  const APP_URL = 'https://shopify.dreamshot.io';
 
   // Get product ID
   const productId = '{{ product.id | prepend: "gid://shopify/Product/" }}';

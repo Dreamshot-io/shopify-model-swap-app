@@ -37,7 +37,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const formData = await request.formData();
   const action = formData.get("action");
 
-  const appUrl = process.env.SHOPIFY_APP_URL || "https://shopify-txl.dreamshot.io";
+  const appUrl = process.env.SHOPIFY_APP_URL || "https://shopify.dreamshot.io";
 
   if (action === "connect") {
     try {

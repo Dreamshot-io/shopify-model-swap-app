@@ -41,7 +41,7 @@ if (host === "localhost") {
 
 export default defineConfig({
   server: {
-    allowedHosts: [host, "shopify.dreamshot.io", "shopify-txl.dreamshot.io"],
+    allowedHosts: [host, "shopify.dreamshot.io", "shopify.dreamshot.io"],
     cors: {
       preflightContinue: true,
     },

@@ -1,10 +1,10 @@
-# Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
+  # Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
 
 client_id = "0f2dad9ef09a47e618f180f7eed5a399"
 name = "dreamshot-model-mims"
 application_url = "https://shopify-model-swap-mims.vercel.app"
 embedded = true
-handle = "dreamshot-model-swap"
+handle = "dreamshot-model-mims"
 
 [build]
 automatically_update_urls_on_dev = false

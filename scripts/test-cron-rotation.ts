@@ -117,7 +117,7 @@ async function testCronRotation() {
     console.log('\n🔗 Testing Rotation Endpoint:');
     console.log('─'.repeat(50));
 
-    const appUrl = process.env.SHOPIFY_APP_URL || 'https://shopify-txl.dreamshot.io';
+    const appUrl = process.env.SHOPIFY_APP_URL || 'https://shopify.dreamshot.io';
     const testUrl = `${appUrl}/api/rotation`;
 
     console.log(`URL: ${testUrl}`);

@@ -59,7 +59,7 @@ async function testCron() {
 
   // 3. Check cron endpoint
   console.log('\n🔗 Cron Endpoint:');
-  console.log(`  URL: https://shopify-txl.dreamshot.io/api/rotation`);
+  console.log(`  URL: https://shopify.dreamshot.io/api/rotation`);
   console.log(`  Schedule: Every 10 minutes`);
   console.log(`  Method: GET (Vercel cron) or POST (manual)`);
 

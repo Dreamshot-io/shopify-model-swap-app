@@ -15,7 +15,7 @@ Based on official Shopify documentation and community insights, we can programma
 The pixel will automatically attempt to connect when the app loads. This follows the community best practice and requires no user action.
 
 ### Option 2: Manual Connection Page
-**Visit:** https://shopify-txl.dreamshot.io/app/connect-pixel
+**Visit:** https://shopify.dreamshot.io/app/connect-pixel
 
 This page provides:
 - Visual status of pixel connection
@@ -46,7 +46,7 @@ This is why it changes the status from "Disconnected" to connected - it creates 
 1. **Check connection status:**
    ```bash
    # Visit the connect page
-   open https://shopify-txl.dreamshot.io/app/connect-pixel
+   open https://shopify.dreamshot.io/app/connect-pixel
    ```
 
 2. **Monitor events:**

@@ -98,7 +98,7 @@ bun run scripts/test-cron-simple.ts
 bun run scripts/trigger-rotation-now.ts
 
 # Call endpoint directly
-curl -X POST https://shopify-txl.dreamshot.io/api/rotation
+curl -X POST https://shopify.dreamshot.io/api/rotation
 ```
 
 ## 4. Event Tracking Architecture
@@ -165,7 +165,7 @@ curl -X POST https://shopify-txl.dreamshot.io/api/rotation
 
 ### Required Variables
 ```env
-SHOPIFY_APP_URL="https://shopify-txl.dreamshot.io"
+SHOPIFY_APP_URL="https://shopify.dreamshot.io"
 SHOPIFY_API_KEY=<your-key>
 SHOPIFY_API_SECRET=<your-secret>
 DATABASE_URL=<postgres-url>
