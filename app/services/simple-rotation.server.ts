@@ -150,7 +150,7 @@ export class SimpleRotationService {
 
           if (registryItem?.mediaId) {
             console.log(`[rotateTest] Setting hero for variant ${variantId} with media ${registryItem.mediaId}`);
-            await this.attachMediaToVariant(admin, variantId, registryItem.mediaId);
+            await this.attachMediaToVariant(admin, variantId, registryItem.mediaId, test.productId);
             variantsUpdated++;
           }
         } else {
@@ -1597,19 +1597,20 @@ export class SimpleRotationService {
   private static async attachMediaToVariant(
     admin: AdminApiContext,
     variantId: string,
-    mediaId: string
+    mediaId: string,
+    productId: string
   ): Promise<void> {
     const mutation = `
-      mutation updateVariantMedia($variantId: ID!, $mediaId: ID) {
-        productVariantUpdate(input: {
-          id: $variantId,
-          mediaId: $mediaId
-        }) {
-          productVariant {
+      mutation updateVariantMedia($productId: ID!, $variantId: ID!, $mediaId: ID!) {
+        productVariantsBulkUpdate(
+          productId: $productId,
+          variants: [{
+            id: $variantId,
+            mediaId: $mediaId
+          }]
+        ) {
+          productVariants {
             id
-            image {
-              id
-            }
           }
           userErrors {
             field
@@ -1621,6 +1622,7 @@ export class SimpleRotationService {
 
     const response = await admin.graphql(mutation, {
       variables: {
+        productId,
         variantId,
         mediaId,
       },
@@ -1628,9 +1630,15 @@ export class SimpleRotationService {
 
     const result = await response.json();
 
-    if (result.data?.productVariantUpdate?.userErrors?.length > 0) {
-      const errors = result.data.productVariantUpdate.userErrors;
-      throw new Error(`Failed to attach media to variant: ${errors.map((e: any) => e.message).join(', ')}`);
+    if (result.data?.productVariantsBulkUpdate?.userErrors?.length > 0) {
+      const errors = result.data.productVariantsBulkUpdate.userErrors;
+      const errorMessages: string[] = [];
+      for (const error of errors) {
+        if (typeof error === 'object' && error !== null && 'message' in error) {
+          errorMessages.push(String(error.message));
+        }
+      }
+      throw new Error(`Failed to attach media to variant: ${errorMessages.join(', ')}`);
     }
   }
 
