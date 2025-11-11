@@ -1474,16 +1474,32 @@ export class SimpleRotationService {
     currentState: Awaited<ReturnType<typeof SimpleRotationService.captureCurrentState>>,
     targetState: Awaited<ReturnType<typeof SimpleRotationService.buildTargetState>>
   ): boolean {
-    // Check if it's in the target gallery
-    const inTargetGallery = targetState.targetGallery.some(img => img.mediaId === mediaId);
-    if (inTargetGallery) return false;
-
-    // Check if it's a target variant hero
-    for (const heroImage of targetState.targetVariantHeros.values()) {
-      if (heroImage?.mediaId === mediaId) return false;
+    // Find the current media item to get its URL
+    const currentMedia = currentState.galleryMedia.find(m => m.mediaId === mediaId);
+    if (!currentMedia) {
+      console.warn(`[canSafelyDeleteMedia] Media ${mediaId} not found in current state`);
+      return false; // Don't delete if we can't find it
     }
 
-    // Safe to delete if not in any target
+    const currentNormalizedUrl = this.normalizeUrl(currentMedia.url);
+
+    // Check if this URL is needed in the target state (by comparing URLs, not IDs)
+    // Check target gallery images
+    const inTargetGallery = targetState.targetGallery.some(img => {
+      const targetUrl = this.normalizeUrl(img.permanentUrl || img.url);
+      return targetUrl === currentNormalizedUrl;
+    });
+    if (inTargetGallery) return false;
+
+    // Check target variant heroes
+    for (const heroImage of targetState.targetVariantHeros.values()) {
+      if (heroImage) {
+        const heroUrl = this.normalizeUrl(heroImage.permanentUrl || heroImage.url);
+        if (heroUrl === currentNormalizedUrl) return false;
+      }
+    }
+
+    console.log(`[canSafelyDeleteMedia] Media ${mediaId} with URL ${currentNormalizedUrl} is safe to delete`);
     return true;
   }
 
