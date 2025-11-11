@@ -49,8 +49,10 @@ export function useAuthenticatedAppFetch() {
         };
 
         // In App Bridge 4.x, global fetch is automatically authenticated
+        // Ensure credentials are included for same-origin requests
         const response = await fetch(absoluteUrl, {
           ...init,
+          credentials: 'include', // Ensure cookies are sent with the request
           headers: {
             // Only set Accept if not already set and not sending FormData
             ...(init?.headers || {}),
@@ -65,7 +67,17 @@ export function useAuthenticatedAppFetch() {
           status: response.status,
           statusText: response.statusText,
           ok: response.ok,
+          headers: Object.fromEntries(response.headers.entries()),
         });
+
+        // Handle authentication failures
+        if (response.status === 401 || response.status === 403) {
+          console.error("[AUTH_FETCH] Authentication failed - session may have expired");
+          // The response might be a redirect, check for that
+          if (response.headers.get('X-Shopify-API-Request-Failure-Reauthorize') === '1') {
+            console.error("[AUTH_FETCH] Shopify requests reauthorization");
+          }
+        }
 
         return response;
       } catch (error) {

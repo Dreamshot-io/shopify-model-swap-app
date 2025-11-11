@@ -406,7 +406,7 @@ export default function AIStudio() {
 							aspectRatio,
 						});
 
-						const response = await authenticatedAppFetch('/api/generate', {
+						const response = await authenticatedAppFetch('/app/api/generate', {
 							method: 'POST',
 							body: fd,
 						});
