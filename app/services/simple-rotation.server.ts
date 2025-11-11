@@ -68,123 +68,158 @@ export class SimpleRotationService {
         throw new Error('Admin context required for rotation');
       }
 
-      // Rotate product gallery images
-      const baseImages = (test.baseImages as unknown as ImageData[]) || [];
-      const galleryImages = targetCase === 'BASE'
-        ? baseImages
-        : (test.testImages as unknown as ImageData[]);
+      // STEP 1: Capture current Shopify state (get fresh IDs)
+      console.log(`[rotateTest] Step 1: Capturing current state for product ${test.productId}`);
+      const variantIds = test.variants.map(v => v.shopifyVariantId);
+      const currentState = await this.captureCurrentState(admin, test.productId, variantIds);
 
-      console.log(`[rotateTest] Target case: ${targetCase}`);
-      console.log(`[rotateTest] Gallery images count:`, galleryImages.length);
-      if (galleryImages.length > 0) {
-        console.log(`[rotateTest] First image:`, {
-          url: galleryImages[0].url?.substring(0, 50),
-          hasMediaId: !!galleryImages[0].mediaId,
-          hasPermanentUrl: !!galleryImages[0].permanentUrl,
-          permanentUrl: galleryImages[0].permanentUrl?.substring(0, 50),
+      // STEP 2: Build target state with deduplication
+      console.log(`[rotateTest] Step 2: Building target state for ${targetCase}`);
+      const targetState = await this.buildTargetState(test, targetCase, currentState);
+
+      // STEP 3: Execute rotation using unified media registry
+      console.log(`[rotateTest] Step 3: Executing rotation with ${targetState.mediaRegistry.size} unique media items`);
+
+      // Track all media operations for verification
+      const mediaOperations = {
+        uploaded: new Map<string, string>(), // permanentUrl -> new mediaId
+        reused: new Map<string, string>(),   // permanentUrl -> existing mediaId
+        deleted: new Set<string>(),          // deleted mediaIds
+      };
+
+      // 3a. Delete media not in target
+      const mediaToDelete = currentState.galleryMedia.filter(
+        current => this.canSafelyDeleteMedia(current.mediaId, currentState, targetState)
+      );
+
+      for (const media of mediaToDelete) {
+        console.log(`[rotateTest] Deleting media ${media.mediaId}`);
+        await this.deleteProductMedia(admin, test.productId, media.mediaId);
+        mediaOperations.deleted.add(media.mediaId);
+      }
+
+      // 3b. Process each unique media item from registry
+      for (const [normalizedUrl, mediaItem] of targetState.mediaRegistry) {
+        const existingMedia = currentState.galleryMedia.find(
+          m => this.normalizeUrl(m.url) === normalizedUrl
+        );
+
+        let mediaId: string;
+
+        if (existingMedia) {
+          // Reuse existing media
+          console.log(`[rotateTest] Reusing existing media ${existingMedia.mediaId}`);
+          mediaId = existingMedia.mediaId;
+          mediaOperations.reused.set(mediaItem.permanentUrl || mediaItem.url, mediaId);
+        } else {
+          // Upload new media
+          console.log(`[rotateTest] Uploading new media from ${mediaItem.permanentUrl || mediaItem.url}`);
+          const safeUrl = getSafeImageUrl({
+            permanentUrl: mediaItem.permanentUrl,
+            url: mediaItem.url,
+          } as ImageData);
+
+          mediaId = await this.uploadMediaToProduct(admin, test.productId, safeUrl, mediaItem.altText);
+          mediaOperations.uploaded.set(mediaItem.permanentUrl || mediaItem.url, mediaId);
+        }
+
+        // Update mediaId in the registry for later use
+        mediaItem.mediaId = mediaId;
+      }
+
+      // 3c. Update product media order to match target gallery
+      if (targetState.targetGallery.length > 0) {
+        const orderedMediaIds = targetState.targetGallery.map(img => {
+          const key = this.normalizeUrl(img.permanentUrl || img.url);
+          const registryItem = targetState.mediaRegistry.get(key);
+          return registryItem?.mediaId;
+        }).filter(Boolean) as string[];
+
+        if (orderedMediaIds.length > 0) {
+          await this.reorderProductMedia(admin, test.productId, orderedMediaIds);
+        }
+
+        imagesUpdated = targetState.targetGallery.length;
+      }
+
+      // 3d. Update variant hero images
+      for (const [variantId, heroImage] of targetState.targetVariantHeros) {
+        if (heroImage) {
+          const key = this.normalizeUrl(heroImage.permanentUrl || heroImage.url);
+          const registryItem = targetState.mediaRegistry.get(key);
+
+          if (registryItem?.mediaId) {
+            console.log(`[rotateTest] Setting hero for variant ${variantId} with media ${registryItem.mediaId}`);
+            await this.attachMediaToVariant(admin, variantId, registryItem.mediaId);
+            variantsUpdated++;
+          }
+        } else {
+          // Remove hero if no target hero
+          console.log(`[rotateTest] Removing hero for variant ${variantId}`);
+          await this.removeVariantHero(admin, variantId, test.productId, testId);
+          variantsUpdated++;
+        }
+      }
+
+      // STEP 4: Verify rotation and update database with fresh IDs
+      console.log(`[rotateTest] Step 4: Verifying rotation and updating database`);
+      const postState = await this.captureCurrentState(admin, test.productId, variantIds);
+
+      // Update database with fresh media IDs from post-rotation state
+      const baseImages = (test.baseImages as unknown as ImageData[]) || [];
+      const testImages = (test.testImages as unknown as ImageData[]) || [];
+
+      // Update IDs based on what we just uploaded/reused
+      const updateImageIds = (images: ImageData[]) => {
+        return images.map(img => {
+          const permanentUrl = img.permanentUrl || img.url;
+          const newMediaId = mediaOperations.uploaded.get(permanentUrl) ||
+                           mediaOperations.reused.get(permanentUrl);
+
+          if (newMediaId) {
+            return {
+              ...img,
+              mediaId: newMediaId,
+            };
+          }
+          return img;
+        });
+      };
+
+      // Update variant hero IDs
+      for (const variant of test.variants) {
+        const baseHero = variant.baseHeroImage as unknown as ImageData | null;
+        const testHero = variant.testHeroImage as unknown as ImageData | null;
+
+        if (baseHero) {
+          const permanentUrl = baseHero.permanentUrl || baseHero.url;
+          const newMediaId = mediaOperations.uploaded.get(permanentUrl) ||
+                           mediaOperations.reused.get(permanentUrl);
+          if (newMediaId) {
+            baseHero.mediaId = newMediaId;
+          }
+        }
+
+        if (testHero) {
+          const permanentUrl = testHero.permanentUrl || testHero.url;
+          const newMediaId = mediaOperations.uploaded.get(permanentUrl) ||
+                           mediaOperations.reused.get(permanentUrl);
+          if (newMediaId) {
+            testHero.mediaId = newMediaId;
+          }
+        }
+
+        // Update variant in database
+        await db.aBTestVariant.update({
+          where: { id: variant.id },
+          data: {
+            baseHeroImage: baseHero ? JSON.parse(JSON.stringify(baseHero)) : null,
+            testHeroImage: testHero ? JSON.parse(JSON.stringify(testHero)) : null,
+          },
         });
       }
 
-      if (galleryImages && galleryImages.length > 0) {
-        const updateResult = await this.updateProductMedia(
-          admin,
-          test.productId,
-          galleryImages,
-          baseImages,
-          targetCase === 'BASE'
-        );
-        imagesUpdated = updateResult.addedCount + updateResult.keptCount;
-
-        // Update database with refreshed media IDs
-        if (targetCase === 'BASE') {
-          await db.aBTest.update({
-            where: { id: testId },
-            data: {
-              baseImages: galleryImages, // Now has updated mediaIds
-            },
-          });
-        } else {
-          await db.aBTest.update({
-            where: { id: testId },
-            data: {
-              testImages: galleryImages, // Now has updated mediaIds
-            },
-          });
-        }
-
-        // Log gallery update
-        await AuditService.logImagesUploaded(
-          testId,
-          test.shop,
-          updateResult.addedCount,
-          galleryImages.map(img => img.mediaId || img.url),
-          targetCase,
-          userId
-        );
-      }
-
-      // Rotate variant hero images if any
-      for (const variant of test.variants) {
-        const heroImage = targetCase === 'BASE'
-          ? (variant.baseHeroImage as unknown as ImageData | null)
-          : (variant.testHeroImage as unknown as ImageData);
-
-        console.log(`[Rotation] Variant ${variant.variantName}: heroImage=`, heroImage);
-
-        // Handle both setting and removing heroes
-        if (heroImage) {
-          // Set/update hero image
-          console.log(`[Rotation] Setting hero for variant ${variant.variantName}`);
-          await this.updateVariantHero(admin, variant.shopifyVariantId, heroImage, test.productId, testId);
-          variantsUpdated++;
-
-          // Update database with media ID
-          if (targetCase === 'BASE') {
-            await db.aBTestVariant.update({
-              where: { id: variant.id },
-              data: {
-                baseHeroImage: heroImage, // Now has updated mediaId
-              },
-            });
-          } else {
-            await db.aBTestVariant.update({
-              where: { id: variant.id },
-              data: {
-                testHeroImage: heroImage, // Now has updated mediaId
-              },
-            });
-          }
-
-          // Log variant update
-          await AuditService.logVariantHeroUpdated(
-            testId,
-            test.shop,
-            variant.shopifyVariantId,
-            variant.variantName,
-            heroImage.mediaId || heroImage.url,
-            targetCase,
-            userId
-          );
-        } else {
-          // Remove hero image (base case had no hero)
-          console.log(`[Rotation] Removing hero for variant ${variant.variantName}`);
-          await this.removeVariantHero(admin, variant.shopifyVariantId, test.productId, testId);
-          variantsUpdated++;
-
-          // Log variant hero removal
-          await AuditService.logVariantHeroUpdated(
-            testId,
-            test.shop,
-            variant.shopifyVariantId,
-            variant.variantName,
-            'removed',
-            targetCase,
-            userId
-          );
-        }
-      }
-
-      // Update test state
+      // Update test with refreshed IDs
       const nextRotation = new Date();
       nextRotation.setTime(nextRotation.getTime() + test.rotationHours * 3600000);
 
@@ -194,19 +229,41 @@ export class SimpleRotationService {
           currentCase: targetCase,
           lastRotation: new Date(),
           nextRotation,
+          baseImages: JSON.parse(JSON.stringify(updateImageIds(baseImages))),
+          testImages: JSON.parse(JSON.stringify(updateImageIds(testImages))),
         },
       });
 
       const duration = Date.now() - startTime;
 
-      // Log successful rotation
+      // Log successful rotation with verification metadata
+      const verificationMetadata = {
+        imagesUpdated,
+        variantsUpdated,
+        preRotationState: {
+          galleryCount: currentState.galleryMedia.length,
+          variantHeroCount: Array.from(currentState.variantAssignments.values())
+            .filter(v => v.heroMediaId).length,
+        },
+        postRotationState: {
+          galleryCount: postState.galleryMedia.length,
+          variantHeroCount: Array.from(postState.variantAssignments.values())
+            .filter(v => v.heroMediaId).length,
+        },
+        operations: {
+          uploaded: mediaOperations.uploaded.size,
+          reused: mediaOperations.reused.size,
+          deleted: mediaOperations.deleted.size,
+        },
+      };
+
       await AuditService.logRotationCompleted(
         testId,
         test.shop,
         test.currentCase,
         targetCase,
         duration,
-        { imagesUpdated, variantsUpdated }
+        verificationMetadata
       );
 
       // Create rotation event for attribution
@@ -219,7 +276,7 @@ export class SimpleRotationService {
         duration,
         userId,
         undefined,
-        { imagesUpdated, variantsUpdated }
+        verificationMetadata
       );
 
       return {
@@ -655,7 +712,7 @@ export class SimpleRotationService {
 
     // STEP 3: Clean up old hero if it exists and is safe to remove
     if (oldHeroMediaId && oldHeroUrl && testId) {
-      const shouldDeleteOldHero = await this.canSafelyDeleteMedia(
+      const shouldDeleteOldHero = await this.canSafelyDeleteMediaAsync(
         admin,
         productGid!,
         oldHeroMediaId,
@@ -729,7 +786,7 @@ export class SimpleRotationService {
     if (oldHeroMediaId && oldHeroUrl) {
       console.log(`[removeVariantHero] Checking if can delete old hero:`, { oldHeroMediaId, oldHeroUrl });
 
-      const shouldDelete = await this.canSafelyDeleteMedia(
+      const shouldDelete = await this.canSafelyDeleteMediaAsync(
         admin,
         productId,
         oldHeroMediaId,
@@ -776,7 +833,7 @@ export class SimpleRotationService {
    * Check if a media can be safely deleted
    * Returns false if the media is used in gallery images or by other variants
    */
-  private static async canSafelyDeleteMedia(
+  private static async canSafelyDeleteMediaAsync(
     admin: AdminApiContext,
     productId: string,
     mediaId: string,
@@ -799,14 +856,14 @@ export class SimpleRotationService {
     console.log(`[canSafelyDelete] Checking URL:`, normalizedUrl);
 
     // Check if URL is in base or test gallery images
-    const baseImages = Array.isArray(test.baseImages) ? test.baseImages as any[] : [];
-    const testImages = Array.isArray(test.testImages) ? test.testImages as any[] : [];
+    const baseImages = Array.isArray(test.baseImages) ? test.baseImages as unknown as ImageData[] : [];
+    const testImages = Array.isArray(test.testImages) ? test.testImages as unknown as ImageData[] : [];
 
     console.log(`[canSafelyDelete] Base images count:`, baseImages.length);
     console.log(`[canSafelyDelete] Test images count:`, testImages.length);
 
-    const isInGallery = [...baseImages, ...testImages].some((img: any) => {
-      const imgUrl = img?.url || img;
+    const isInGallery = [...baseImages, ...testImages].some((img: ImageData) => {
+      const imgUrl = img?.url || '';
       const imgNormalized = imgUrl.split('?')[0].toLowerCase();
       const matches = imgNormalized === normalizedUrl;
       if (matches) {
@@ -824,8 +881,8 @@ export class SimpleRotationService {
     const usedByOtherVariant = test.variants.some((v) => {
       if (v.shopifyVariantId === excludeVariantId) return false; // Skip current variant
 
-      const baseHero = v.baseHeroImage as any;
-      const testHero = v.testHeroImage as any;
+      const baseHero = v.baseHeroImage as unknown as ImageData | null;
+      const testHero = v.testHeroImage as unknown as ImageData | null;
 
       const baseUrl = baseHero?.url || '';
       const testUrl = testHero?.url || '';
@@ -1112,6 +1169,7 @@ export class SimpleRotationService {
       query getProductVariants($productId: ID!) {
         product(id: $productId) {
           id
+          handle
           variants(first: 100) {
             edges {
               node {
@@ -1134,24 +1192,480 @@ export class SimpleRotationService {
     });
 
     const data = await response.json();
-    const variants = data.data?.product?.variants?.edges || [];
+    const product = data.data?.product;
+    const variants = product?.variants?.edges || [];
     const heroImages = new Map<string, ImageData | null>();
+    const errors: Array<{ variantId: string; error: string }> = [];
+
+    console.log(`[captureVariantHeroImages] Capturing hero images for ${variantIds.length} variants`);
 
     for (const edge of variants) {
       if (variantIds.includes(edge.node.id)) {
         if (edge.node.image) {
-          heroImages.set(edge.node.id, {
-            url: edge.node.image.url,
-            mediaId: edge.node.image.id, // NOW CAPTURING MEDIA ID
-            altText: edge.node.image.altText,
-            position: 0,
-          });
+          const shopifyUrl = edge.node.image.url;
+          const mediaId = edge.node.image.id;
+          const altText = edge.node.image.altText;
+          const variantId = edge.node.id;
+
+          try {
+            // Download and upload to permanent storage (same as base images)
+            const productHandle = product?.handle || 'product';
+            const variantGid = variantId.split('/').pop();
+            const filename = `${productHandle}-variant-${variantGid}-hero`;
+
+            console.log(`[captureVariantHeroImages] Storing hero image for variant ${edge.node.displayName}`);
+            const permanentUrl = await storeImagePermanently(shopifyUrl, filename);
+
+            heroImages.set(variantId, {
+              url: shopifyUrl,           // Keep original for reference
+              permanentUrl,              // Our permanent backup URL for restoration
+              mediaId,                   // Current Shopify media ID
+              altText,
+              position: 0,
+            });
+
+            console.log(`[captureVariantHeroImages] ✓ Stored hero image for variant: ${permanentUrl}`);
+          } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            console.error(`[captureVariantHeroImages] Failed to store hero image for variant ${variantId}:`, error);
+            errors.push({ variantId, error: errorMessage });
+            // Don't add to heroImages - fail fast instead of partial capture
+          }
         } else {
           heroImages.set(edge.node.id, null);
         }
       }
     }
 
+    // Fail fast if any hero images couldn't be stored permanently
+    if (errors.length > 0) {
+      const errorSummary = errors.map(e => `Variant ${e.variantId}: ${e.error}`).join('; ');
+      const errorMessage = `Failed to capture ${errors.length} variant hero image(s) permanently. Errors: ${errorSummary}`;
+
+      // Log audit entry for incomplete capture
+      try {
+        await AuditService.logApiError(
+          product?.handle || 'unknown',
+          'captureVariantHeroImages',
+          new Error(errorMessage)
+        );
+      } catch (auditError) {
+        console.error('[captureVariantHeroImages] Failed to log audit entry:', auditError);
+      }
+
+      throw new Error(errorMessage);
+    }
+
+    const capturedCount = Array.from(heroImages.values()).filter(img => img && img.permanentUrl).length;
+    console.log(`[captureVariantHeroImages] Captured ${capturedCount} variant hero images with permanent URLs`);
+
     return heroImages;
+  }
+
+  /**
+   * Capture the current state of product media and variant assignments
+   * This provides a snapshot of the actual Shopify state before rotation
+   */
+  static async captureCurrentState(
+    admin: AdminApiContext,
+    productId: string,
+    variantIds: string[]
+  ): Promise<{
+    galleryMedia: Array<{
+      mediaId: string;
+      url: string;
+      position: number;
+      altText?: string;
+    }>;
+    variantAssignments: Map<string, {
+      variantId: string;
+      displayName: string;
+      heroMediaId: string | null;
+      heroUrl: string | null;
+    }>;
+  }> {
+    // Query both gallery and variant data in one request
+    const query = `
+      query getProductState($productId: ID!) {
+        product(id: $productId) {
+          id
+          handle
+          media(first: 100) {
+            edges {
+              node {
+                ... on MediaImage {
+                  id
+                  image {
+                    url
+                    altText
+                  }
+                }
+              }
+            }
+          }
+          variants(first: 100) {
+            edges {
+              node {
+                id
+                displayName
+                image {
+                  id
+                  url
+                  altText
+                }
+              }
+            }
+          }
+        }
+      }
+    `;
+
+    const response = await admin.graphql(query, {
+      variables: { productId },
+    });
+
+    const data = await response.json();
+    const product = data.data?.product;
+
+    // Process gallery media
+    const galleryMedia = (product?.media?.edges || [])
+      .filter((edge: any) => edge?.node?.image?.url)
+      .map((edge: any, index: number) => ({
+        mediaId: edge.node.id,
+        url: edge.node.image.url,
+        position: index,
+        altText: edge.node.image.altText,
+      }));
+
+    // Process variant assignments
+    const variantAssignments = new Map();
+    const variants = product?.variants?.edges || [];
+
+    for (const edge of variants) {
+      if (variantIds.includes(edge.node.id)) {
+        variantAssignments.set(edge.node.id, {
+          variantId: edge.node.id,
+          displayName: edge.node.displayName,
+          heroMediaId: edge.node.image?.id || null,
+          heroUrl: edge.node.image?.url || null,
+        });
+      }
+    }
+
+    console.log(`[captureCurrentState] Captured state: ${galleryMedia.length} gallery images, ${variantAssignments.size} variant assignments`);
+
+    return {
+      galleryMedia,
+      variantAssignments,
+    };
+  }
+
+  /**
+   * Build the target state for rotation
+   * Determines what the product should look like after rotation
+   */
+  static async buildTargetState(
+    test: ABTest & { variants?: any[] },
+    targetCase: 'BASE' | 'TEST',
+    currentState: Awaited<ReturnType<typeof SimpleRotationService.captureCurrentState>>
+  ): Promise<{
+    targetGallery: ImageData[];
+    targetVariantHeros: Map<string, ImageData | null>;
+    mediaRegistry: Map<string, {
+      permanentUrl?: string;
+      url: string;
+      usage: Array<'gallery' | 'variant_hero'>;
+      position?: number;
+      variants?: string[];
+      mediaId?: string;
+      altText?: string;
+    }>;
+  }> {
+    // Get target images based on case
+    const targetGallery = targetCase === 'BASE'
+      ? (test.baseImages as unknown as ImageData[])
+      : (test.testImages as unknown as ImageData[]);
+
+    // Get target variant heroes
+    const targetVariantHeros = new Map<string, ImageData | null>();
+
+    if (test.variants) {
+      for (const variant of test.variants) {
+        const heroImage = targetCase === 'BASE'
+          ? variant.baseHeroImage
+          : variant.testHeroImage;
+
+        targetVariantHeros.set(variant.shopifyVariantId, heroImage);
+      }
+    }
+
+    // Build unified media registry for deduplication
+    const mediaRegistry = new Map<string, any>();
+
+    // Add gallery images to registry
+    for (const img of targetGallery) {
+      const key = SimpleRotationService.normalizeUrl(img.permanentUrl || img.url);
+      mediaRegistry.set(key, {
+        permanentUrl: img.permanentUrl,
+        url: img.url,
+        mediaId: img.mediaId,
+        usage: ['gallery'],
+        position: img.position,
+        altText: img.altText,
+      });
+    }
+
+    // Add variant heroes to registry (deduplicating with gallery)
+    for (const [variantId, heroImage] of targetVariantHeros) {
+      if (!heroImage) continue;
+
+      const key = SimpleRotationService.normalizeUrl(heroImage.permanentUrl || heroImage.url);
+
+      if (mediaRegistry.has(key)) {
+        // Already in gallery - mark for reuse
+        const entry = mediaRegistry.get(key);
+        entry.usage.push('variant_hero');
+        if (!entry.variants) entry.variants = [];
+        entry.variants.push(variantId);
+      } else {
+        // New media needed only for variant
+        mediaRegistry.set(key, {
+          permanentUrl: heroImage.permanentUrl,
+          url: heroImage.url,
+          mediaId: heroImage.mediaId,
+          usage: ['variant_hero'],
+          variants: [variantId],
+          altText: heroImage.altText,
+        });
+      }
+    }
+
+    console.log(`[buildTargetState] Target state: ${targetGallery.length} gallery images, ${targetVariantHeros.size} variant heroes, ${mediaRegistry.size} unique media items`);
+
+    return {
+      targetGallery,
+      targetVariantHeros,
+      mediaRegistry,
+    };
+  }
+
+  /**
+   * Normalize URL for comparison (remove query params, lowercase, etc)
+   */
+  private static normalizeUrl(url: string): string {
+    try {
+      const parsed = new URL(url);
+      // Remove query params and fragment
+      parsed.search = '';
+      parsed.hash = '';
+      // Normalize to lowercase
+      return parsed.toString().toLowerCase();
+    } catch {
+      // Fallback for invalid URLs
+      return url.toLowerCase().split('?')[0].split('#')[0];
+    }
+  }
+
+  /**
+   * Check if media can be safely deleted (not used elsewhere)
+   */
+  private static canSafelyDeleteMedia(
+    mediaId: string,
+    currentState: Awaited<ReturnType<typeof SimpleRotationService.captureCurrentState>>,
+    targetState: Awaited<ReturnType<typeof SimpleRotationService.buildTargetState>>
+  ): boolean {
+    // Check if it's in the target gallery
+    const inTargetGallery = targetState.targetGallery.some(img => img.mediaId === mediaId);
+    if (inTargetGallery) return false;
+
+    // Check if it's a target variant hero
+    for (const heroImage of targetState.targetVariantHeros.values()) {
+      if (heroImage?.mediaId === mediaId) return false;
+    }
+
+    // Safe to delete if not in any target
+    return true;
+  }
+
+  /**
+   * Upload media to product
+   */
+  private static async uploadMediaToProduct(
+    admin: AdminApiContext,
+    productId: string,
+    imageUrl: string,
+    altText?: string
+  ): Promise<string> {
+    // Check if it's a private R2 URL that needs to be uploaded to Shopify
+    let uploadUrl = imageUrl;
+    if (isPrivateR2Url(imageUrl)) {
+      console.log(`[uploadMediaToProduct] Converting R2 URL to Shopify: ${imageUrl}`);
+      uploadUrl = await uploadR2ImageToShopify(admin, imageUrl, altText);
+    }
+
+    const mutation = `
+      mutation createProductMedia($productId: ID!, $media: [CreateMediaInput!]!) {
+        productCreateMedia(productId: $productId, media: $media) {
+          media {
+            ... on MediaImage {
+              id
+              image {
+                url
+              }
+            }
+          }
+          mediaUserErrors {
+            field
+            message
+          }
+        }
+      }
+    `;
+
+    const response = await admin.graphql(mutation, {
+      variables: {
+        productId,
+        media: [{
+          mediaContentType: 'IMAGE',
+          originalSource: uploadUrl,
+          alt: altText,
+        }],
+      },
+    });
+
+    const result = await response.json();
+
+    if (result.data?.productCreateMedia?.mediaUserErrors?.length > 0) {
+      const errors = result.data.productCreateMedia.mediaUserErrors;
+      throw new Error(`Failed to upload media: ${errors.map((e: any) => e.message).join(', ')}`);
+    }
+
+    const newMedia = result.data?.productCreateMedia?.media?.[0];
+    if (!newMedia) {
+      throw new Error('No media returned from upload');
+    }
+
+    return newMedia.id;
+  }
+
+  /**
+   * Reorder product media
+   */
+  private static async reorderProductMedia(
+    admin: AdminApiContext,
+    productId: string,
+    orderedMediaIds: string[]
+  ): Promise<void> {
+    const mutation = `
+      mutation reorderProductMedia($productId: ID!, $moves: [MoveInput!]!) {
+        productReorderMedia(id: $productId, moves: $moves) {
+          job {
+            id
+          }
+          userErrors {
+            field
+            message
+          }
+        }
+      }
+    `;
+
+    // Build moves array - each media gets its new position
+    const moves = orderedMediaIds.map((mediaId, index) => ({
+      id: mediaId,
+      newPosition: String(index),
+    }));
+
+    const response = await admin.graphql(mutation, {
+      variables: {
+        productId,
+        moves,
+      },
+    });
+
+    const result = await response.json();
+
+    if (result.data?.productReorderMedia?.userErrors?.length > 0) {
+      const errors = result.data.productReorderMedia.userErrors;
+      console.warn(`[reorderProductMedia] Warning: ${errors.map((e: any) => e.message).join(', ')}`);
+    }
+  }
+
+  /**
+   * Attach media to variant
+   */
+  private static async attachMediaToVariant(
+    admin: AdminApiContext,
+    variantId: string,
+    mediaId: string
+  ): Promise<void> {
+    const mutation = `
+      mutation updateVariantMedia($variantId: ID!, $mediaId: ID) {
+        productVariantUpdate(input: {
+          id: $variantId,
+          mediaId: $mediaId
+        }) {
+          productVariant {
+            id
+            image {
+              id
+            }
+          }
+          userErrors {
+            field
+            message
+          }
+        }
+      }
+    `;
+
+    const response = await admin.graphql(mutation, {
+      variables: {
+        variantId,
+        mediaId,
+      },
+    });
+
+    const result = await response.json();
+
+    if (result.data?.productVariantUpdate?.userErrors?.length > 0) {
+      const errors = result.data.productVariantUpdate.userErrors;
+      throw new Error(`Failed to attach media to variant: ${errors.map((e: any) => e.message).join(', ')}`);
+    }
+  }
+
+  /**
+   * Delete product media
+   */
+  private static async deleteProductMedia(
+    admin: AdminApiContext,
+    productId: string,
+    mediaId: string
+  ): Promise<void> {
+    const mutation = `
+      mutation deleteProductMedia($productId: ID!, $mediaIds: [ID!]!) {
+        productDeleteMedia(productId: $productId, mediaIds: $mediaIds) {
+          deletedMediaIds
+          userErrors {
+            field
+            message
+          }
+        }
+      }
+    `;
+
+    const response = await admin.graphql(mutation, {
+      variables: {
+        productId,
+        mediaIds: [mediaId],
+      },
+    });
+
+    const result = await response.json();
+
+    if (result.data?.productDeleteMedia?.userErrors?.length > 0) {
+      const errors = result.data.productDeleteMedia.userErrors;
+      console.warn(`[deleteProductMedia] Warning: ${errors.map((e: any) => e.message).join(', ')}`);
+    }
   }
 }
