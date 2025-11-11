@@ -32,13 +32,29 @@ export function useAuthenticatedAppFetch() {
       });
 
       try {
+        // Safely detect FormData without relying on instanceof
+        // FormData may not be available in all contexts (e.g., Shopify embedded iframe)
+        const isFormData = (body: any): body is FormData => {
+          if (!body) return false;
+          if (typeof FormData !== 'undefined' && body instanceof FormData) {
+            return true;
+          }
+          // Fallback: check for FormData-like object (has append method and constructor name)
+          return (
+            typeof body === 'object' &&
+            typeof body.append === 'function' &&
+            typeof body.constructor === 'function' &&
+            (body.constructor.name === 'FormData' || body.constructor.name === 'formdata')
+          );
+        };
+
         // In App Bridge 4.x, global fetch is automatically authenticated
         const response = await fetch(absoluteUrl, {
           ...init,
           headers: {
             // Only set Accept if not already set and not sending FormData
             ...(init?.headers || {}),
-            ...(init?.body instanceof FormData
+            ...(isFormData(init?.body)
               ? {} // Don't override headers for FormData - let browser set Content-Type
               : { Accept: init?.headers?.Accept ?? "application/json" }
             ),

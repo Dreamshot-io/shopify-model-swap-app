@@ -167,29 +167,57 @@ export function ABTestCreationForm({
     formData.set("productId", productId);
 
     if (selectedGalleryImages.length > 0) {
-      formData.set(
-        "testImages",
-        JSON.stringify(
-          selectedGalleryImages.map((img, idx) => ({
-            url: img.url,
-            position: idx,
-          })),
-        ),
+      // Filter out any images without valid URLs
+      const validGalleryImages = selectedGalleryImages.filter(
+        (img) => img && img.url && typeof img.url === 'string',
       );
+
+      if (validGalleryImages.length > 0) {
+        formData.set(
+          "testImages",
+          JSON.stringify(
+            validGalleryImages.map((img, idx) => ({
+              url: img.url,
+              position: idx,
+            })),
+          ),
+        );
+      }
     }
 
     if (variantHeroSelections.size > 0) {
-      const variantTests = Array.from(variantHeroSelections.entries()).map(
-        ([variantId, image]) => {
+      const variantTests = Array.from(variantHeroSelections.entries())
+        .filter(([variantId, image]) => {
+          // Filter out any selections where image or image.url is missing
+          if (!image || !image.url || typeof image.url !== 'string') {
+            console.warn(`Skipping variant ${variantId}: missing or invalid hero image URL`);
+            return false;
+          }
+          return true;
+        })
+        .map(([variantId, image]) => {
           const variant = productVariants.find((v) => v.id === variantId);
           return {
             variantId,
             variantName: variant?.displayName || variantId,
             heroImage: { url: image.url },
           };
-        },
-      );
-      formData.set("variantTests", JSON.stringify(variantTests));
+        });
+
+      // Only set variantTests if we have valid entries after filtering
+      if (variantTests.length > 0) {
+        formData.set("variantTests", JSON.stringify(variantTests));
+      }
+    }
+
+    // Validate that we have at least one valid selection before submitting
+    const hasTestImages = formData.has("testImages");
+    const hasVariantTests = formData.has("variantTests");
+
+    if (!hasTestImages && !hasVariantTests) {
+      // This shouldn't happen if form validation is working, but add safety check
+      console.error("Cannot submit test: no valid images or variant heroes selected");
+      return;
     }
 
     fetcher.submit(formData, { method: "post" });

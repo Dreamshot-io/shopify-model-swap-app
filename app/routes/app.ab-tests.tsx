@@ -200,8 +200,15 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     });
   } catch (error) {
     console.error("Loader error:", error);
+    // Safely extract error message without relying on instanceof
+    const errorMessage =
+      error && typeof error === 'object' && 'message' in error && typeof error.message === 'string'
+        ? error.message
+        : typeof error === 'string'
+        ? error
+        : "An error occurred";
     return json(
-      { error: error instanceof Error ? error.message : "An error occurred" },
+      { error: errorMessage },
       { status: 500 },
     );
   }
@@ -241,7 +248,20 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         let variantTests: any[] = [];
         if (variantTestsJson) {
           try {
-            variantTests = JSON.parse(variantTestsJson);
+            const parsed = JSON.parse(variantTestsJson);
+            // Validate and filter variant tests to ensure they have required structure
+            variantTests = Array.isArray(parsed)
+              ? parsed.filter(
+                  (v: any) =>
+                    v &&
+                    typeof v === 'object' &&
+                    v.variantId &&
+                    v.heroImage &&
+                    typeof v.heroImage === 'object' &&
+                    v.heroImage.url &&
+                    typeof v.heroImage.url === 'string',
+                )
+              : [];
           } catch (e) {
             variantTests = [];
           }
@@ -293,12 +313,24 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
         // Create variant test records if any
         for (const variantTest of variantTests) {
+          // Additional safety check before accessing heroImage.url
+          if (
+            !variantTest.heroImage ||
+            !variantTest.heroImage.url ||
+            typeof variantTest.heroImage.url !== 'string'
+          ) {
+            console.warn(
+              `Skipping invalid variant test: missing heroImage.url for variant ${variantTest.variantId}`,
+            );
+            continue;
+          }
+
           const baseHero = baseHeroImages.get(variantTest.variantId);
           await db.aBTestVariant.create({
             data: {
               testId: test.id,
               shopifyVariantId: variantTest.variantId,
-              variantName: variantTest.variantName,
+              variantName: variantTest.variantName || variantTest.variantId,
               baseHeroImage: baseHero || null,
               testHeroImage: {
                 url: variantTest.heroImage.url,
@@ -375,8 +407,15 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     }
   } catch (error) {
     console.error("Action error:", error);
+    // Safely extract error message without relying on instanceof or type assertions
+    const errorMessage =
+      error && typeof error === 'object' && 'message' in error && typeof error.message === 'string'
+        ? error.message
+        : typeof error === 'string'
+        ? error
+        : "An error occurred";
     return json(
-      { success: false, error: (error as Error).message },
+      { success: false, error: errorMessage },
       { status: 500 },
     );
   }
@@ -1063,7 +1102,7 @@ export default function ABTests() {
                         {previewImages.map((img: any, idx: number) => (
                           <img
                             key={idx}
-                            src={img.url}
+                            src={img?.url || img || ""}
                             alt=""
                             style={{
                               width: "40px",
@@ -1214,7 +1253,7 @@ export default function ABTests() {
                         {previewImages.map((img: any, idx: number) => (
                           <img
                             key={idx}
-                            src={img.url}
+                            src={img?.url || img || ""}
                             alt=""
                             style={{
                               width: "40px",
