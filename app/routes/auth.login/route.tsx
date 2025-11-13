@@ -35,11 +35,16 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
-  const formData = await request.formData();
+  // Clone request before consuming body, since login() needs to read it
+  const clonedRequest = request.clone();
+
+  // Read formData from clone for logging (preserves original for login)
+  const formData = await clonedRequest.formData();
   const shop = formData.get("shop");
   console.log("[auth.login] Login form submitted");
   console.log("[auth.login] Shop from form:", shop);
 
+  // Use original request for login() which will read the body
   const loginResult = await login(request);
   console.log("[auth.login] Login action result:", loginResult);
 

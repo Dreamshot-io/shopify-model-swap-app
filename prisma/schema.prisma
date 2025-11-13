@@ -119,10 +119,10 @@ model ABTestVariant {
 // Customer event tracking (impressions, conversions, purchases)
 model ABTestEvent {
   id         String @id @default(cuid())
-  testId     String
+  testId     String? // Nullable - events can be tracked without active test
   sessionId  String
   eventType  String // IMPRESSION, ADD_TO_CART, PURCHASE
-  activeCase String // BASE or TEST (what was showing when event occurred)
+  activeCase String? // BASE or TEST (null if no test active)
 
   // Event details
   productId String
@@ -134,11 +134,12 @@ model ABTestEvent {
   metadata  Json? // JSON with additional context (browser, referrer, etc.)
   createdAt DateTime @default(now())
 
-  test ABTest @relation(fields: [testId], references: [id], onDelete: Cascade)
+  test ABTest? @relation(fields: [testId], references: [id], onDelete: Cascade)
 
   @@index([testId, eventType, createdAt])
   @@index([testId, sessionId])
   @@index([testId, activeCase])
+  @@index([productId, createdAt]) // Index for querying events by product
 }
 
 // Comprehensive audit logging for all system events

@@ -32,53 +32,90 @@ register(({ analytics, browser, settings }) => {
     log('Initialized', { APP_URL, ROTATION_API, TRACK_API });
   }
 
-  // Track product views
+  // Track product views - Simplified: always track, server assigns test
   analytics.subscribe('product_viewed', async event => {
-    const productId = event.data?.product?.id;
-    const variantId = event.data?.productVariant?.id ?? event.data?.productVariantId ?? null;
+    // Extract productId from event structure
+    let productId: string | null = null;
 
-    log('Product viewed', { productId, variantId });
+    // Try the actual Shopify structure first (most common)
+    if (event.data?.productVariant?.product?.id) {
+      productId = String(event.data.productVariant.product.id);
+    } else if (event.data?.product?.id) {
+      productId = String(event.data.product.id);
+    } else if (event.data?.productId) {
+      productId = String(event.data.productId);
+    } else if (event.productId) {
+      productId = String(event.productId);
+    }
 
     if (!productId) {
-      log('No productId, skipping');
+      console.warn('[A/B Test Pixel] No productId found, skipping');
       return;
     }
 
-    await fetchAndStoreTestState(productId, variantId);
-  });
-
-  // Track add to cart events
-  analytics.subscribe('product_added_to_cart', async event => {
-    let state = getTestState();
-
-    // Recovery: If state is missing, try to fetch it from the event data
-    if (!state) {
-      const productId = event.data?.cartLine?.merchandise?.product?.id ??
-                       event.data?.product?.id ??
-                       null;
-
-      if (productId) {
-        log('Add-to-cart: Missing test state, attempting recovery for product', productId);
-        const variantId = event.data?.cartLine?.merchandise?.id ?? null;
-        await fetchAndStoreTestState(productId, variantId);
-        state = getTestState();
-
-        if (!state) {
-          console.warn('[A/B Test Pixel] Add-to-cart: Could not recover test state for product', productId);
-          return;
-        }
-        log('Add-to-cart: Successfully recovered test state', state);
+    // Normalize to GID format
+    if (!productId.startsWith('gid://shopify/Product/')) {
+      if (/^\d+$/.test(productId)) {
+        productId = `gid://shopify/Product/${productId}`;
       } else {
-        console.warn('[A/B Test Pixel] Add-to-cart: Missing test state and productId, skipping tracking');
+        console.warn('[A/B Test Pixel] ProductId format not recognized:', productId);
         return;
       }
     }
 
-    const variantId = event.data?.cartLine?.merchandise?.id ?? null;
+    // Extract variantId
+    let variantId: string | null = null;
+    if (event.data?.productVariant?.id) {
+      variantId = String(event.data.productVariant.id);
+      if (/^\d+$/.test(variantId)) {
+        variantId = `gid://shopify/ProductVariant/${variantId}`;
+      }
+    }
+
+    // Track impression directly - server will assign test if active
+    await trackEventDirectly('IMPRESSION', productId, variantId);
+  });
+
+  // Note: Can't use page_viewed fallback because we can't access window.location in worker context
+  // Must rely on product_viewed event having the correct data structure
+
+  // Track add to cart events - Simplified: always track, server assigns test
+  analytics.subscribe('product_added_to_cart', async event => {
+    // Extract productId
+    let productId: string | null = null;
+    if (event.data?.cartLine?.merchandise?.product?.id) {
+      productId = String(event.data.cartLine.merchandise.product.id);
+    } else if (event.data?.product?.id) {
+      productId = String(event.data.product.id);
+    }
+
+    if (!productId) {
+      console.warn('[A/B Test Pixel] Add-to-cart: No productId found');
+      return;
+    }
+
+    // Normalize to GID format
+    if (!productId.startsWith('gid://shopify/Product/')) {
+      if (/^\d+$/.test(productId)) {
+        productId = `gid://shopify/Product/${productId}`;
+      } else {
+        return;
+      }
+    }
+
+    // Extract variantId
+    let variantId: string | null = null;
+    if (event.data?.cartLine?.merchandise?.id) {
+      variantId = String(event.data.cartLine.merchandise.id);
+      if (/^\d+$/.test(variantId)) {
+        variantId = `gid://shopify/ProductVariant/${variantId}`;
+      }
+    }
+
     const quantity = event.data?.cartLine?.quantity ?? 1;
 
-    await trackEvent(state, 'ADD_TO_CART', {
-      variantId,
+    // Track directly - server will assign test if active
+    await trackEventDirectly('ADD_TO_CART', productId, variantId, {
       quantity,
       metadata: {
         price: event.data?.cartLine?.cost?.totalAmount?.amount,
@@ -87,34 +124,45 @@ register(({ analytics, browser, settings }) => {
     });
   });
 
-  // Track completed purchases
+  // Track completed purchases - Simplified: always track, server assigns test
   analytics.subscribe('checkout_completed', async event => {
-    const state = getTestState();
-    if (!state) return;
-
-    // Track purchase event for each line item with the test
+    // Track purchase event for each line item
     for (const lineItem of event.data?.checkout?.lineItems || []) {
-      const lineProductId = lineItem?.variant?.product?.id;
+      let productId = lineItem?.variant?.product?.id;
 
-      if (lineProductId === state.productId) {
-        await trackEvent(state, 'PURCHASE', {
-          variantId: lineItem?.variant?.id,
-          revenue: lineItem?.cost?.totalAmount?.amount
-            ? parseFloat(lineItem.cost.totalAmount.amount)
-            : undefined,
-          quantity: lineItem?.quantity,
-          metadata: {
-            orderId: event.data?.checkout?.order?.id,
-            orderNumber: event.data?.checkout?.orderStatusUrl,
-            currency: event.data?.checkout?.totalPrice?.currencyCode,
-          },
-        });
+      if (!productId) continue;
+
+      // Normalize to GID format
+      productId = String(productId);
+      if (!productId.startsWith('gid://shopify/Product/')) {
+        if (/^\d+$/.test(productId)) {
+          productId = `gid://shopify/Product/${productId}`;
+        } else {
+          continue;
+        }
       }
-    }
 
-    // Clear state after purchase
-    browser.sessionStorage.removeItem(STATE_KEY);
-    browser.sessionStorage.removeItem(`${IMPRESSION_SYNC_PREFIX}${state.testId}`);
+      let variantId = lineItem?.variant?.id;
+      if (variantId) {
+        variantId = String(variantId);
+        if (/^\d+$/.test(variantId)) {
+          variantId = `gid://shopify/ProductVariant/${variantId}`;
+        }
+      }
+
+      // Track directly - server will assign test if active
+      await trackEventDirectly('PURCHASE', productId, variantId, {
+        revenue: lineItem?.cost?.totalAmount?.amount
+          ? parseFloat(lineItem.cost.totalAmount.amount)
+          : undefined,
+        quantity: lineItem?.quantity,
+        metadata: {
+          orderId: event.data?.checkout?.order?.id,
+          orderNumber: event.data?.checkout?.orderStatusUrl,
+          currency: event.data?.checkout?.totalPrice?.currencyCode,
+        },
+      });
+    }
   });
 
   /**
@@ -158,7 +206,7 @@ register(({ analytics, browser, settings }) => {
     productId: string,
     variantId: string | null
   ): Promise<void> {
-    const sessionId = getOrCreateSessionId();
+    const sessionId = await getOrCreateSessionId();
     if (!sessionId) {
       log('No session ID, cannot fetch test state');
       console.warn('[A/B Test Pixel] Cannot fetch test state: missing session ID');
@@ -201,13 +249,36 @@ register(({ analytics, browser, settings }) => {
       }
 
       const result = await response.json();
+
+      // Always log API response (not just in debug mode) for troubleshooting
+      console.log('[A/B Test Pixel] API Response:', {
+        url,
+        status: response.status,
+        productId,
+        result
+      });
+
       log('Test state result', result);
 
       // No active test for this product
       if (!result?.testId || !result?.activeCase) {
-        log('No active test for this product');
+        console.warn('[A/B Test Pixel] ⚠️ No active test found for product', {
+          productId,
+          productIdFormat: productId.startsWith('gid://') ? 'GID' : 'numeric',
+          apiResponse: result,
+          apiUrl: url,
+          suggestion: 'Check if test exists and productId matches exactly'
+        });
+        log('No active test for this product', { productId, result });
         return;
       }
+
+      // Success - log it
+      console.log('[A/B Test Pixel] ✅ Test found:', {
+        testId: result.testId,
+        activeCase: result.activeCase,
+        productId
+      });
 
       const state: TestState = {
         testId: result.testId,
@@ -219,7 +290,7 @@ register(({ analytics, browser, settings }) => {
       log('Storing test state', state);
 
       // Store state for this session
-      browser.sessionStorage.setItem(STATE_KEY, JSON.stringify(state));
+      await browser.sessionStorage.setItem(STATE_KEY, JSON.stringify(state));
 
       // Track impression if not already tracked
       await trackImpression(state);
@@ -230,7 +301,83 @@ register(({ analytics, browser, settings }) => {
   }
 
   /**
-   * Track an event to the backend
+   * Track event directly without test state - server will assign test if active
+   */
+  async function trackEventDirectly(
+    eventType: 'IMPRESSION' | 'ADD_TO_CART' | 'PURCHASE',
+    productId: string,
+    variantId: string | null,
+    options?: {
+      revenue?: number;
+      quantity?: number;
+      metadata?: any;
+    }
+  ) {
+    const sessionId = await getOrCreateSessionId();
+    if (!sessionId) {
+      console.warn('[A/B Test Pixel] Cannot track event: missing session ID', { eventType, productId });
+      return;
+    }
+
+    if (!APP_URL || APP_URL.trim() === '') {
+      console.error('[A/B Test Pixel] Cannot track event: app_url is not configured', { eventType, productId });
+      return;
+    }
+
+    try {
+      // Simplified payload - server will find and assign test
+      const payload = {
+        sessionId,
+        eventType,
+        productId,
+        variantId: variantId || null,
+        revenue: options?.revenue,
+        quantity: options?.quantity,
+        metadata: {
+          ...options?.metadata,
+          timestamp: new Date().toISOString(),
+        },
+      };
+
+      log('Tracking event', eventType, 'to', TRACK_API, payload);
+
+      const response = await fetchWithRetry(TRACK_API, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response) {
+        console.error('[A/B Test Pixel] Failed to track event after retries', { eventType, productId });
+        return;
+      }
+
+      if (!response.ok) {
+        let error;
+        try {
+          error = await response.json();
+        } catch {
+          error = { message: `HTTP ${response.status}: ${response.statusText}` };
+        }
+        console.error('[A/B Test Pixel] Failed to track event:', error, { eventType, productId });
+      } else {
+        const result = await response.json();
+        console.log('[A/B Test Pixel] ✅ Track API Success:', {
+          eventType,
+          productId,
+          testId: result.testId || 'none',
+          response: result
+        });
+      }
+    } catch (error) {
+      console.error('[A/B Test Pixel] Failed to track event', error, { eventType, productId });
+    }
+  }
+
+  /**
+   * Track an event to the backend (legacy - kept for compatibility)
    */
   async function trackEvent(
     state: TestState,
@@ -242,7 +389,7 @@ register(({ analytics, browser, settings }) => {
       metadata?: any;
     }
   ) {
-    const sessionId = getOrCreateSessionId();
+    const sessionId = await getOrCreateSessionId();
     if (!sessionId) {
       console.warn('[A/B Test Pixel] Cannot track event: missing session ID', { eventType, productId: state.productId });
       log('No session ID for tracking event');
@@ -267,9 +414,8 @@ register(({ analytics, browser, settings }) => {
         metadata: {
           ...options?.metadata,
           timestamp: new Date().toISOString(),
-          userAgent: navigator.userAgent,
-          screenWidth: window.screen.width,
-          screenHeight: window.screen.height,
+          // Note: Can't access navigator/window in worker context
+          // Browser info not available in web pixel worker
         },
       };
 
@@ -301,6 +447,12 @@ register(({ analytics, browser, settings }) => {
         log('Track error response', error);
       } else {
         const result = await response.json();
+        console.log('[A/B Test Pixel] ✅ Track API Success:', {
+          eventType,
+          testId: state.testId,
+          productId: state.productId,
+          response: result
+        });
         log('Track success', result);
       }
     } catch (error) {
@@ -313,39 +465,35 @@ register(({ analytics, browser, settings }) => {
    * Track impression (only once per session per test)
    */
   async function trackImpression(state: TestState) {
-    const syncKey = `${IMPRESSION_SYNC_PREFIX}${state.testId}`;
-    const alreadyTracked = browser.sessionStorage.getItem(syncKey);
-
-    log('Checking impression tracking', { syncKey, alreadyTracked, currentCase: state.activeCase });
-
-    if (alreadyTracked === state.activeCase) {
-      // Already tracked impression for this test and case
-      log('Impression already tracked for this case');
-      return;
-    }
+    // Simplified: Track every page visit, no deduplication
+    console.log('[A/B Test Pixel] 📊 Tracking IMPRESSION:', {
+      testId: state.testId,
+      activeCase: state.activeCase,
+      productId: state.productId
+    });
 
     log('Tracking impression for test', state.testId, 'case', state.activeCase);
 
     await trackEvent(state, 'IMPRESSION', {
       metadata: {
-        referrer: document.referrer,
-        pageUrl: window.location.href,
+        // Note: Can't access document.referrer or window.location in worker context
+        // Event should contain URL info if needed
       },
     });
 
-    // Mark as tracked
-    browser.sessionStorage.setItem(syncKey, state.activeCase);
-    log('Marked impression as tracked');
+    console.log('[A/B Test Pixel] ✅ Impression tracked');
+    log('Impression tracked');
   }
 
   /**
    * Get stored test state
+   * Note: browser.sessionStorage methods are async in web worker context
    */
-  function getTestState(): TestState | null {
-    const raw = browser.sessionStorage.getItem(STATE_KEY);
-    if (!raw) return null;
-
+  async function getTestState(): Promise<TestState | null> {
     try {
+      const raw = await browser.sessionStorage.getItem(STATE_KEY);
+      if (!raw) return null;
+
       return JSON.parse(raw) as TestState;
     } catch (error) {
       console.error('[A/B Test] Failed to parse test state', error);
@@ -355,24 +503,24 @@ register(({ analytics, browser, settings }) => {
 
   /**
    * Get or create a persistent session ID
+   * Note: browser.localStorage methods are async in web worker context
    */
-  function getOrCreateSessionId(): string | null {
-    let sessionId = browser.localStorage.getItem(SESSION_KEY);
-
-    if (sessionId) {
-      return sessionId;
-    }
-
-    // Generate new session ID
-    sessionId = `session_${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
-
+  async function getOrCreateSessionId(): Promise<string | null> {
     try {
-      browser.localStorage.setItem(SESSION_KEY, sessionId);
+      let sessionId = await browser.localStorage.getItem(SESSION_KEY);
+
+      if (sessionId) {
+        return sessionId;
+      }
+
+      // Generate new session ID
+      sessionId = `session_${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
+
+      await browser.localStorage.setItem(SESSION_KEY, sessionId);
+      return sessionId;
     } catch (error) {
-      console.error('[A/B Test] Unable to persist session id', error);
+      console.error('[A/B Test] Unable to get/create session id', error);
       return null;
     }
-
-    return sessionId;
   }
 });
