@@ -1525,12 +1525,14 @@ export default function ABTests() {
                           >
                             {test.status === "PAUSED" ? "Resume" : "Start"}
                           </Button>
-                          <Button
-                            size="slim"
-                            onClick={() => navigate(`/app/ab-tests/${test.id}`)}
-                          >
-                            View Stats
-                          </Button>
+                          {test.status !== "DRAFT" && (
+                            <Button
+                              size="slim"
+                              onClick={() => navigate(`/app/ab-tests/${test.id}`)}
+                            >
+                              View Stats
+                            </Button>
+                          )}
                           <Button
                             size="slim"
                             tone="critical"
