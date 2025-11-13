@@ -5,6 +5,8 @@ import { useLoaderData, useSearchParams, useFetcher, useNavigate } from '@remix-
 import { Page, Text, BlockStack, Modal } from '@shopify/polaris';
 import { TitleBar, useAppBridge } from '@shopify/app-bridge-react';
 import { authenticate } from '../shopify.server';
+import db from '../db.server';
+import { AIStudioMediaService } from '../services/ai-studio-media.server';
 import { checkAIProviderHealth } from '../services/ai-providers.server';
 import { ImagePreviewModal } from '../features/ai-studio/components/ImagePreviewModal';
 import { ImageGenerationHub } from '../features/ai-studio/components/ImageGenerationHub';
@@ -117,11 +119,38 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 	);
 
 	const responseJson = await response.json();
+	const product = responseJson.data?.product || null;
+
+	// Fetch library items from database
+	let libraryItems: LibraryItem[] = [];
+	if (product) {
+		const aiStudioMediaService = new AIStudioMediaService(admin, db);
+
+		// Check if there's metafield data to migrate
+		const metafieldValue = product.metafield?.value;
+		if (metafieldValue) {
+			// Migrate metafield data to database
+			await aiStudioMediaService.migrateFromMetafield(session.shop, productId, metafieldValue);
+
+			// TODO: Remove the metafield after successful migration (in a separate task)
+		}
+
+		// Get library items from database
+		const dbImages = await aiStudioMediaService.getLibraryImages(session.shop, productId);
+
+		// Convert to LibraryItem format for compatibility
+		libraryItems = dbImages.map(img => ({
+			imageUrl: img.url,
+			sourceUrl: img.sourceImageUrl,
+			variantIds: img.variantIds,
+		}));
+	}
 
 	return {
-		product: responseJson.data?.product || null,
+		product,
 		products: [],
 		shop: session.shop,
+		libraryItems,
 	};
 };
 
@@ -275,7 +304,7 @@ export const action = async ({ request }: ActionFunctionArgs): Promise<Response>
 };
 
 export default function AIStudio() {
-	const { product, products, shop } = useLoaderData<typeof loader>();
+	const { product, products, shop, libraryItems: initialLibraryItems } = useLoaderData<typeof loader>();
 	const [searchParams] = useSearchParams();
 	const navigate = useNavigate();
 	const shopify = useAppBridge();
@@ -297,7 +326,7 @@ export default function AIStudio() {
 	});
 	const [previewImage, setPreviewImage] = useState<string | null>(null);
 	const [previewBase, setPreviewBase] = useState<string | null>(null);
-	const [libraryItems, setLibraryItems] = useState<LibraryItem[]>([]);
+	const [libraryItems, setLibraryItems] = useState<LibraryItem[]>(initialLibraryItems || []);
 	const [pendingAction, setPendingAction] = useState<
 		null | 'generate' | 'publish' | 'saveToLibrary' | 'deleteFromLibrary'
 	>(null);
@@ -324,16 +353,10 @@ export default function AIStudio() {
 		}
 	}, [selectedImageFromUrl, product]);
 
+	// Update library items when loader data changes
 	useEffect(() => {
-		try {
-			const raw = (product as any)?.metafield?.value;
-			const arr = raw ? JSON.parse(raw) : [];
-			if (Array.isArray(arr)) {
-				const normalized = arr.map((item: any) => (typeof item === 'string' ? { imageUrl: item } : item));
-				setLibraryItems(normalized);
-			}
-		} catch {}
-	}, [product]);
+		setLibraryItems(initialLibraryItems || []);
+	}, [initialLibraryItems]);
 
 	// Handle image selection
 	const handleImageSelect = (image: SelectedImage) => {
@@ -711,10 +734,15 @@ export default function AIStudio() {
 						const fd = new FormData();
 						fd.set('intent', 'saveToLibrary');
 						fd.set('imageUrl', img.imageUrl);
+						fd.set('source', 'AI_GENERATED'); // Explicitly tag as AI-generated
 						const sourceUrl =
 							img.metadata?.sourceImage?.url || (selectedImages.length > 0 ? selectedImages[0].url : '');
 						fd.set('sourceUrl', sourceUrl);
 						fd.set('productId', product?.id || '');
+						// Include prompt if available
+						if (img.metadata?.prompt) {
+							fd.set('prompt', img.metadata.prompt);
+						}
 						setPendingAction('saveToLibrary');
 						fetcher.submit(fd, { method: 'post' });
 					}}

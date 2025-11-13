@@ -35,12 +35,16 @@ model ABTest {
   shop         String
   productId    String
   name         String
-  status       String @default("DRAFT") // DRAFT, ACTIVE, PAUSED, COMPLETED
+  status       String @default("DRAFT") // DRAFT, ACTIVE, PAUSED, COMPLETED, MIGRATING
   trafficSplit Int    @default(50)
 
-  // Image storage - simplified to JSON
+  // Legacy image storage - will be deprecated
   baseImages Json // JSON array of base case images
   testImages Json // JSON array of test case images
+
+  // New gallery-based image storage
+  baseMediaIds String[] @default([]) // Array of Shopify media IDs
+  testMediaIds String[] @default([]) // Array of Shopify media IDs
 
   // Rotation management
   currentCase   String    @default("BASE") // BASE or TEST
@@ -54,6 +58,7 @@ model ABTest {
   createdBy String // User who created the test
 
   // Relations
+  mediaRecords   TestMedia[]
   variants       ABTestVariant[]
   events         ABTestEvent[]
   auditLogs      AuditLog[]
@@ -64,6 +69,29 @@ model ABTest {
   @@index([nextRotation])
 }
 
+// Media tracking for gallery-based system
+model TestMedia {
+  id        String    @id @default(cuid())
+  testId    String
+  mediaId   String    // Shopify media GID
+  testCase  String    // BASE or TEST
+  position  Int
+  url       String    // For display/reference
+  altText   String?
+
+  // Migration tracking
+  sourceUrl  String?   // Original R2 URL if migrated
+  migratedAt DateTime? // When migrated from R2
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  test ABTest @relation(fields: [testId], references: [id], onDelete: Cascade)
+
+  @@unique([testId, mediaId])
+  @@index([testId, testCase])
+}
+
 // Variant-specific test configuration (for hero images)
 model ABTestVariant {
   id               String @id @default(cuid())
@@ -71,9 +99,13 @@ model ABTestVariant {
   shopifyVariantId String // Actual Shopify variant ID (e.g., gid://shopify/ProductVariant/123)
   variantName      String // Human-readable name (e.g., "Red / Large")
 
-  // Hero images only (not full galleries)
+  // Legacy hero images - will be deprecated
   baseHeroImage Json? // JSON object with image data
   testHeroImage Json // JSON object with test hero image
+
+  // New gallery-based hero images
+  baseHeroMediaId String? // Shopify media ID for base hero
+  testHeroMediaId String? // Shopify media ID for test hero
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -217,5 +249,37 @@ model GenerationHistory {
   createdAt DateTime @default(now())
 
   @@index([shop, productId])
+  @@index([createdAt])
+}
+
+// AI Studio image management - replaces metafield storage
+model AIStudioImage {
+  id            String   @id @default(cuid())
+  shop          String
+  productId     String
+
+  // Shopify media reference
+  mediaId       String?  // Shopify media GID when published to gallery
+  url           String   // Display URL (from AI provider, upload, or Shopify)
+
+  // State management
+  state         String   // LIBRARY or PUBLISHED
+  source        String   // AI_GENERATED, MANUAL_UPLOAD, GALLERY_IMPORT
+
+  // AI generation metadata (if source = AI_GENERATED)
+  prompt        String?  // The prompt used to generate this image
+  sourceImageUrl String? // Original image URL used as input for AI
+  aiProvider    String?  // replicate, fal, etc.
+
+  // Variant associations
+  variantIds    String[] @default([]) // Which variants this image is for
+
+  // Timestamps
+  createdAt     DateTime @default(now())
+  publishedAt   DateTime? // When it was published to gallery
+  updatedAt     DateTime @updatedAt
+
+  @@index([shop, productId])
+  @@index([shop, productId, state])
   @@index([createdAt])
 }

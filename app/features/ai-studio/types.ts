@@ -53,6 +53,15 @@ export interface SelectedImage {
   variantId?: string; // Optional variant association
 }
 
+// ProductImage type for gallery functionality
+export interface ProductImage {
+  id: string;
+  url: string;
+  altText?: string;
+  position?: number;
+  originalSource?: string;
+}
+
 // Variant context for tracking current selection/filter state
 export interface VariantContext {
   selectedVariantId: string | null; // null = "All Variants"

@@ -6,6 +6,7 @@ import {
   createStagedUpload,
   finalizeShopifyUpload,
 } from "../../../services/file-upload.server";
+import { AIStudioMediaService } from "../../../services/ai-studio-media.server";
 import type {
   LibraryActionResponse,
   ActionErrorResponse,
@@ -41,6 +42,8 @@ export async function handleSaveToLibrary(
   const sourceUrl = String(formData.get("sourceUrl") || "");
   const productId = String(formData.get("productId") || "");
   const variantIdsJson = String(formData.get("variantIds") || "");
+  const prompt = String(formData.get("prompt") || "");
+  const sourceParam = String(formData.get("source") || "");
 
   // Parse variant IDs if provided
   let variantIds: string[] | undefined;
@@ -53,27 +56,10 @@ export async function handleSaveToLibrary(
     }
   }
 
-  const query = `#graphql
-    query GetLibrary($id: ID!) {
-      product(id: $id) {
-        id
-        metafield(namespace: "dreamshot", key: "ai_library") { id value }
-      }
-    }
-  `;
-  const qRes = await admin.graphql(query, { variables: { id: productId } });
-  const qJson = await qRes.json();
-  const current = qJson?.data?.product?.metafield?.value;
-  let libraryItems: LibraryItem[] = [];
-  try {
-    libraryItems = current ? JSON.parse(current) : [];
-  } catch {
-    libraryItems = [];
-  }
+  const aiStudioMediaService = new AIStudioMediaService(admin, db);
 
-  const exists = libraryItems.some((item: any) =>
-    typeof item === "string" ? item === imageUrl : item?.imageUrl === imageUrl,
-  );
+  // Check if already exists
+  const exists = await aiStudioMediaService.imageExists(shop, productId, imageUrl);
   if (exists) {
     const duplicateResponse: LibraryActionResponse = {
       ok: true,
@@ -85,65 +71,58 @@ export async function handleSaveToLibrary(
     });
   }
 
-  // Create new library item with variant IDs if provided
-  const newItem: { imageUrl: string; sourceUrl?: string | null; variantIds?: string[] } = {
-    imageUrl,
-    sourceUrl: sourceUrl || null,
-  };
-  if (variantIds && variantIds.length > 0) {
-    newItem.variantIds = variantIds;
-  }
-
-  libraryItems.push(newItem);
-
-  const setMutation = `#graphql
-    mutation SetLibrary($ownerId: ID!, $value: String!) {
-      metafieldsSet(metafields: [{
-        ownerId: $ownerId,
-        namespace: "dreamshot",
-        key: "ai_library",
-        type: "json",
-        value: $value
-      }]) {
-        userErrors { field message }
-      }
+  try {
+    // Use explicit source parameter, fallback to inference only if not provided
+    let source: "AI_GENERATED" | "MANUAL_UPLOAD" | "GALLERY_IMPORT" = "MANUAL_UPLOAD";
+    if (sourceParam && (sourceParam === "AI_GENERATED" || sourceParam === "MANUAL_UPLOAD" || sourceParam === "GALLERY_IMPORT")) {
+      source = sourceParam;
+    } else if (sourceUrl) {
+      // Legacy fallback: infer from sourceUrl presence
+      source = "AI_GENERATED";
     }
-  `;
-  const sRes = await admin.graphql(setMutation, {
-    variables: { ownerId: productId, value: JSON.stringify(libraryItems) },
-  });
-  const sJson = await sRes.json();
-  const uErr = sJson?.data?.metafieldsSet?.userErrors;
-  if (uErr && uErr.length) {
+
+    // Save to library using the new service
+    await aiStudioMediaService.saveToLibrary({
+      shop,
+      productId,
+      url: imageUrl,
+      source,
+      prompt: prompt || undefined,
+      sourceImageUrl: sourceUrl || undefined,
+      variantIds: variantIds || [],
+    });
+
+    // Log metric event
+    try {
+      await db.metricEvent.create({
+        data: {
+          id: crypto.randomUUID(),
+          shop,
+          eventType: 'SAVED_TO_LIBRARY',
+          productId,
+          imageUrl,
+        },
+      });
+    } catch {}
+
+    const successResponse: LibraryActionResponse = {
+      ok: true,
+      savedToLibrary: true,
+    };
+    return json(successResponse, {
+      headers: { "Content-Type": "application/json" },
+    });
+  } catch (error) {
+    console.error("Failed to save to library:", error);
     const errorResponse: ActionErrorResponse = {
       ok: false,
-      error: uErr[0].message,
+      error: error instanceof Error ? error.message : "Failed to save to library",
     };
     return json(errorResponse, {
       status: 400,
       headers: { "Content-Type": "application/json" },
     });
   }
-
-  try {
-    await db.metricEvent.create({
-      data: {
-        id: crypto.randomUUID(),
-        shop,
-        eventType: 'GENERATED',
-        productId,
-        imageUrl,
-      },
-    });
-  } catch {}
-
-  const successResponse: LibraryActionResponse = {
-    ok: true,
-    savedToLibrary: true,
-  };
-  return json(successResponse, {
-    headers: { "Content-Type": "application/json" },
-  });
 }
 
 export async function handleDeleteFromLibrary(
@@ -154,50 +133,10 @@ export async function handleDeleteFromLibrary(
   const imageUrl = String(formData.get("imageUrl") || "");
   const productId = String(formData.get("productId") || "");
 
-  const query = `#graphql
-    query GetLibrary($id: ID!) {
-      product(id: $id) {
-        id
-        metafield(namespace: "dreamshot", key: "ai_library") { id value }
-      }
-    }
-  `;
-  const qRes = await admin.graphql(query, { variables: { id: productId } });
-  const qJson = await qRes.json();
-  const current = qJson?.data?.product?.metafield?.value;
-  let libraryItems: LibraryItem[] = [];
-  try {
-    libraryItems = current ? JSON.parse(current) : [];
-  } catch {
-    libraryItems = [];
-  }
-
-  const filtered = libraryItems.filter((item: any) =>
-    typeof item === "string" ? item !== imageUrl : item?.imageUrl !== imageUrl,
-  );
-
-  const setMutation = `#graphql
-    mutation SetLibrary($ownerId: ID!, $value: String!) {
-      metafieldsSet(metafields: [{
-        ownerId: $ownerId,
-        namespace: "dreamshot",
-        key: "ai_library",
-        type: "json",
-        value: $value
-      }]) {
-        userErrors { field message }
-      }
-    }
-  `;
-  const sRes = await admin.graphql(setMutation, {
-    variables: { ownerId: productId, value: JSON.stringify(filtered) },
-  });
-  const sJson = await sRes.json();
-  const uErr = sJson?.data?.metafieldsSet?.userErrors;
-  if (uErr && uErr.length) {
+  if (!imageUrl || !productId) {
     const errorResponse: ActionErrorResponse = {
       ok: false,
-      error: uErr[0].message,
+      error: "Missing imageUrl or productId",
     };
     return json(errorResponse, {
       status: 400,
@@ -206,24 +145,57 @@ export async function handleDeleteFromLibrary(
   }
 
   try {
-    await db.metricEvent.create({
-      data: {
-        id: crypto.randomUUID(),
-        shop,
-        eventType: 'DRAFT_DELETED',
-        productId,
-        imageUrl,
-      },
-    });
-  } catch {}
+    const aiStudioMediaService = new AIStudioMediaService(admin, db);
 
-  const successResponse: LibraryActionResponse = {
-    ok: true,
-    deletedFromLibrary: true,
-  };
-  return json(successResponse, {
-    headers: { "Content-Type": "application/json" },
-  });
+    // Find the image in database by URL
+    const images = await aiStudioMediaService.getAllImages(shop, productId);
+    const imageToDelete = images.find(img => img.url === imageUrl);
+
+    if (!imageToDelete) {
+      const errorResponse: ActionErrorResponse = {
+        ok: false,
+        error: "Image not found in library",
+      };
+      return json(errorResponse, {
+        status: 404,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    // Delete from database (and gallery if published)
+    await aiStudioMediaService.deleteImage(imageToDelete.id);
+
+    // Log metric event
+    try {
+      await db.metricEvent.create({
+        data: {
+          id: crypto.randomUUID(),
+          shop,
+          eventType: 'DRAFT_DELETED',
+          productId,
+          imageUrl,
+        },
+      });
+    } catch {}
+
+    const successResponse: LibraryActionResponse = {
+      ok: true,
+      deletedFromLibrary: true,
+    };
+    return json(successResponse, {
+      headers: { "Content-Type": "application/json" },
+    });
+  } catch (error) {
+    console.error("Failed to delete from library:", error);
+    const errorResponse: ActionErrorResponse = {
+      ok: false,
+      error: error instanceof Error ? error.message : "Failed to delete from library",
+    };
+    return json(errorResponse, {
+      status: 500,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
 }
 
 export async function handleUpload(
@@ -236,6 +208,7 @@ export async function handleUpload(
 
   const file = formData.get("file") as File;
   const productId = String(formData.get("productId") || "");
+  const variantIdsJson = String(formData.get("variantIds") || "");
 
   console.log("[UPLOAD:SERVER] File info:", {
     hasFile: !!file,
@@ -258,88 +231,45 @@ export async function handleUpload(
     });
   }
 
+  // Parse variant IDs if provided
+  let variantIds: string[] = [];
+  if (variantIdsJson) {
+    try {
+      const parsed = JSON.parse(variantIdsJson);
+      variantIds = Array.isArray(parsed) ? parsed : [];
+    } catch {
+      variantIds = [];
+    }
+  }
+
   try {
-    console.log("[UPLOAD:SERVER] Step 1/4: Uploading to Shopify...");
+    console.log("[UPLOAD:SERVER] Step 1/3: Uploading to Shopify...");
     const uploadedFile = await uploadImageToShopify(
       admin,
       file,
       `AI Studio upload - ${new Date().toISOString()}`,
     );
-    console.log("[UPLOAD:SERVER] Step 1/4: ✓ Uploaded to Shopify:", uploadedFile.url);
+    console.log("[UPLOAD:SERVER] Step 1/3: ✓ Uploaded to Shopify:", uploadedFile.url);
 
-    console.log("[UPLOAD:SERVER] Step 2/4: Fetching current library...");
-    const query = `#graphql
-      query GetLibrary($id: ID!) {
-        product(id: $id) {
-          id
-          metafield(namespace: "dreamshot", key: "ai_library") {
-            id
-            value
-          }
-        }
-      }
-    `;
+    console.log("[UPLOAD:SERVER] Step 2/3: Saving to library database...");
+    const aiStudioMediaService = new AIStudioMediaService(admin, db);
 
-    const qRes = await admin.graphql(query, {
-      variables: { id: productId },
-    });
-    const qJson = await qRes.json();
-
-    const current = qJson?.data?.product?.metafield?.value;
-    let libraryItems: LibraryItem[] = [];
-    try {
-      libraryItems = current ? JSON.parse(current) : [];
-      console.log("[UPLOAD:SERVER] Step 2/4: ✓ Current library has", libraryItems.length, "items");
-    } catch {
-      libraryItems = [];
-      console.log("[UPLOAD:SERVER] Step 2/4: ✓ No existing library, starting fresh");
-    }
-
-    libraryItems.push({
-      imageUrl: uploadedFile.url,
-      sourceUrl: null,
-    });
-    console.log("[UPLOAD:SERVER] Step 3/4: Updating library metafield...");
-
-    const setMutation = `#graphql
-      mutation SetLibrary($ownerId: ID!, $value: String!) {
-        metafieldsSet(metafields: [{
-          ownerId: $ownerId,
-          namespace: "dreamshot",
-          key: "ai_library",
-          type: "json",
-          value: $value
-        }]) {
-          metafields { id }
-          userErrors { field message }
-        }
-      }
-    `;
-
-    const setRes = await admin.graphql(setMutation, {
-      variables: {
-        ownerId: productId,
-        value: JSON.stringify(libraryItems),
-      },
-    });
-
-    const setJson = await setRes.json();
-
-    if (setJson?.data?.metafieldsSet?.userErrors?.length > 0) {
-      console.error("[UPLOAD:SERVER] ✗ Metafield update failed:", setJson.data.metafieldsSet.userErrors);
-      const errorResponse: ActionErrorResponse = {
-        ok: false,
-        error: setJson.data.metafieldsSet.userErrors[0].message,
-      };
-      return json(errorResponse, {
-        status: 400,
-        headers: { "Content-Type": "application/json" },
+    // Check if already exists
+    const exists = await aiStudioMediaService.imageExists(shop, productId, uploadedFile.url);
+    if (!exists) {
+      await aiStudioMediaService.saveToLibrary({
+        shop,
+        productId,
+        url: uploadedFile.url,
+        source: "MANUAL_UPLOAD",
+        variantIds,
       });
+      console.log("[UPLOAD:SERVER] Step 2/3: ✓ Saved to library database");
+    } else {
+      console.log("[UPLOAD:SERVER] Step 2/3: ✓ Image already exists in library");
     }
 
-    console.log("[UPLOAD:SERVER] Step 3/4: ✓ Metafield updated, now has", libraryItems.length, "items");
-
-    console.log("[UPLOAD:SERVER] Step 4/4: Logging metric event...");
+    console.log("[UPLOAD:SERVER] Step 3/3: Logging metric event...");
     try {
       await db.metricEvent.create({
         data: {
@@ -350,9 +280,9 @@ export async function handleUpload(
           imageUrl: uploadedFile.url,
         },
       });
-      console.log("[UPLOAD:SERVER] Step 4/4: ✓ Metric event logged");
+      console.log("[UPLOAD:SERVER] Step 3/3: ✓ Metric event logged");
     } catch (loggingError) {
-      console.warn("[UPLOAD:SERVER] Step 4/4: ⚠ Failed to log upload event:", loggingError);
+      console.warn("[UPLOAD:SERVER] Step 3/3: ⚠ Failed to log upload event:", loggingError);
     }
 
     const duration = Date.now() - startTime;
@@ -468,6 +398,7 @@ export async function handleCompleteUpload(
   const resourceUrl = String(formData.get("resourceUrl") || "");
   const filename = String(formData.get("filename") || "");
   const productId = String(formData.get("productId") || "");
+  const variantIdsJson = String(formData.get("variantIds") || "");
 
   console.log("[COMPLETE_UPLOAD] Request info:", {
     resourceUrl,
@@ -487,6 +418,17 @@ export async function handleCompleteUpload(
     });
   }
 
+  // Parse variant IDs if provided
+  let variantIds: string[] = [];
+  if (variantIdsJson) {
+    try {
+      const parsed = JSON.parse(variantIdsJson);
+      variantIds = Array.isArray(parsed) ? parsed : [];
+    } catch {
+      variantIds = [];
+    }
+  }
+
   try {
     console.log("[COMPLETE_UPLOAD] Step 1/3: Finalizing Shopify upload...");
     const uploadedFile = await finalizeShopifyUpload(
@@ -497,79 +439,26 @@ export async function handleCompleteUpload(
     );
     console.log("[COMPLETE_UPLOAD] Step 1/3: ✓ Finalized:", uploadedFile.url);
 
-    console.log("[COMPLETE_UPLOAD] Step 2/3: Fetching current library...");
-    const query = `#graphql
-      query GetLibrary($id: ID!) {
-        product(id: $id) {
-          id
-          metafield(namespace: "dreamshot", key: "ai_library") {
-            id
-            value
-          }
-        }
-      }
-    `;
+    console.log("[COMPLETE_UPLOAD] Step 2/3: Saving to library database...");
+    const aiStudioMediaService = new AIStudioMediaService(admin, db);
 
-    const qRes = await admin.graphql(query, {
-      variables: { id: productId },
-    });
-    const qJson = await qRes.json();
-
-    const current = qJson?.data?.product?.metafield?.value;
-    let libraryItems: LibraryItem[] = [];
-    try {
-      libraryItems = current ? JSON.parse(current) : [];
-      console.log("[COMPLETE_UPLOAD] Step 2/3: ✓ Current library has", libraryItems.length, "items");
-    } catch {
-      libraryItems = [];
-      console.log("[COMPLETE_UPLOAD] Step 2/3: ✓ No existing library, starting fresh");
-    }
-
-    libraryItems.push({
-      imageUrl: uploadedFile.url,
-      sourceUrl: null,
-    });
-
-    console.log("[COMPLETE_UPLOAD] Step 3/3: Updating library metafield...");
-    const setMutation = `#graphql
-      mutation SetLibrary($ownerId: ID!, $value: String!) {
-        metafieldsSet(metafields: [{
-          ownerId: $ownerId,
-          namespace: "dreamshot",
-          key: "ai_library",
-          type: "json",
-          value: $value
-        }]) {
-          metafields { id }
-          userErrors { field message }
-        }
-      }
-    `;
-
-    const setRes = await admin.graphql(setMutation, {
-      variables: {
-        ownerId: productId,
-        value: JSON.stringify(libraryItems),
-      },
-    });
-
-    const setJson = await setRes.json();
-
-    if (setJson?.data?.metafieldsSet?.userErrors?.length > 0) {
-      console.error("[COMPLETE_UPLOAD] ✗ Metafield update failed:", setJson.data.metafieldsSet.userErrors);
-      const errorResponse: ActionErrorResponse = {
-        ok: false,
-        error: setJson.data.metafieldsSet.userErrors[0].message,
-      };
-      return json(errorResponse, {
-        status: 400,
-        headers: { "Content-Type": "application/json" },
+    // Check if already exists
+    const exists = await aiStudioMediaService.imageExists(shop, productId, uploadedFile.url);
+    if (!exists) {
+      await aiStudioMediaService.saveToLibrary({
+        shop,
+        productId,
+        url: uploadedFile.url,
+        source: "MANUAL_UPLOAD",
+        variantIds,
       });
+      console.log("[COMPLETE_UPLOAD] Step 2/3: ✓ Saved to library database");
+    } else {
+      console.log("[COMPLETE_UPLOAD] Step 2/3: ✓ Image already exists in library");
     }
-
-    console.log("[COMPLETE_UPLOAD] Step 3/3: ✓ Metafield updated, now has", libraryItems.length, "items");
 
     // Log metric event
+    console.log("[COMPLETE_UPLOAD] Step 3/3: Logging metric event...");
     try {
       await db.metricEvent.create({
         data: {
