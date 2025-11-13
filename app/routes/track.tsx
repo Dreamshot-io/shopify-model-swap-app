@@ -1,4 +1,4 @@
-import type { ActionFunctionArgs } from '@remix-run/node';
+import type { ActionFunctionArgs, LoaderFunctionArgs } from '@remix-run/node';
 import { json } from '@remix-run/node';
 import { authenticate } from '../shopify.server';
 import db from '../db.server';
@@ -6,43 +6,82 @@ import { AuditService } from '../services/audit.server';
 // import { trackingRateLimiter, applyRateLimit } from '../utils/rate-limiter';
 
 /**
+ * Handle OPTIONS preflight requests for CORS
+ * In Remix, OPTIONS requests go to loader, not action
+ */
+export const loader = async ({ request }: LoaderFunctionArgs) => {
+  if (request.method === 'OPTIONS') {
+    return json({}, {
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type',
+        'Access-Control-Max-Age': '86400', // Cache preflight for 24 hours
+      }
+    });
+  }
+
+  // For non-OPTIONS GET requests, return method not allowed
+  return json({ error: 'Method not allowed. Use POST to track events.' }, {
+    status: 405,
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+    }
+  });
+};
+
+/**
  * Track events from the web pixel (impressions, add-to-cart, purchases)
  */
 export const action = async ({ request }: ActionFunctionArgs) => {
+
   if (request.method !== 'POST') {
-    return json({ error: 'Method not allowed' }, { status: 405 });
+    return json({ error: 'Method not allowed' }, {
+      status: 405,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+      }
+    });
   }
 
   let corsHeaders: Record<string, string> = {};
   let shopDomain: string | undefined;
 
-  // Try app proxy authentication, but allow fallback for direct calls
-  try {
-    const { session, cors } = await authenticate.public.appProxy(request);
-    shopDomain = session?.shop;
-    corsHeaders = cors?.headers || {};
-  } catch {
-    // Allow public access with CORS headers for direct pixel calls
+  // Check if this is a pixel request (no signature = direct browser call)
+  const hasSignature = request.headers.get('x-shopify-hmac-sha256') ||
+                       new URL(request.url).searchParams.has('signature');
+
+  // Try app proxy authentication only if signature present (admin requests)
+  // Pixel requests from storefront won't have signature, so skip auth
+  if (hasSignature) {
+    try {
+      const { session, cors } = await authenticate.public.appProxy(request);
+      shopDomain = session?.shop;
+      corsHeaders = cors?.headers || {};
+    } catch (error) {
+      // If signature present but invalid, log but continue with public access
+      console.warn('[track] App proxy auth failed, using public access', {
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  }
+
+  // Always set CORS headers for pixel requests (direct browser calls)
+  if (!corsHeaders['Access-Control-Allow-Origin']) {
     corsHeaders = {
       'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'POST',
+      'Access-Control-Allow-Methods': 'POST, OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type',
+      'Access-Control-Max-Age': '86400', // Cache preflight for 24 hours
     };
-
-    // Rate limiting temporarily disabled
-    // const rateLimitResult = applyRateLimit(request, trackingRateLimiter);
-    // corsHeaders = { ...corsHeaders, ...rateLimitResult.headers };
-
-    // if (!rateLimitResult.allowed) {
-    //   return json(
-    //     { error: rateLimitResult.message },
-    //     { status: 429, headers: corsHeaders }
-    //   );
-    // }
   }
 
   try {
     const body = await request.json();
+
+    // Log raw body for debugging
+    console.log('[Track API] Raw request body:', JSON.stringify(body, null, 2));
+
     const {
       testId,
       sessionId,
@@ -55,11 +94,26 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       metadata,
     } = body ?? {};
 
+    // Validate and normalize sessionId
+    let normalizedSessionId: string | null = null;
+    if (typeof sessionId === 'string') {
+      normalizedSessionId = sessionId;
+    } else if (sessionId && typeof sessionId === 'object') {
+      console.warn('[Track API] sessionId is an object, attempting to extract:', sessionId);
+      // Try to extract string from object (shouldn't happen, but handle it)
+      normalizedSessionId = String(sessionId);
+    } else if (sessionId === null || sessionId === undefined) {
+      console.warn('[Track API] sessionId is null/undefined');
+    } else {
+      console.warn('[Track API] sessionId has unexpected type:', typeof sessionId, sessionId);
+      normalizedSessionId = String(sessionId);
+    }
+
     // Validate required fields with detailed logging
-    if (!testId || !sessionId || !eventType || !productId || !activeCase) {
+    if (!testId || !normalizedSessionId || !eventType || !productId || !activeCase) {
       const missingFields = {
         hasTestId: Boolean(testId),
-        hasSessionId: Boolean(sessionId),
+        hasSessionId: Boolean(normalizedSessionId),
         hasEventType: Boolean(eventType),
         hasProductId: Boolean(productId),
         hasActiveCase: Boolean(activeCase),
@@ -67,7 +121,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
       console.warn('[Track API] Missing required fields', {
         missingFields,
-        receivedBody: { testId, sessionId, eventType, productId, activeCase },
+        receivedBody: {
+          testId,
+          sessionId: { raw: sessionId, normalized: normalizedSessionId, type: typeof sessionId },
+          eventType,
+          productId,
+          activeCase
+        },
         shop: shopDomain,
       });
 
@@ -82,7 +142,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           error: 'Missing required fields',
           details: missingFields,
         },
-        { status: 400, headers: corsHeaders },
+        {
+          status: 400,
+          headers: {
+            ...corsHeaders,
+            'Access-Control-Allow-Origin': '*',
+          }
+        },
       );
     }
 
@@ -105,7 +171,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
       return json(
         { error: 'Invalid event type', received: eventType, valid: validEventTypes },
-        { status: 400, headers: corsHeaders },
+        {
+          status: 400,
+          headers: {
+            ...corsHeaders,
+            'Access-Control-Allow-Origin': '*',
+          }
+        },
       );
     }
 
@@ -129,7 +201,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
       return json(
         { error: 'Invalid active case', received: activeCase, valid: validCases },
-        { status: 400, headers: corsHeaders },
+        {
+          status: 400,
+          headers: {
+            ...corsHeaders,
+            'Access-Control-Allow-Origin': '*',
+          }
+        },
       );
     }
 
@@ -151,7 +229,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         shop: shopDomain,
         eventType,
         productId,
-        sessionId,
+        sessionId: normalizedSessionId || sessionId,
       });
 
       await AuditService.logApiError(
@@ -162,7 +240,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
       return json(
         { error: 'Test not found or unauthorized', testId, shop: shopDomain },
-        { status: 404, headers: corsHeaders },
+        {
+          status: 404,
+          headers: {
+            ...corsHeaders,
+            'Access-Control-Allow-Origin': '*',
+          }
+        },
       );
     }
 
@@ -173,11 +257,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const normalizedVariantId = normalizeVariantId(variantId ?? null);
 
     // Check for duplicate events (only for impressions to prevent double-counting)
-    if (eventType === 'IMPRESSION') {
+    if (eventType === 'IMPRESSION' && normalizedSessionId) {
       const duplicateEvent = await db.aBTestEvent.findFirst({
         where: {
           testId,
-          sessionId,
+          sessionId: normalizedSessionId, // Use normalized version
           eventType,
           productId,
         },
@@ -188,7 +272,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         if (Math.random() < 0.01) {
           console.log('[Track API] Duplicate impression detected and skipped', {
             testId,
-            sessionId,
+            sessionId: normalizedSessionId,
             productId,
             existingEventId: duplicateEvent.id,
             shop: shopDomain,
@@ -205,10 +289,15 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     // Create the event
     let createdEvent;
     try {
+      // Use normalizedSessionId to ensure it's a string
+      if (!normalizedSessionId) {
+        throw new Error('sessionId is required but was null or invalid');
+      }
+
       createdEvent = await db.aBTestEvent.create({
         data: {
           testId,
-          sessionId,
+          sessionId: normalizedSessionId, // Use normalized version
           eventType,
           activeCase, // What was showing when event occurred
           productId,
@@ -235,7 +324,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
       return json(
         { error: 'Failed to create event in database', details: (dbError as Error).message },
-        { status: 500, headers: corsHeaders },
+        {
+          status: 500,
+          headers: {
+            ...corsHeaders,
+            'Access-Control-Allow-Origin': '*',
+          }
+        },
       );
     }
 
@@ -243,7 +338,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     if (eventType === 'PURCHASE' || Math.random() < 0.1) {
       await AuditService.logUserAction(
         `CUSTOMER_${eventType}`,
-        sessionId,
+        normalizedSessionId || 'unknown',
         shopDomain!,
         {
           testId,
@@ -257,12 +352,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
     // Log successful tracking (sampled for non-purchase events)
     if (eventType === 'PURCHASE' || Math.random() < 0.05) {
-      console.log('[Track API] Event tracked successfully', {
+      console.log('[Track API] ✅ Event tracked successfully', {
         eventId: createdEvent.id,
         eventType,
         testId,
         activeCase,
         productId,
+        sessionId: normalizedSessionId,
         shop: shopDomain,
       });
     }
@@ -304,7 +400,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         error: message,
         details: process.env.NODE_ENV === 'development' ? (error instanceof Error ? error.stack : undefined) : undefined,
       },
-      { status: 500, headers: corsHeaders }
+      {
+        status: 500,
+        headers: {
+          ...corsHeaders,
+          'Access-Control-Allow-Origin': '*',
+        }
+      }
     );
   }
 };

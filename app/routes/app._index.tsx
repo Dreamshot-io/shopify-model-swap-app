@@ -12,10 +12,11 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     const appUrl =
       process.env.SHOPIFY_APP_URL || "https://shopify.dreamshot.io";
 
+    console.log("[app._index] Attempting to auto-connect web pixel...");
+
     // Try to create pixel (will fail if already exists, which is fine)
-    await admin
-      .graphql(
-        `
+    const response = await admin.graphql(
+      `
       mutation webPixelCreate($webPixel: WebPixelInput!) {
         webPixelCreate(webPixel: $webPixel) {
           userErrors { field message code }
@@ -23,24 +24,36 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         }
       }
     `,
-        {
-          variables: {
-            webPixel: {
-              settings: {
-                app_url: appUrl,
-                enabled: "true",
-                debug: "false",
-              },
+      {
+        variables: {
+          webPixel: {
+            settings: {
+              app_url: appUrl,
+              enabled: "true",
+              debug: "true", // Enable debug for development
             },
           },
         },
-      )
-      .catch((err) => {
-        // Ignore errors - pixel might already exist
-        console.log("Web pixel auto-connect attempted");
-      });
+      },
+    );
+
+    const result = await response.json();
+
+    if (result.data?.webPixelCreate?.userErrors?.length > 0) {
+      const error = result.data.webPixelCreate.userErrors[0];
+      if (error.code === "PIXEL_ALREADY_EXISTS" || error.message.includes("already exists")) {
+        console.log("[app._index] Pixel already exists - should be connected");
+      } else {
+        console.warn("[app._index] Pixel creation error:", error.message, error.code);
+      }
+    } else if (result.data?.webPixelCreate?.webPixel?.id) {
+      console.log("[app._index] ✅ Pixel created successfully:", result.data.webPixelCreate.webPixel.id);
+    } else {
+      console.warn("[app._index] Unexpected response from webPixelCreate:", result);
+    }
   } catch (error) {
-    // Silent fail - don't break the app load
+    // Log error but don't break the app load
+    console.error("[app._index] Failed to auto-connect pixel:", error instanceof Error ? error.message : error);
   }
 
   return json({});

@@ -30,7 +30,7 @@ api_version = "2025-07"
 
 [access_scopes]
 # Learn more at https://shopify-txl.dev/docs/apps/tools/cli/configuration#access_scopes
-scopes = "read_orders,write_files,write_products,write_pixels,write_script_tags"
+scopes = "read_orders,write_files,write_products,write_pixels,read_customer_events,write_script_tags"
 
 [auth]
 redirect_urls = [

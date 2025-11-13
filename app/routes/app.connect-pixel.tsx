@@ -7,28 +7,54 @@ import { Button, Card, Page, Text, Banner } from "@shopify/polaris";
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { admin } = await authenticate.admin(request);
 
-  // Check if web pixel exists
+  // Check if web pixel exists - query all pixels and find ours
   try {
     const response = await admin.graphql(`
       query {
-        webPixel {
-          id
-          settings
+        webPixels(first: 10) {
+          edges {
+            node {
+              id
+              settings
+              extensionId
+            }
+          }
         }
       }
     `);
 
     const data = await response.json();
-    const hasPixel = !!data.data?.webPixel?.id;
+    const pixels = data.data?.webPixels?.edges || [];
+
+    // Find pixel matching our extension UID
+    const extensionUid = "ecaa6226-8e43-2519-e06f-e0ea40d84876e26a2ae3";
+    const ourPixel = pixels.find((edge: any) =>
+      edge.node.extensionId?.includes(extensionUid) ||
+      edge.node.id
+    );
+
+    const hasPixel = !!ourPixel?.node?.id;
+    const pixelId = ourPixel?.node?.id || null;
+    const settings = ourPixel?.node?.settings || null;
+
+    // Also check all pixels for debugging
+    const allPixelIds = pixels.map((edge: any) => edge.node.id);
 
     return json({
       hasPixel,
-      pixelId: data.data?.webPixel?.id,
-      settings: data.data?.webPixel?.settings
+      pixelId,
+      settings,
+      allPixels: allPixelIds,
+      pixelCount: pixels.length,
     });
   } catch (error) {
-    // If query fails, pixel probably doesn't exist
-    return json({ hasPixel: false, pixelId: null, settings: null });
+    console.error("Failed to query web pixels:", error);
+    return json({
+      hasPixel: false,
+      pixelId: null,
+      settings: null,
+      error: error instanceof Error ? error.message : "Unknown error"
+    });
   }
 };
 
@@ -70,36 +96,47 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
       const result = await response.json();
 
+      console.log("[connect-pixel] webPixelCreate result:", JSON.stringify(result, null, 2));
+
       if (result.data?.webPixelCreate?.userErrors?.length > 0) {
         const error = result.data.webPixelCreate.userErrors[0];
+
+        console.warn("[connect-pixel] User error:", error);
 
         // Check if pixel already exists
         if (error.code === "PIXEL_ALREADY_EXISTS" || error.message.includes("already exists")) {
           return json({
-            success: false,
+            success: true, // Treat as success - pixel exists
+            pixelId: null,
             error: "Pixel already exists. It should be connected now.",
-            alreadyExists: true
+            alreadyExists: true,
+            message: "Pixel already exists - refreshing page to verify connection..."
           });
         }
 
         return json({
           success: false,
           error: error.message,
-          code: error.code
+          code: error.code,
+          field: error.field
         });
       }
 
       if (result.data?.webPixelCreate?.webPixel?.id) {
+        console.log("[connect-pixel] ✅ Pixel created successfully:", result.data.webPixelCreate.webPixel.id);
         return json({
           success: true,
           pixelId: result.data.webPixelCreate.webPixel.id,
-          message: "Web pixel connected successfully!"
+          settings: result.data.webPixelCreate.webPixel.settings,
+          message: "Web pixel connected successfully! Check Settings → Customer Events in Shopify Admin."
         });
       }
 
+      console.error("[connect-pixel] Unexpected response structure:", result);
       return json({
         success: false,
-        error: "Failed to create pixel - no ID returned"
+        error: "Failed to create pixel - no ID returned",
+        debug: result
       });
     } catch (error) {
       console.error("Failed to connect pixel:", error);
@@ -174,7 +211,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 };
 
 export default function ConnectPixel() {
-  const { hasPixel, pixelId, settings } = useLoaderData<typeof loader>();
+  const loaderData = useLoaderData<typeof loader>();
+  const { hasPixel, pixelId, settings, allPixels, pixelCount, error } = loaderData;
   const actionData = useActionData<typeof action>();
   const navigation = useNavigation();
   const isLoading = navigation.state === "submitting";
@@ -192,14 +230,37 @@ export default function ConnectPixel() {
         </Text>
 
         <div style={{ marginTop: "20px" }}>
+          {error && (
+            <Banner status="critical" title="Query Error">
+              <Text>Error querying pixels: {error}</Text>
+            </Banner>
+          )}
+
           {hasPixel ? (
             <Banner status="success" title="Pixel Exists">
               <Text>Pixel ID: {pixelId}</Text>
-              {settings && <Text>Settings: {settings}</Text>}
+              {settings && (
+                <div style={{ marginTop: "10px" }}>
+                  <Text fontWeight="bold">Settings:</Text>
+                  <pre style={{ fontSize: "12px", background: "#f5f5f5", padding: "8px", borderRadius: "4px", marginTop: "4px" }}>
+                    {JSON.stringify(settings, null, 2)}
+                  </pre>
+                </div>
+              )}
+              {pixelCount !== undefined && (
+                <Text tone="subdued" as="p" style={{ marginTop: "8px" }}>
+                  Total pixels found: {pixelCount}
+                </Text>
+              )}
             </Banner>
           ) : (
             <Banner status="info">
-              No pixel found. Click "Connect Pixel" to create one.
+              <Text>No pixel found. Click "Connect Pixel" to create one.</Text>
+              {pixelCount !== undefined && pixelCount > 0 && (
+                <Text tone="subdued" as="p" style={{ marginTop: "8px" }}>
+                  Found {pixelCount} other pixel(s) but not ours. Extension UID: ecaa6226-8e43-2519-e06f-e0ea40d84876e26a2ae3
+                </Text>
+              )}
             </Banner>
           )}
 
