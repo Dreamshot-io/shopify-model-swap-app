@@ -1,6 +1,7 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from '@remix-run/node';
 import { json } from '@remix-run/node';
 import { SimpleRotationService } from '../services/simple-rotation.server';
+import { CompatibilityRotationService } from '../services/compatibility-rotation.server';
 import { AuditService } from '../services/audit.server';
 import { authenticate } from '../shopify.server';
 import db from '../db.server';
@@ -83,16 +84,20 @@ async function handleRotationRequest(request: Request) {
           }
         };
 
-        const result = await SimpleRotationService.rotateTest(
+        // Use CompatibilityRotationService for automatic V1/V2 selection
+        const compatibilityService = new CompatibilityRotationService(admin as any, db);
+
+        // Determine target case (toggle from current)
+        const targetCase = test.currentCase === 'BASE' ? 'TEST' : 'BASE';
+
+        const result = await compatibilityService.rotateTest(
           test.id,
-          'CRON',
-          undefined,
-          admin as any
+          targetCase,
+          'CRON'
         );
 
         results.push({
           testId: test.id,
-          success: true,
           ...result,
         });
       } catch (error) {

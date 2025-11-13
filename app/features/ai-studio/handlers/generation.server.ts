@@ -2,6 +2,7 @@ import { json } from '@remix-run/node';
 import type { AdminApiContext } from '@shopify/shopify-app-remix/server';
 import db from '../../../db.server';
 import { generateAIImage } from '../../../services/ai-providers.server';
+import { AIStudioMediaService } from '../../../services/ai-studio-media.server';
 import type { GenerateImageResponse, ActionErrorResponse } from '../types';
 
 export async function handleGenerate(formData: FormData, shop: string, admin?: AdminApiContext) {
@@ -61,59 +62,33 @@ export async function handleGenerate(formData: FormData, shop: string, admin?: A
 			console.warn(`[HANDLER:${requestId}] Failed to log generation event:`, loggingError);
 		}
 
-		// Auto-publish to product media if admin context is available
+		// Save to library instead of auto-publishing
 		if (admin && productId) {
 			try {
-				console.log(`[HANDLER:${requestId}] Auto-publishing to product media...`);
+				console.log(`[HANDLER:${requestId}] Saving to library...`);
 
-				const publishMutation = `
-          mutation ProductCreateMedia($productId: ID!, $media: [CreateMediaInput!]!) {
-            productCreateMedia(productId: $productId, media: $media) {
-              media {
-                ... on MediaImage {
-                  id
-                  image {
-                    url
-                  }
-                }
-              }
-              mediaUserErrors {
-                field
-                message
-              }
-            }
-          }
-        `;
+				const aiStudioMediaService = new AIStudioMediaService(admin, db);
 
-				const publishResponse = await admin.graphql(publishMutation, {
-					variables: {
-						productId,
-						media: [
-							{
-								originalSource: result.imageUrl,
-								mediaContentType: 'IMAGE',
-								alt: `AI generated: ${prompt.substring(0, 50)}`,
-							},
-						],
-					},
+				const savedImage = await aiStudioMediaService.saveToLibrary({
+					shop,
+					productId,
+					url: result.imageUrl,
+					source: "AI_GENERATED",
+					prompt,
+					sourceImageUrl,
+					aiProvider: 'fal', // or detect from the provider used
 				});
 
-				const publishData = await publishResponse.json();
+				console.log(
+					`[HANDLER:${requestId}] ✓ Saved to library:`,
+					savedImage.id
+				);
 
-				if (publishData.data?.productCreateMedia?.mediaUserErrors?.length > 0) {
-					console.warn(
-						`[HANDLER:${requestId}] Auto-publish errors:`,
-						publishData.data.productCreateMedia.mediaUserErrors,
-					);
-				} else if (publishData.data?.productCreateMedia?.media?.[0]) {
-					console.log(
-						`[HANDLER:${requestId}] ✓ Auto-published to product media:`,
-						publishData.data.productCreateMedia.media[0].id,
-					);
-				}
-			} catch (publishError) {
-				console.warn(`[HANDLER:${requestId}] Auto-publish failed:`, publishError);
-				// Don't fail the generation if auto-publish fails
+				// Add library image info to the response
+				result.libraryImageId = savedImage.id;
+			} catch (saveError) {
+				console.warn(`[HANDLER:${requestId}] Failed to save to library:`, saveError);
+				// Don't fail the generation if saving to library fails
 			}
 		}
 

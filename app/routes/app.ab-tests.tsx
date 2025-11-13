@@ -24,10 +24,13 @@ import {
   QuestionCircleIcon,
 } from "@shopify/polaris-icons";
 import { TitleBar, useAppBridge } from "@shopify/app-bridge-react";
+import type { AdminApiContext } from "@shopify/shopify-app-remix/server";
+import { Prisma } from "@prisma/client";
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
 import { SimpleRotationService } from "../services/simple-rotation.server";
 import { AuditService } from "../services/audit.server";
+import { MediaGalleryService } from "../services/media-gallery.server";
 import {
   ProductSelector,
   ProductNavigationTabs,
@@ -278,21 +281,377 @@ export const action = async ({ request }: ActionFunctionArgs) => {
           );
         }
 
-        // Capture base images
-        const baseImages =
-          testImages.length > 0
-            ? await SimpleRotationService.captureBaseImages(admin, productId)
-            : [];
-
-        // Capture base variant heroes if testing variants
-        let baseHeroImages = new Map();
-        if (variantTests.length > 0) {
-          const variantIds = variantTests.map((v: any) => v.variantId);
-          baseHeroImages = await SimpleRotationService.captureVariantHeroImages(
-            admin,
-            productId,
-            variantIds,
+        if (testImages.length === 0) {
+          return json(
+            {
+              success: false,
+              error: "Select at least one gallery image for the test case",
+            },
+            { status: 400 },
           );
+        }
+
+        const normalizeUrl = (url: string) => {
+          if (!url) return "";
+          const [base] = url.split("?");
+          return base;
+        };
+
+        const mediaGallery = new MediaGalleryService(admin as AdminApiContext);
+
+        // Get assigned product media for base case
+        const productMedia = await mediaGallery.getProductMedia(productId);
+
+        // Validate test images exist in Shopify media library (may not be assigned to product)
+        const testImageUrls = testImages.map((img: any) => img?.url).filter(Boolean);
+        const mediaValidation = await mediaGallery.validateMediaByUrl(productId, testImageUrls);
+
+        if (mediaValidation.missing.length > 0) {
+          return json(
+            {
+              success: false,
+              error: `Test images not found in Shopify media library: ${mediaValidation.missing.join(", ")}`,
+            },
+            { status: 400 },
+          );
+        }
+
+        // Build media map from assigned product media
+        const mediaByUrl = new Map(
+          productMedia.map((media, index) => [
+            normalizeUrl(media.url),
+            {
+              id: media.id,
+              url: media.url,
+              altText: media.altText || undefined,
+              position: index,
+            },
+          ]),
+        );
+
+        // Add validated test images to map (may not be in assigned media)
+        // This ensures all validated images are available for matching
+        console.log(`[ABTest] Validated ${mediaValidation.found.length} test images`);
+        for (const foundMedia of mediaValidation.found) {
+          const normalizedUrl = normalizeUrl(foundMedia.url);
+          console.log(`[ABTest] Processing validated image: ${foundMedia.url} -> normalized: ${normalizedUrl}, mediaId: ${foundMedia.mediaId || '(empty)'}`);
+
+          if (!mediaByUrl.has(normalizedUrl)) {
+            // Add to map even if mediaId is empty (will be resolved later)
+            mediaByUrl.set(normalizedUrl, {
+              id: foundMedia.mediaId || '', // May be empty, will be resolved
+              url: foundMedia.url,
+              altText: foundMedia.altText,
+              position: mediaByUrl.size,
+            });
+            console.log(`[ABTest] Added to mediaByUrl map: ${normalizedUrl}`);
+          } else {
+            const existing = mediaByUrl.get(normalizedUrl);
+            console.log(`[ABTest] Already in map: ${normalizedUrl}, existing id: ${existing?.id || '(empty)'}`);
+            if (foundMedia.mediaId && !existing?.id) {
+              // Update existing entry with mediaId if it was missing
+              if (existing) {
+                existing.id = foundMedia.mediaId;
+                console.log(`[ABTest] Updated mediaId: ${foundMedia.mediaId}`);
+              }
+            }
+          }
+        }
+
+        console.log(`[ABTest] mediaByUrl map now has ${mediaByUrl.size} entries`);
+
+        const baseImages = productMedia.map((media, index) => ({
+          mediaId: media.id,
+          url: media.url,
+          altText: media.altText || undefined,
+          position: index,
+        }));
+
+        const baseMediaIds = baseImages.map((img) => img.mediaId);
+
+        // Resolve test images (handle async mediaId resolution)
+        const resolvedTestImages = await Promise.all(
+          testImages.map(async (img: any, index: number) => {
+            const normalizedUrl = normalizeUrl(img?.url);
+            console.log(`[ABTest] Looking up test image: ${img?.url} -> normalized: ${normalizedUrl}`);
+            const matched = normalizedUrl ? mediaByUrl.get(normalizedUrl) : undefined;
+
+            if (!matched) {
+              // This shouldn't happen after validation, but handle gracefully
+              console.error(`[ABTest] Image not found in mediaByUrl map. Available keys:`, Array.from(mediaByUrl.keys()));
+              throw new Error(
+                `Test image ${img?.url ?? "(missing URL)"} could not be matched to Shopify media.`,
+              );
+            }
+
+            console.log(`[ABTest] Matched image: ${img?.url} -> mediaId: ${matched.id || '(empty, will resolve)'}`);
+
+            // If mediaId is empty, try to resolve it by querying Shopify files API
+            if (!matched.id) {
+              try {
+                // Extract filename from URL for better querying
+                const urlPath = new URL(matched.url).pathname;
+                const filename = urlPath.split('/').pop() || '';
+
+                console.log(`[ABTest] Attempting to resolve mediaId for: ${matched.url}, filename: ${filename}`);
+
+                // Try querying by filename first
+                let fileResponse = await admin.graphql(
+                  `#graphql
+                  query FindMediaByFilename($query: String!) {
+                    files(first: 10, query: $query) {
+                      edges {
+                        node {
+                          ... on MediaImage {
+                            id
+                            image {
+                              url
+                              altText
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }`,
+                  {
+                    variables: {
+                      query: `filename:${filename}`,
+                    },
+                  }
+                );
+
+                let fileData = await fileResponse.json();
+                let fileNode = fileData.data?.files?.edges?.find((edge: any) => {
+                  const nodeUrl = edge.node?.image?.url;
+                  return nodeUrl && normalizeUrl(nodeUrl) === normalizeUrl(matched.url);
+                })?.node;
+
+                // If not found by filename, try by URL
+                if (!fileNode) {
+                  console.log(`[ABTest] Not found by filename, trying URL query`);
+                  fileResponse = await admin.graphql(
+                    `#graphql
+                    query FindMediaByUrl($query: String!) {
+                      files(first: 10, query: $query) {
+                        edges {
+                          node {
+                            ... on MediaImage {
+                              id
+                              image {
+                                url
+                                altText
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }`,
+                    {
+                      variables: {
+                        query: `url:*${filename}*`,
+                      },
+                    }
+                  );
+
+                  fileData = await fileResponse.json();
+                  fileNode = fileData.data?.files?.edges?.find((edge: any) => {
+                    const nodeUrl = edge.node?.image?.url;
+                    return nodeUrl && normalizeUrl(nodeUrl) === normalizeUrl(matched.url);
+                  })?.node;
+                }
+
+                if (fileNode && fileNode.id) {
+                  matched.id = fileNode.id;
+                  matched.altText = fileNode.image?.altText || matched.altText;
+                  console.log(`[ABTest] Successfully resolved mediaId: ${fileNode.id}`);
+                } else {
+                  // Last resort: create media on product from URL to get mediaId
+                  console.log(`[ABTest] MediaId not found via files API, creating media on product from URL`);
+                  try {
+                    const createMediaResponse = await admin.graphql(
+                      `#graphql
+                      mutation ProductCreateMedia($productId: ID!, $media: [CreateMediaInput!]!) {
+                        productCreateMedia(productId: $productId, media: $media) {
+                          media {
+                            id
+                            ... on MediaImage {
+                              id
+                              image {
+                                url
+                                altText
+                              }
+                            }
+                          }
+                          mediaUserErrors {
+                            field
+                            message
+                            code
+                          }
+                        }
+                      }`,
+                      {
+                        variables: {
+                          productId,
+                          media: [{
+                            originalSource: matched.url,
+                            mediaContentType: "IMAGE",
+                            alt: matched.altText || "Test image",
+                          }],
+                        },
+                      }
+                    );
+
+                    const createData = await createMediaResponse.json();
+                    const mediaErrors = createData.data?.productCreateMedia?.mediaUserErrors || [];
+
+                    if (mediaErrors.length > 0) {
+                      throw new Error(
+                        `Failed to create media: ${mediaErrors.map((e: any) => e.message).join(", ")}`
+                      );
+                    }
+
+                    const createdMedia = createData.data?.productCreateMedia?.media?.[0];
+                    if (createdMedia && createdMedia.id) {
+                      matched.id = createdMedia.id;
+                      matched.altText = createdMedia.image?.altText || matched.altText;
+                      console.log(`[ABTest] Successfully created media and got mediaId: ${createdMedia.id}`);
+                    } else {
+                      throw new Error(
+                        `Test image ${img?.url ?? "(missing URL)"} was created on product but mediaId could not be retrieved.`,
+                      );
+                    }
+                  } catch (createError) {
+                    throw new Error(
+                      `Test image ${img?.url ?? "(missing URL)"} exists in library but could not be created on product: ${createError instanceof Error ? createError.message : "Unknown error"}`,
+                    );
+                  }
+                }
+              } catch (error) {
+                console.error(`[ABTest] Error resolving mediaId:`, error);
+                throw new Error(
+                  `Test image ${img?.url ?? "(missing URL)"} exists in library but mediaId could not be resolved: ${error instanceof Error ? error.message : "Unknown error"}`,
+                );
+              }
+            }
+
+            return {
+              mediaId: matched.id,
+              url: matched.url,
+              altText: matched.altText,
+              position:
+                typeof img?.position === "number" && !Number.isNaN(img.position)
+                  ? img.position
+                  : index,
+            };
+          })
+        );
+
+        // Sort and reindex positions
+        const sortedTestImages = resolvedTestImages
+          .sort((a, b) => a.position - b.position)
+          .map((img, idx) => ({
+            ...img,
+            position: idx,
+          }));
+
+        // Use only the test images - don't fill with base images
+        const testMediaIds = sortedTestImages.map((img) => img.mediaId);
+
+        const variantHeroSelections: Array<{
+          variantId: string;
+          variantName: string;
+          baseHeroMediaId: string | null;
+          baseHeroImage?: { url: string; mediaId: string; position: number };
+          testHeroMediaId: string | null;
+          testHeroImage: { url: string; mediaId: string; position: number };
+        }> = [];
+
+        if (variantTests.length > 0) {
+          const variantResponse = await admin.graphql(
+            `#graphql
+              query GetVariantHeroes($productId: ID!) {
+                product(id: $productId) {
+                  variants(first: 250) {
+                    edges {
+                      node {
+                        id
+                        displayName
+                        image {
+                          id
+                          url
+                        }
+                      }
+                    }
+                  }
+                }
+              }`,
+            { variables: { productId } },
+          );
+
+          const variantData = await variantResponse.json();
+          const variantEdges =
+            variantData.data?.product?.variants?.edges ?? [];
+
+          const variantMap = new Map<
+            string,
+            {
+              displayName: string;
+              baseHeroMediaId: string | null;
+              baseHeroUrl: string | null;
+            }
+          >();
+
+          for (const edge of variantEdges) {
+            const node = edge?.node;
+            if (!node?.id) {
+              continue;
+            }
+            variantMap.set(node.id, {
+              displayName: node.displayName || node.id,
+              baseHeroMediaId: node.image?.id ?? null,
+              baseHeroUrl: node.image?.url ?? null,
+            });
+          }
+
+          for (const variantTest of variantTests) {
+            const variantId = variantTest.variantId;
+            const variantInfo = variantMap.get(variantId);
+
+            if (!variantInfo) {
+              throw new Error(`Variant ${variantId} not found on the product`);
+            }
+
+            const normalizedHeroUrl = normalizeUrl(variantTest.heroImage?.url);
+            const heroMedia = normalizedHeroUrl
+              ? mediaByUrl.get(normalizedHeroUrl)
+              : undefined;
+
+            if (!heroMedia) {
+              throw new Error(
+                `Variant hero image ${variantTest.heroImage?.url ?? "(missing URL)"} is not present in the Shopify product gallery.`,
+              );
+            }
+
+            variantHeroSelections.push({
+              variantId,
+              variantName: variantInfo.displayName,
+              baseHeroMediaId: variantInfo.baseHeroMediaId,
+              baseHeroImage:
+                variantInfo.baseHeroMediaId && variantInfo.baseHeroUrl
+                  ? {
+                      url: variantInfo.baseHeroUrl,
+                      mediaId: variantInfo.baseHeroMediaId,
+                      position: 0,
+                    }
+                  : undefined,
+              testHeroMediaId: heroMedia.id,
+              testHeroImage: {
+                url: heroMedia.url,
+                mediaId: heroMedia.id,
+                position: 0,
+              },
+            });
+          }
         }
 
         // Create the test (default 30 minute rotation)
@@ -303,39 +662,26 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             name,
             status: "DRAFT",
             trafficSplit: 50,
-            baseImages: baseImages,
-            testImages: testImages,
+            baseImages,
+            testImages: sortedTestImages,
+            baseMediaIds,
+            testMediaIds,
             currentCase: "BASE",
             rotationHours: 0.5, // Default 30 minutes
             createdBy: session.id,
           },
         });
 
-        // Create variant test records if any
-        for (const variantTest of variantTests) {
-          // Additional safety check before accessing heroImage.url
-          if (
-            !variantTest.heroImage ||
-            !variantTest.heroImage.url ||
-            typeof variantTest.heroImage.url !== 'string'
-          ) {
-            console.warn(
-              `Skipping invalid variant test: missing heroImage.url for variant ${variantTest.variantId}`,
-            );
-            continue;
-          }
-
-          const baseHero = baseHeroImages.get(variantTest.variantId);
+        for (const heroSelection of variantHeroSelections) {
           await db.aBTestVariant.create({
             data: {
               testId: test.id,
-              shopifyVariantId: variantTest.variantId,
-              variantName: variantTest.variantName || variantTest.variantId,
-              baseHeroImage: baseHero || null,
-              testHeroImage: {
-                url: variantTest.heroImage.url,
-                position: 0,
-              },
+              shopifyVariantId: heroSelection.variantId,
+              variantName: heroSelection.variantName,
+              baseHeroMediaId: heroSelection.baseHeroMediaId,
+              testHeroMediaId: heroSelection.testHeroMediaId,
+              baseHeroImage: heroSelection.baseHeroImage ?? Prisma.JsonNull,
+              testHeroImage: heroSelection.testHeroImage,
             },
           });
         }
@@ -358,7 +704,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
       case "pause": {
         const testId = formData.get("testId") as string;
-        await SimpleRotationService.pauseTest(testId, session.id, admin);
+        await SimpleRotationService.pauseTest(
+          testId,
+          session.id,
+          admin as AdminApiContext,
+        );
         return json({
           success: true,
           message: "Test paused and restored to base case",
@@ -367,7 +717,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
       case "complete": {
         const testId = formData.get("testId") as string;
-        await SimpleRotationService.completeTest(testId, admin, session.id);
+        await SimpleRotationService.completeTest(
+          testId,
+          admin as AdminApiContext,
+          session.id,
+        );
         return json({ success: true, message: "Test completed" });
       }
 
@@ -390,13 +744,26 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
       case "rotate": {
         const testId = formData.get("testId") as string;
-        const result = await SimpleRotationService.rotateTest(
-          testId,
-          "MANUAL",
-          session.id,
-          admin,
-        );
-        return json({ success: true, message: "Rotation completed", result });
+        try {
+          const result = await SimpleRotationService.rotateTest(
+            testId,
+            "MANUAL",
+            session.id,
+            admin as AdminApiContext,
+          );
+          return json({ success: true, message: "Rotation completed", result });
+        } catch (error) {
+          const errorMessage =
+            error && typeof error === 'object' && 'message' in error && typeof error.message === 'string'
+              ? error.message
+              : typeof error === 'string'
+              ? error
+              : "Rotation failed";
+          return json(
+            { success: false, error: errorMessage },
+            { status: 500 },
+          );
+        }
       }
 
       default:

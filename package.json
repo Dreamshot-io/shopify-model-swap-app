@@ -28,7 +28,9 @@
 		"env:init": "bash ./scripts/init-env.sh",
 		"migrate:dev": "if [ -z \"$DATABASE_URL\" ]; then echo \"DATABASE_URL not set. Skipping migrate dev.\"; else npx prisma migrate dev; fi",
 		"migrate:deploy": "if [ -z \"$DATABASE_URL\" ]; then echo \"DATABASE_URL not set. Skipping migrate deploy.\"; else npx prisma migrate deploy; fi",
-		"db:seed": "bash -lc 'if [ -z \"$DATABASE_URL\" ]; then echo \"DATABASE_URL not set. Skipping seed.\"; else ts-node --transpile-only prisma/seed.ts || node --loader ts-node/esm prisma/seed.ts || node build/prisma/seed.js; fi'"
+		"db:seed": "bash -lc 'if [ -z \"$DATABASE_URL\" ]; then echo \"DATABASE_URL not set. Skipping seed.\"; else ts-node --transpile-only prisma/seed.ts || node --loader ts-node/esm prisma/seed.ts || node build/prisma/seed.js; fi'",
+		"migrate:ai-studio": "bun run app/scripts/migrate-ai-studio-metafields.server.ts",
+		"migrate:ai-studio:cleanup": "bun run app/scripts/migrate-ai-studio-metafields.server.ts --cleanup"
 	},
 	"type": "module",
 	"dependencies": {
