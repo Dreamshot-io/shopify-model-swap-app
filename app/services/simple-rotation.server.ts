@@ -100,6 +100,20 @@ export class SimpleRotationService {
 				});
 			}
 
+			// STEP 2.5: Reorder images to match specified positions
+			if (uploadedImages.length > 0) {
+				console.log(`[rotateTest] Step 2.5: Reordering images to match positions`);
+				// Sort by position and extract media IDs in correct order
+				const orderedMediaIds = uploadedImages
+					.sort((a, b) => (a.position || 0) - (b.position || 0))
+					.map(img => img.mediaId)
+					.filter((id): id is string => !!id);
+
+				if (orderedMediaIds.length > 0) {
+					await this.reorderProductMedia(admin, test.productId, orderedMediaIds);
+				}
+			}
+
 			// STEP 3: Assign variant hero images
 			console.log(`[rotateTest] Step 3: Assigning variant hero images`);
 			let variantsUpdated = 0;
@@ -392,6 +406,64 @@ export class SimpleRotationService {
 		}
 
 		console.log(`[attachMediaToVariant] Successfully attached media ${mediaId} to variant ${variantId}`);
+	}
+
+	/**
+	 * Reorder product media to match the specified order
+	 */
+	private static async reorderProductMedia(
+		admin: AdminApiContext,
+		productId: string,
+		orderedMediaIds: string[],
+	): Promise<void> {
+		if (orderedMediaIds.length === 0) {
+			console.log('[reorderProductMedia] No media to reorder');
+			return;
+		}
+
+		const mutation = `
+      mutation reorderProductMedia($id: ID!, $moves: [MoveInput!]!) {
+        productReorderMedia(id: $id, moves: $moves) {
+          job {
+            id
+            done
+          }
+          userErrors {
+            field
+            message
+          }
+        }
+      }
+    `;
+
+		// Create move operations for each media item
+		const moves = orderedMediaIds.map((mediaId, index) => ({
+			id: mediaId,
+			newPosition: String(index),
+		}));
+
+		console.log(`[reorderProductMedia] Reordering ${moves.length} media items for product ${productId}`);
+
+		const response = await admin.graphql(mutation, {
+			variables: { id: productId, moves },
+		});
+
+		const data = await response.json();
+
+		if (data.data?.productReorderMedia?.userErrors?.length > 0) {
+			const errors = data.data.productReorderMedia.userErrors;
+			console.error('[reorderProductMedia] Errors:', errors);
+			// Don't throw error - reordering is a nice-to-have, not critical
+			console.warn('[reorderProductMedia] Failed to reorder media, but continuing');
+			return;
+		}
+
+		const jobId = data.data?.productReorderMedia?.job?.id;
+		if (jobId) {
+			console.log(`[reorderProductMedia] Reorder job started with ID: ${jobId}`);
+			// Note: We're not polling for completion as this is an async operation
+			// and order should be correct from insertion order anyway
+		}
 	}
 
 	/**

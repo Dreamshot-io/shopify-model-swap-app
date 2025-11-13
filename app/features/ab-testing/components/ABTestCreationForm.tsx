@@ -15,6 +15,8 @@ import {
   Icon,
 } from "@shopify/polaris";
 import { QuestionCircleIcon } from "@shopify/polaris-icons";
+import { SortableGalleryGrid } from "../../ai-studio/components/SortableGalleryGrid";
+import { useGalleryReorder } from "../../ai-studio/hooks/useGalleryReorder";
 
 interface ProductVariant {
   id: string;
@@ -29,6 +31,8 @@ interface ProductImage {
   id: string;
   url: string;
   altText?: string;
+  position?: number;
+  originalSource?: string;
 }
 
 interface ABTestCreationFormProps {
@@ -56,7 +60,7 @@ export function ABTestCreationForm({
   const [loadingData, setLoadingData] = useState(true);
   const [baseCaseTooltipActive, setBaseCaseTooltipActive] = useState(false);
 
-  // Data
+  // Data - images with position tracking
   const [baseGalleryImages, setBaseGalleryImages] = useState<ProductImage[]>(
     [],
   );
@@ -65,21 +69,54 @@ export function ABTestCreationForm({
   );
   const [productVariants, setProductVariants] = useState<ProductVariant[]>([]);
 
+  // Track unified gallery order
+  const [galleryOrder, setGalleryOrder] = useState<string[]>([]);
+
+  // Centralized function to handle reordering across all galleries
+  const handleGalleryReorder = useCallback((reorderedImages: ProductImage[]) => {
+    // Update all available images with new positions
+    setAllAvailableImages(reorderedImages);
+
+    // Update gallery order
+    const newOrder = reorderedImages.map(img => img.id);
+    setGalleryOrder(newOrder);
+
+    // Update selected gallery images to maintain their new order
+    const selectedIds = new Set(selectedGalleryImages.map(img => img.id));
+    const reorderedSelected = reorderedImages
+      .filter(img => selectedIds.has(img.id))
+      .map((img, idx) => ({ ...img, position: idx }));
+    setSelectedGalleryImages(reorderedSelected);
+
+    // Update variant hero selections to maintain consistency
+    const newHeroSelections = new Map<string, ProductImage>();
+    variantHeroSelections.forEach((image, variantId) => {
+      const reorderedImage = reorderedImages.find(img => img.id === image.id);
+      if (reorderedImage) {
+        newHeroSelections.set(variantId, reorderedImage);
+      }
+    });
+    setVariantHeroSelections(newHeroSelections);
+  }, [selectedGalleryImages, variantHeroSelections]);
+
   // Fetch all product data on mount
   useEffect(() => {
     const fetchData = async () => {
       setLoadingData(true);
       try {
-        // Fetch product images
+        // Fetch product images with positions
         const response = await fetch(
           `/app/api/products/${encodeURIComponent(productId)}`,
         );
         const productImagesData = response.ok
-          ? (await response.json()).images || []
+          ? ((await response.json()).images || []).map((img: any, idx: number) => ({
+              ...img,
+              position: img.position ?? idx,
+            }))
           : [];
         setBaseGalleryImages(productImagesData);
 
-        // Fetch library images
+        // Fetch library images with positions
         const libraryResponse = await fetch(
           `/app/api/products/${encodeURIComponent(productId)}/library`,
         );
@@ -91,11 +128,19 @@ export function ABTestCreationForm({
             id: `lib-${idx}`,
             url: item.imageUrl || item,
             altText: "🎨 AI Generated",
+            position: productImagesData.length + idx, // Position after product images
           }),
         );
 
-        // Combine all images
-        setAllAvailableImages([...productImagesData, ...libraryImagesData]);
+        // Combine all images with positions
+        const combinedImages = [...productImagesData, ...libraryImagesData];
+        setAllAvailableImages(combinedImages);
+
+        // Initialize gallery order from positions
+        const initialOrder = combinedImages
+          .sort((a, b) => (a.position || 0) - (b.position || 0))
+          .map(img => img.id);
+        setGalleryOrder(initialOrder);
 
         // Fetch variants
         const variantsResponse = await fetch(
@@ -366,83 +411,18 @@ export function ABTestCreationForm({
               </Banner>
             ) : (
               <>
-                <InlineGrid columns={{ xs: 2, sm: 3, md: 4 }} gap="300">
-                  {allAvailableImages.map((image) => {
-                    const isSelected = selectedGalleryImages.some(
-                      (img) => img.id === image.id || img.url === image.url,
-                    );
-                    return (
-                      <div
-                        key={image.id}
-                        onClick={() => toggleGalleryImage(image)}
-                        style={{
-                          cursor: "pointer",
-                          position: "relative",
-                          borderRadius: "12px",
-                          overflow: "hidden",
-                          border: isSelected
-                            ? "3px solid #008060"
-                            : "2px solid #E1E3E5",
-                          transition: "all 0.2s ease",
-                          boxShadow: isSelected
-                            ? "0 4px 12px rgba(0, 128, 96, 0.3)"
-                            : "none",
-                          aspectRatio: "1 / 1",
-                        }}
-                      >
-                        <img
-                          src={image.url}
-                          alt={image.altText || ""}
-                          style={{
-                            width: "100%",
-                            height: "100%",
-                            objectFit: "cover",
-                            display: "block",
-                          }}
-                        />
-                        {isSelected && (
-                          <div
-                            style={{
-                              position: "absolute",
-                              top: "8px",
-                              right: "8px",
-                              background: "#008060",
-                              color: "white",
-                              borderRadius: "50%",
-                              width: "32px",
-                              height: "32px",
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "center",
-                              fontWeight: "bold",
-                              fontSize: "18px",
-                              boxShadow: "0 2px 8px rgba(0, 0, 0, 0.2)",
-                            }}
-                          >
-                            ✓
-                          </div>
-                        )}
-                        {image.altText?.includes("AI Generated") && (
-                          <div
-                            style={{
-                              position: "absolute",
-                              bottom: "8px",
-                              left: "8px",
-                              background: "rgba(0, 0, 0, 0.7)",
-                              color: "white",
-                              borderRadius: "4px",
-                              padding: "4px 8px",
-                              fontSize: "11px",
-                              fontWeight: "500",
-                            }}
-                          >
-                            🎨 AI
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </InlineGrid>
+                <SortableGalleryGrid
+                  images={allAvailableImages}
+                  selectedImageIds={new Set(selectedGalleryImages.map(img => img.id))}
+                  onReorder={handleGalleryReorder}
+                  onImageSelect={(image) => {
+                    toggleGalleryImage(image);
+                  }}
+                  onImageDeselect={(image) => {
+                    toggleGalleryImage(image);
+                  }}
+                  showSelectionNumbers={false}
+                />
                 {selectedGalleryImages.length > 0 && (
                   <Banner tone="success">
                     <Text as="p">
@@ -550,85 +530,21 @@ export function ABTestCreationForm({
                               <Text as="p">No images available</Text>
                             </Banner>
                           ) : (
-                            <InlineGrid columns={4} gap="200">
-                              {allAvailableImages.map((image) => {
-                                const isSelected =
-                                  selectedHero?.url === image.url;
-                                return (
-                                  <div
-                                    key={`${variant.id}-${image.id}`}
-                                    onClick={() =>
-                                      selectVariantHero(variant.id, image)
-                                    }
-                                    style={{
-                                      cursor: "pointer",
-                                      position: "relative",
-                                      borderRadius: "8px",
-                                      overflow: "hidden",
-                                      border: isSelected
-                                        ? "3px solid #008060"
-                                        : "2px solid #E1E3E5",
-                                      transition: "all 0.2s ease",
-                                      boxShadow: isSelected
-                                        ? "0 4px 12px rgba(0, 128, 96, 0.3)"
-                                        : "none",
-                                      aspectRatio: "1 / 1",
-                                    }}
-                                  >
-                                    <img
-                                      src={image.url}
-                                      alt=""
-                                      style={{
-                                        width: "100%",
-                                        height: "100%",
-                                        objectFit: "cover",
-                                        display: "block",
-                                      }}
-                                    />
-                                    {isSelected && (
-                                      <div
-                                        style={{
-                                          position: "absolute",
-                                          top: "4px",
-                                          right: "4px",
-                                          background: "#008060",
-                                          color: "white",
-                                          borderRadius: "50%",
-                                          width: "24px",
-                                          height: "24px",
-                                          display: "flex",
-                                          alignItems: "center",
-                                          justifyContent: "center",
-                                          fontSize: "14px",
-                                          fontWeight: "bold",
-                                          boxShadow:
-                                            "0 2px 6px rgba(0, 0, 0, 0.2)",
-                                        }}
-                                      >
-                                        ✓
-                                      </div>
-                                    )}
-                                    {image.altText?.includes("AI") && (
-                                      <div
-                                        style={{
-                                          position: "absolute",
-                                          bottom: "4px",
-                                          left: "4px",
-                                          background: "rgba(0, 0, 0, 0.75)",
-                                          color: "white",
-                                          borderRadius: "4px",
-                                          padding: "2px 6px",
-                                          fontSize: "10px",
-                                          fontWeight: "600",
-                                        }}
-                                      >
-                                        AI
-                                      </div>
-                                    )}
-                                  </div>
-                                );
-                              })}
-                            </InlineGrid>
+                            <SortableGalleryGrid
+                              images={allAvailableImages}
+                              selectedImageIds={new Set(
+                                selectedHero ? [selectedHero.id] : []
+                              )}
+                              onReorder={handleGalleryReorder}
+                              onImageSelect={(image) => {
+                                selectVariantHero(variant.id, image);
+                              }}
+                              onImageDeselect={(image) => {
+                                selectVariantHero(variant.id, image);
+                              }}
+                              showSelectionNumbers={false}
+                              maxSelection={1}
+                            />
                           )}
                           {selectedHero && (
                             <Text as="p" tone="success">
