@@ -256,35 +256,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     // Normalize variant ID if provided
     const normalizedVariantId = normalizeVariantId(variantId ?? null);
 
-    // Check for duplicate events (only for impressions to prevent double-counting)
-    if (eventType === 'IMPRESSION' && normalizedSessionId) {
-      const duplicateEvent = await db.aBTestEvent.findFirst({
-        where: {
-          testId,
-          sessionId: normalizedSessionId, // Use normalized version
-          eventType,
-          productId,
-        },
-      });
-
-      if (duplicateEvent) {
-        // Log duplicate detection (sampled to avoid spam)
-        if (Math.random() < 0.01) {
-          console.log('[Track API] Duplicate impression detected and skipped', {
-            testId,
-            sessionId: normalizedSessionId,
-            productId,
-            existingEventId: duplicateEvent.id,
-            shop: shopDomain,
-          });
-        }
-
-        return json(
-          { success: true, message: 'Event already tracked', eventId: duplicateEvent.id },
-          { headers: corsHeaders },
-        );
-      }
-    }
+    // Simplified: No deduplication - track every impression
+    // Deduplication can be added back later if needed
 
     // Create the event
     let createdEvent;

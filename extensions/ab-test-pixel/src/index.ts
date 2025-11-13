@@ -111,7 +111,7 @@ register(({ analytics, browser, settings }) => {
 
   // Track add to cart events
   analytics.subscribe('product_added_to_cart', async event => {
-    let state = getTestState();
+    let state = await getTestState();
 
     // Recovery: If state is missing, try to fetch it from the event data
     if (!state) {
@@ -142,7 +142,7 @@ register(({ analytics, browser, settings }) => {
         }
 
         await fetchAndStoreTestState(productId, variantId);
-        state = getTestState();
+        state = await getTestState();
 
         if (!state) {
           console.warn('[A/B Test Pixel] Add-to-cart: Could not recover test state for product', productId);
@@ -177,7 +177,7 @@ register(({ analytics, browser, settings }) => {
 
   // Track completed purchases
   analytics.subscribe('checkout_completed', async event => {
-    const state = getTestState();
+    const state = await getTestState();
     if (!state) return;
 
     // Track purchase event for each line item with the test
@@ -201,8 +201,8 @@ register(({ analytics, browser, settings }) => {
     }
 
     // Clear state after purchase
-    browser.sessionStorage.removeItem(STATE_KEY);
-    browser.sessionStorage.removeItem(`${IMPRESSION_SYNC_PREFIX}${state.testId}`);
+    await browser.sessionStorage.removeItem(STATE_KEY);
+    await browser.sessionStorage.removeItem(`${IMPRESSION_SYNC_PREFIX}${state.testId}`);
   });
 
   /**
@@ -330,7 +330,7 @@ register(({ analytics, browser, settings }) => {
       log('Storing test state', state);
 
       // Store state for this session
-      browser.sessionStorage.setItem(STATE_KEY, JSON.stringify(state));
+      await browser.sessionStorage.setItem(STATE_KEY, JSON.stringify(state));
 
       // Track impression if not already tracked
       await trackImpression(state);
@@ -429,17 +429,7 @@ register(({ analytics, browser, settings }) => {
    * Track impression (only once per session per test)
    */
   async function trackImpression(state: TestState) {
-    const syncKey = `${IMPRESSION_SYNC_PREFIX}${state.testId}`;
-    const alreadyTracked = browser.sessionStorage.getItem(syncKey);
-
-    log('Checking impression tracking', { syncKey, alreadyTracked, currentCase: state.activeCase });
-
-    if (alreadyTracked === state.activeCase) {
-      // Already tracked impression for this test and case
-      log('Impression already tracked for this case');
-      return;
-    }
-
+    // Simplified: Track every page visit, no deduplication
     console.log('[A/B Test Pixel] 📊 Tracking IMPRESSION:', {
       testId: state.testId,
       activeCase: state.activeCase,
@@ -455,20 +445,19 @@ register(({ analytics, browser, settings }) => {
       },
     });
 
-    // Mark as tracked
-    browser.sessionStorage.setItem(syncKey, state.activeCase);
-    console.log('[A/B Test Pixel] ✅ Impression tracked and marked in sessionStorage');
-    log('Marked impression as tracked');
+    console.log('[A/B Test Pixel] ✅ Impression tracked');
+    log('Impression tracked');
   }
 
   /**
    * Get stored test state
+   * Note: browser.sessionStorage methods are async in web worker context
    */
-  function getTestState(): TestState | null {
-    const raw = browser.sessionStorage.getItem(STATE_KEY);
-    if (!raw) return null;
-
+  async function getTestState(): Promise<TestState | null> {
     try {
+      const raw = await browser.sessionStorage.getItem(STATE_KEY);
+      if (!raw) return null;
+
       return JSON.parse(raw) as TestState;
     } catch (error) {
       console.error('[A/B Test] Failed to parse test state', error);
