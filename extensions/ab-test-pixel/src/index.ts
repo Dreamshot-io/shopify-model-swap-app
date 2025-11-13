@@ -32,10 +32,9 @@ register(({ analytics, browser, settings }) => {
     log('Initialized', { APP_URL, ROTATION_API, TRACK_API });
   }
 
-  // Track product views
+  // Track product views - Simplified: always track, server assigns test
   analytics.subscribe('product_viewed', async event => {
     // Extract productId from event structure
-    // Shopify structure: event.data.productVariant.product.id (numeric, e.g. "7821131415621")
     let productId: string | null = null;
 
     // Try the actual Shopify structure first (most common)
@@ -49,113 +48,62 @@ register(({ analytics, browser, settings }) => {
       productId = String(event.productId);
     }
 
-    // Log for debugging (only if debug enabled to avoid spam)
-    if (DEBUG) {
-      console.log('[A/B Test Pixel] Product viewed - extracted productId:', productId);
-    }
-
-    // Extract variantId (also numeric in Shopify events)
-    let variantId: string | null = null;
-    if (event.data?.productVariant?.id) {
-      variantId = String(event.data.productVariant.id);
-      // Convert to GID format if numeric
-      if (/^\d+$/.test(variantId)) {
-        variantId = `gid://shopify/ProductVariant/${variantId}`;
-      }
-    } else if (event.data?.productVariantId) {
-      variantId = String(event.data.productVariantId);
-      if (/^\d+$/.test(variantId)) {
-        variantId = `gid://shopify/ProductVariant/${variantId}`;
-      }
-    }
-
-    log('Product viewed event', {
-      productId,
-      variantId,
-      extractedFrom: event.data?.productVariant?.product?.id ? 'productVariant.product.id' : 'other',
-    });
-
-    // Note: Can't access DOM (document/window) in web worker context
-    // Must rely on event data structure
-
     if (!productId) {
-      console.warn('[A/B Test Pixel] No productId found in event data, skipping tracking', {
-        eventData: event.data,
-        availableKeys: event.data ? Object.keys(event.data) : [],
-        eventType: event.type || event.name
-      });
-      log('No productId, skipping');
+      console.warn('[A/B Test Pixel] No productId found, skipping');
       return;
     }
 
-    // Ensure productId is in GID format (Shopify provides numeric IDs)
-    if (productId && !productId.startsWith('gid://shopify/Product/')) {
-      // If it's a number, convert to GID format
+    // Normalize to GID format
+    if (!productId.startsWith('gid://shopify/Product/')) {
       if (/^\d+$/.test(productId)) {
         productId = `gid://shopify/Product/${productId}`;
-        log('Normalized productId to GID format', productId);
-      } else if (productId.startsWith('gid://')) {
-        // Already in GID format, use as-is
-        log('ProductId already in GID format', productId);
       } else {
         console.warn('[A/B Test Pixel] ProductId format not recognized:', productId);
-        productId = null; // Reset to null so we skip tracking
+        return;
       }
     }
 
-    await fetchAndStoreTestState(productId, variantId);
+    // Extract variantId
+    let variantId: string | null = null;
+    if (event.data?.productVariant?.id) {
+      variantId = String(event.data.productVariant.id);
+      if (/^\d+$/.test(variantId)) {
+        variantId = `gid://shopify/ProductVariant/${variantId}`;
+      }
+    }
+
+    // Track impression directly - server will assign test if active
+    await trackEventDirectly('IMPRESSION', productId, variantId);
   });
 
   // Note: Can't use page_viewed fallback because we can't access window.location in worker context
   // Must rely on product_viewed event having the correct data structure
 
-  // Track add to cart events
+  // Track add to cart events - Simplified: always track, server assigns test
   analytics.subscribe('product_added_to_cart', async event => {
-    let state = await getTestState();
+    // Extract productId
+    let productId: string | null = null;
+    if (event.data?.cartLine?.merchandise?.product?.id) {
+      productId = String(event.data.cartLine.merchandise.product.id);
+    } else if (event.data?.product?.id) {
+      productId = String(event.data.product.id);
+    }
 
-    // Recovery: If state is missing, try to fetch it from the event data
-    if (!state) {
-      let productId: string | null = null;
+    if (!productId) {
+      console.warn('[A/B Test Pixel] Add-to-cart: No productId found');
+      return;
+    }
 
-      // Extract productId (may be numeric)
-      if (event.data?.cartLine?.merchandise?.product?.id) {
-        productId = String(event.data.cartLine.merchandise.product.id);
-      } else if (event.data?.product?.id) {
-        productId = String(event.data.product.id);
-      }
-
-      if (productId) {
-        // Normalize to GID format if numeric
-        if (/^\d+$/.test(productId)) {
-          productId = `gid://shopify/Product/${productId}`;
-        }
-
-        log('Add-to-cart: Missing test state, attempting recovery for product', productId);
-
-        // Extract variantId (may be numeric)
-        let variantId: string | null = null;
-        if (event.data?.cartLine?.merchandise?.id) {
-          variantId = String(event.data.cartLine.merchandise.id);
-          if (/^\d+$/.test(variantId)) {
-            variantId = `gid://shopify/ProductVariant/${variantId}`;
-          }
-        }
-
-        await fetchAndStoreTestState(productId, variantId);
-        state = await getTestState();
-
-        if (!state) {
-          console.warn('[A/B Test Pixel] Add-to-cart: Could not recover test state for product', productId);
-          return;
-        }
-        log('Add-to-cart: Successfully recovered test state', state);
+    // Normalize to GID format
+    if (!productId.startsWith('gid://shopify/Product/')) {
+      if (/^\d+$/.test(productId)) {
+        productId = `gid://shopify/Product/${productId}`;
       } else {
-        console.warn('[A/B Test Pixel] Add-to-cart: Missing test state and productId, skipping tracking');
         return;
       }
     }
 
-    // Extract variantId (normalize to GID if numeric)
+    // Extract variantId
     let variantId: string | null = null;
     if (event.data?.cartLine?.merchandise?.id) {
       variantId = String(event.data.cartLine.merchandise.id);
@@ -163,10 +111,11 @@ register(({ analytics, browser, settings }) => {
         variantId = `gid://shopify/ProductVariant/${variantId}`;
       }
     }
+
     const quantity = event.data?.cartLine?.quantity ?? 1;
 
-    await trackEvent(state, 'ADD_TO_CART', {
-      variantId,
+    // Track directly - server will assign test if active
+    await trackEventDirectly('ADD_TO_CART', productId, variantId, {
       quantity,
       metadata: {
         price: event.data?.cartLine?.cost?.totalAmount?.amount,
@@ -175,34 +124,45 @@ register(({ analytics, browser, settings }) => {
     });
   });
 
-  // Track completed purchases
+  // Track completed purchases - Simplified: always track, server assigns test
   analytics.subscribe('checkout_completed', async event => {
-    const state = await getTestState();
-    if (!state) return;
-
-    // Track purchase event for each line item with the test
+    // Track purchase event for each line item
     for (const lineItem of event.data?.checkout?.lineItems || []) {
-      const lineProductId = lineItem?.variant?.product?.id;
+      let productId = lineItem?.variant?.product?.id;
 
-      if (lineProductId === state.productId) {
-        await trackEvent(state, 'PURCHASE', {
-          variantId: lineItem?.variant?.id,
-          revenue: lineItem?.cost?.totalAmount?.amount
-            ? parseFloat(lineItem.cost.totalAmount.amount)
-            : undefined,
-          quantity: lineItem?.quantity,
-          metadata: {
-            orderId: event.data?.checkout?.order?.id,
-            orderNumber: event.data?.checkout?.orderStatusUrl,
-            currency: event.data?.checkout?.totalPrice?.currencyCode,
-          },
-        });
+      if (!productId) continue;
+
+      // Normalize to GID format
+      productId = String(productId);
+      if (!productId.startsWith('gid://shopify/Product/')) {
+        if (/^\d+$/.test(productId)) {
+          productId = `gid://shopify/Product/${productId}`;
+        } else {
+          continue;
+        }
       }
-    }
 
-    // Clear state after purchase
-    await browser.sessionStorage.removeItem(STATE_KEY);
-    await browser.sessionStorage.removeItem(`${IMPRESSION_SYNC_PREFIX}${state.testId}`);
+      let variantId = lineItem?.variant?.id;
+      if (variantId) {
+        variantId = String(variantId);
+        if (/^\d+$/.test(variantId)) {
+          variantId = `gid://shopify/ProductVariant/${variantId}`;
+        }
+      }
+
+      // Track directly - server will assign test if active
+      await trackEventDirectly('PURCHASE', productId, variantId, {
+        revenue: lineItem?.cost?.totalAmount?.amount
+          ? parseFloat(lineItem.cost.totalAmount.amount)
+          : undefined,
+        quantity: lineItem?.quantity,
+        metadata: {
+          orderId: event.data?.checkout?.order?.id,
+          orderNumber: event.data?.checkout?.orderStatusUrl,
+          currency: event.data?.checkout?.totalPrice?.currencyCode,
+        },
+      });
+    }
   });
 
   /**
@@ -341,7 +301,83 @@ register(({ analytics, browser, settings }) => {
   }
 
   /**
-   * Track an event to the backend
+   * Track event directly without test state - server will assign test if active
+   */
+  async function trackEventDirectly(
+    eventType: 'IMPRESSION' | 'ADD_TO_CART' | 'PURCHASE',
+    productId: string,
+    variantId: string | null,
+    options?: {
+      revenue?: number;
+      quantity?: number;
+      metadata?: any;
+    }
+  ) {
+    const sessionId = await getOrCreateSessionId();
+    if (!sessionId) {
+      console.warn('[A/B Test Pixel] Cannot track event: missing session ID', { eventType, productId });
+      return;
+    }
+
+    if (!APP_URL || APP_URL.trim() === '') {
+      console.error('[A/B Test Pixel] Cannot track event: app_url is not configured', { eventType, productId });
+      return;
+    }
+
+    try {
+      // Simplified payload - server will find and assign test
+      const payload = {
+        sessionId,
+        eventType,
+        productId,
+        variantId: variantId || null,
+        revenue: options?.revenue,
+        quantity: options?.quantity,
+        metadata: {
+          ...options?.metadata,
+          timestamp: new Date().toISOString(),
+        },
+      };
+
+      log('Tracking event', eventType, 'to', TRACK_API, payload);
+
+      const response = await fetchWithRetry(TRACK_API, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response) {
+        console.error('[A/B Test Pixel] Failed to track event after retries', { eventType, productId });
+        return;
+      }
+
+      if (!response.ok) {
+        let error;
+        try {
+          error = await response.json();
+        } catch {
+          error = { message: `HTTP ${response.status}: ${response.statusText}` };
+        }
+        console.error('[A/B Test Pixel] Failed to track event:', error, { eventType, productId });
+      } else {
+        const result = await response.json();
+        console.log('[A/B Test Pixel] ✅ Track API Success:', {
+          eventType,
+          productId,
+          testId: result.testId || 'none',
+          response: result
+        });
+      }
+    } catch (error) {
+      console.error('[A/B Test Pixel] Failed to track event', error, { eventType, productId });
+    }
+  }
+
+  /**
+   * Track an event to the backend (legacy - kept for compatibility)
    */
   async function trackEvent(
     state: TestState,
