@@ -12,11 +12,9 @@ export const links = () => [{ rel: "stylesheet", href: polarisStyles }];
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   try {
     console.log("[app.tsx] Loader called, URL:", request.url);
-    console.log("[app.tsx] SHOPIFY_API_KEY exists:", !!process.env.SHOPIFY_API_KEY);
-    console.log("[app.tsx] SHOPIFY_APP_URL:", process.env.SHOPIFY_APP_URL);
 
-    const { billing } = await authenticate.admin(request);
-    console.log("[app.tsx] Authentication successful");
+    const { billing, shopCredential } = await authenticate.admin(request);
+    console.log("[app.tsx] Authentication successful for shop:", shopCredential.shopDomain);
 
     if (!process.env.DISABLE_BILLING) {
       await billing.require({
@@ -31,7 +29,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       console.log("[app.tsx] Billing check passed");
     }
 
-    return { apiKey: process.env.SHOPIFY_API_KEY || "", appUrl: process.env.SHOPIFY_APP_URL || "" };
+    return { apiKey: shopCredential.apiKey, appUrl: shopCredential.appUrl };
   } catch (error) {
     console.error("[app.tsx] Loader error:", error);
     throw error;

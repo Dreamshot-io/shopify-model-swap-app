@@ -5,12 +5,11 @@ import { TitleBar } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const { admin } = await authenticate.admin(request);
+  const { admin, shopCredential } = await authenticate.admin(request);
 
   // Auto-connect web pixel if not connected
   try {
-    const appUrl =
-      process.env.SHOPIFY_APP_URL || "https://shopify.dreamshot.io";
+    const appUrl = shopCredential.appUrl;
 
     console.log("[app._index] Attempting to auto-connect web pixel...");
 
