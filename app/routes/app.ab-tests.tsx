@@ -1236,32 +1236,31 @@ export default function ABTests() {
                             }
                           }
 
-                          // If no gallery images, try variant heroes
-                          const imagesToShow =
-                            Array.isArray(baseImages) && baseImages.length > 0
-                              ? baseImages
-                              : data.activeTest.variants?.length > 0
-                                ? data.activeTest.variants
-                                    .filter((v: any) => v.baseHeroImage)
-                                    .map((v: any) => {
-                                      const img = v.baseHeroImage;
-                                      return typeof img === "string"
-                                        ? JSON.parse(img)
-                                        : img;
-                                    })
-                                : [];
+							// If no gallery images, try variant heroes
+							type ImageItem = string | { url?: string };
+							const imagesToShow: ImageItem[] =
+								Array.isArray(baseImages) && baseImages.length > 0
+									? baseImages
+									: data.activeTest.variants?.length > 0
+										? data.activeTest.variants
+												.filter((v: { baseHeroImage?: unknown }) => v.baseHeroImage)
+												.map((v: { baseHeroImage: unknown }) => {
+													const img = v.baseHeroImage;
+													return typeof img === 'string' ? (JSON.parse(img) as ImageItem) : (img as ImageItem);
+												})
+										: [];
 
-                          if ((imagesToShow as any[]).length === 0) {
-                            return (
-                              <Text as="span" tone="subdued">
-                                No images
-                              </Text>
-                            );
-                          }
+							if (imagesToShow.length === 0) {
+								return (
+									<Text as="span" tone="subdued">
+										No images
+									</Text>
+								);
+							}
 
-                          return (imagesToShow as any[])
-                            .slice(0, 3)
-                            .map((img: any, idx: number) => (
+							return imagesToShow
+								.slice(0, 3)
+								.map((img: ImageItem, idx: number) => (
                               <img
                                 key={idx}
                                 src={img?.url || img}
@@ -1324,32 +1323,31 @@ export default function ABTests() {
                             }
                           }
 
-                          // If no gallery images, try variant heroes
-                          const imagesToShow =
-                            Array.isArray(testImages) && testImages.length > 0
-                              ? testImages
-                              : data.activeTest.variants?.length > 0
-                                ? data.activeTest.variants
-                                    .filter((v: any) => v.testHeroImage)
-                                    .map((v: any) => {
-                                      const img = v.testHeroImage;
-                                      return typeof img === "string"
-                                        ? JSON.parse(img)
-                                        : img;
-                                    })
-                                : [];
+							// If no gallery images, try variant heroes
+							type ImageItem = string | { url?: string };
+							const imagesToShow: ImageItem[] =
+								Array.isArray(testImages) && testImages.length > 0
+									? testImages
+									: data.activeTest.variants?.length > 0
+										? data.activeTest.variants
+												.filter((v: { testHeroImage?: unknown }) => v.testHeroImage)
+												.map((v: { testHeroImage: unknown }) => {
+													const img = v.testHeroImage;
+													return typeof img === 'string' ? (JSON.parse(img) as ImageItem) : (img as ImageItem);
+												})
+										: [];
 
-                          if ((imagesToShow as any[]).length === 0) {
-                            return (
-                              <Text as="span" tone="subdued">
-                                No images
-                              </Text>
-                            );
-                          }
+							if (imagesToShow.length === 0) {
+								return (
+									<Text as="span" tone="subdued">
+										No images
+									</Text>
+								);
+							}
 
-                          return (imagesToShow as any[])
-                            .slice(0, 3)
-                            .map((img: any, idx: number) => (
+							return imagesToShow
+								.slice(0, 3)
+								.map((img: ImageItem, idx: number) => (
                               <img
                                 key={idx}
                                 src={img?.url || img}
@@ -1455,18 +1453,17 @@ export default function ABTests() {
                       Actions
                     </div>,
                   ]}
-                  rows={data.draftTests.map((test) => {
-                    const testImages = Array.isArray(test.testImages)
-                      ? (test.testImages as any[])
-                      : [];
-                    const previewImages = testImages.slice(0, 3);
+					rows={data.draftTests.map((test) => {
+						type ImageItem = string | { url?: string };
+						const testImages: ImageItem[] = Array.isArray(test.testImages) ? test.testImages : [];
+						const previewImages = testImages.slice(0, 3);
 
-                    return [
-                      <div
-                        key={`preview-${test.id}`}
-                        style={{ display: "flex", gap: "4px" }}
-                      >
-                        {previewImages.map((img: any, idx: number) => (
+						return [
+							<div
+								key={`preview-${test.id}`}
+								style={{ display: 'flex', gap: '4px' }}
+							>
+								{previewImages.map((img: ImageItem, idx: number) => (
                           <img
                             key={idx}
                             src={img?.url || img || ""}
@@ -1608,18 +1605,17 @@ export default function ABTests() {
                       Actions
                     </div>,
                   ]}
-                  rows={data.completedTests.map((test) => {
-                    const testImages = Array.isArray(test.testImages)
-                      ? (test.testImages as any[])
-                      : [];
-                    const previewImages = testImages.slice(0, 3);
+					rows={data.completedTests.map((test) => {
+						type ImageItem = string | { url?: string };
+						const testImages: ImageItem[] = Array.isArray(test.testImages) ? test.testImages : [];
+						const previewImages = testImages.slice(0, 3);
 
-                    return [
-                      <div
-                        key={`preview-${test.id}`}
-                        style={{ display: "flex", gap: "4px" }}
-                      >
-                        {previewImages.map((img: any, idx: number) => (
+						return [
+							<div
+								key={`preview-${test.id}`}
+								style={{ display: 'flex', gap: '4px' }}
+							>
+								{previewImages.map((img: ImageItem, idx: number) => (
                           <img
                             key={idx}
                             src={img?.url || img || ""}

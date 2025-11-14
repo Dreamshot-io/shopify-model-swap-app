@@ -312,7 +312,8 @@ export default function AIStudio() {
 	const authenticatedAppFetch = useAuthenticatedAppFetch();
 
 	// Variant state management
-	const variants = (product?.variants?.nodes || []) as any[];
+	type VariantNode = { id: string; title: string; [key: string]: unknown };
+	const variants: VariantNode[] = (product?.variants?.nodes || []) as VariantNode[];
 
 	// State management
 	const [selectedImages, setSelectedImages] = useState<SelectedImage[]>([]);
@@ -567,16 +568,18 @@ export default function AIStudio() {
 	};
 
 	useEffect(() => {
-		const data = fetcher.data as
-			| ({ ok: true; result: any } & any)
-			| ({ ok: true; published: true } & any)
-			| ({ ok: true; savedToLibrary: true } & any)
+		type ActionData =
+			| { ok: true; result: GeneratedImage }
+			| { ok: true; published: true }
+			| { ok: true; savedToLibrary: true; duplicate?: boolean }
 			| { ok: false; error: string }
 			| undefined;
+		const data = fetcher.data as ActionData;
 
 		// Handle single image generation (legacy mode - not batch processing)
-		if (data?.ok && pendingAction === 'generate' && (data as any).result && !batchProcessingState.isProcessing) {
-			const result = (data as any).result;
+		type ActionDataWithResult = { ok: true; result: GeneratedImage };
+		if (data?.ok && pendingAction === 'generate' && 'result' in data && !batchProcessingState.isProcessing) {
+			const result = (data as ActionDataWithResult).result;
 			// Ensure the generated image has a proper structure
 			const generatedImage: GeneratedImage = {
 				id: result.id || `generated_${Date.now()}`,
@@ -595,9 +598,10 @@ export default function AIStudio() {
 			shopify.toast.show('Published to product');
 			setPendingAction(null);
 		} else if (data?.ok && pendingAction === 'saveToLibrary') {
-			if ((data as any).duplicate) {
+			type ActionDataWithLibrary = { ok: true; savedToLibrary: true; duplicate?: boolean };
+			if ('duplicate' in data && (data as ActionDataWithLibrary).duplicate) {
 				shopify.toast.show('Item already in library', { isError: false });
-			} else if ((data as any).savedToLibrary) {
+			} else if ('savedToLibrary' in data && (data as ActionDataWithLibrary).savedToLibrary) {
 				shopify.toast.show('Saved to library');
 			}
 			const img = (fetcher.formData?.get && (fetcher.formData.get('imageUrl') as string)) || null;

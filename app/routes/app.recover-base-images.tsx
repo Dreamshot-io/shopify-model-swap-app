@@ -32,9 +32,10 @@ export async function loader({ request }: LoaderFunctionArgs) {
     },
   });
 
-  // Check which ones might need recovery
-  const testsWithStatus = tests.map(test => {
-    const baseImages = test.baseImages as any[] || [];
+	// Check which ones might need recovery
+	type BaseImage = { permanentUrl?: string; [key: string]: unknown };
+	const testsWithStatus = tests.map((test) => {
+		const baseImages: BaseImage[] = Array.isArray(test.baseImages) ? test.baseImages : [];
     const hasBackups = baseImages.some(img => img?.permanentUrl);
     const needsRecovery = test.currentCase === 'BASE' && hasBackups;
 

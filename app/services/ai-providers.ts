@@ -180,9 +180,11 @@ export class ReplicateProvider implements AIProvider {
 		};
 
 		console.log(`[REPLICATE:${requestId}] Calling replicate.run(${this.modelPath})...`);
-		let output: any[];
+		type ReplicateOutput = Array<unknown>;
+		let output: ReplicateOutput;
 		try {
-			output = (await this.replicate.run(this.modelPath, { input })) as any[];
+			const result = await this.replicate.run(this.modelPath, { input });
+			output = Array.isArray(result) ? result : [result];
 			console.log(`[REPLICATE:${requestId}] Replicate API call completed:`, {
 				outputType: Array.isArray(output) ? 'array' : typeof output,
 				outputLength: Array.isArray(output) ? output.length : 'N/A',

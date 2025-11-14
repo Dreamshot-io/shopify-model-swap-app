@@ -93,8 +93,10 @@ export async function uploadImageFromUrlToR2(
       // Removed ACL: "public-read" - using private storage with signed URLs when needed
     }),
   );
-  // eslint-disable-next-line no-console
-  console.log(`[storage] Upload completed`, { etag: (putRes as any)?.ETag });
+	// eslint-disable-next-line no-console
+	type PutObjectResponse = { ETag?: string };
+	const putResponse = putRes as PutObjectResponse;
+	console.log(`[storage] Upload completed`, { etag: putResponse?.ETag });
 
   // Return private R2 URL (private endpoint)
   const privateUrl = getPrivateR2Url(process.env.S3_BUCKET!, key);
