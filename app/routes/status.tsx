@@ -1,5 +1,7 @@
 import type { LoaderFunctionArgs } from '@remix-run/node';
 
+import prisma from '../db.server';
+
 /**
  * Simple status check that doesn't require authentication
  * Use this to verify Vercel deployment is working
@@ -10,34 +12,32 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 	console.log('[status] Method:', request.method);
 
 	const envCheck = {
-		SHOPIFY_API_KEY: !!process.env.SHOPIFY_API_KEY,
-		SHOPIFY_API_SECRET: !!process.env.SHOPIFY_API_SECRET,
-		SHOPIFY_APP_URL: process.env.SHOPIFY_APP_URL || 'NOT_SET',
 		DATABASE_URL: !!process.env.DATABASE_URL,
 		FAL_KEY: !!process.env.FAL_KEY,
 		NODE_ENV: process.env.NODE_ENV || 'NOT_SET',
 	};
 
-	console.log('[status] Environment check:', envCheck);
+	const credentialCount = await prisma['shopCredential'].count();
+	const activeShops = await prisma['shopCredential'].findMany({
+		select: { shopDomain: true, status: true },
+		orderBy: { createdAt: 'desc' },
+		take: 5,
+	});
 
-	// Try to extract shop domain from request (optional, for future multi-client support)
-	let shopDomain: string | null = null;
-	try {
-		const url = new URL(request.url);
-		shopDomain = url.searchParams.get('shop') || null;
-	} catch {
-		// Ignore if URL parsing fails
-	}
-
+	const url = new URL(request.url);
 	const response = {
 		status: 'ok',
 		timestamp: new Date().toISOString(),
 		environment: envCheck,
 		message: 'App is running on Vercel',
-		...(shopDomain && { shopDomain }), // Include shop if present
+		requestShop: url.searchParams.get('shop'),
+		shopCredentials: {
+			total: credentialCount,
+			sample: activeShops,
+		},
 	};
 
-	console.log('[status] Response:', { ...response, environment: envCheck });
+	console.log('[status] Response:', response);
 
 	return new Response(JSON.stringify(response), {
 		headers: {

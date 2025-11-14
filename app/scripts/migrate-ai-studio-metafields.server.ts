@@ -3,47 +3,47 @@
  * Run this script to migrate all existing AI Studio library data
  */
 
-import { PrismaClient } from "@prisma/client";
-import { shopifyApp } from "@shopify/shopify-app-remix/server";
 import { AIStudioMediaService } from "../services/ai-studio-media.server";
+import prisma from "../db.server";
+import { getShopifyContextByShopDomain } from "../shopify.server";
 
-const prisma = new PrismaClient();
+interface GraphQLResponse {
+	data?: {
+		products?: {
+			edges?: Array<{
+				node?: {
+					id: string;
+					title: string;
+					metafield?: {
+						id?: string;
+						value?: string;
+					};
+				};
+			}>;
+			pageInfo?: {
+				hasNextPage?: boolean;
+				endCursor?: string | null;
+			};
+		};
+	};
+}
 
-// Initialize Shopify app
-const shopify = shopifyApp({
-  apiKey: process.env.SHOPIFY_API_KEY!,
-  apiSecretKey: process.env.SHOPIFY_API_SECRET!,
-  scopes: process.env.SCOPES?.split(",") || [],
-  appUrl: process.env.SHOPIFY_APP_URL!,
-  authPathPrefix: "/auth",
-  sessionStorage: {
-    async storeSession(session: any) {
-      return true;
-    },
-    async loadSession(id: string) {
-      const session = await prisma.session.findUnique({
-        where: { id },
-      });
-      return session;
-    },
-    async deleteSession(id: string) {
-      await prisma.session.delete({ where: { id } });
-      return true;
-    },
-    async deleteSessions(ids: string[]) {
-      await prisma.session.deleteMany({
-        where: { id: { in: ids } },
-      });
-      return true;
-    },
-    async findSessionsByShop(shop: string) {
-      const sessions = await prisma.session.findMany({
-        where: { shop },
-      });
-      return sessions;
-    },
-  },
-});
+interface AdminClient {
+	request: (query: string, options?: { variables?: Record<string, unknown> }) => Promise<{ data: GraphQLResponse['data'] }>;
+}
+
+async function createAdminClient(shop: string, accessToken: string): Promise<AdminClient> {
+	const { app } = await getShopifyContextByShopDomain(shop);
+	const { admin } = await app.unauthenticated.admin(shop);
+
+	return {
+		request: async (query: string, options?: { variables?: Record<string, unknown> }) => {
+			const response = await admin.graphql(query, options);
+			const json = (await response.json()) as GraphQLResponse;
+			return { data: json.data || json };
+		},
+	};
+}
 
 interface MigrationStats {
   shop: string;
@@ -74,12 +74,7 @@ async function migrateShop(shop: string): Promise<MigrationStats> {
     }
 
     // Create admin context
-    const admin = shopify.api.clients.createAdminApiClient({
-      session: {
-        shop,
-        accessToken: session.accessToken,
-      },
-    });
+    const admin = await createAdminClient(shop, session.accessToken);
 
     console.log(`[Migration] Starting migration for shop: ${shop}`);
 
@@ -112,8 +107,8 @@ async function migrateShop(shop: string): Promise<MigrationStats> {
         variables: { cursor },
       });
 
-      const data = response.data as any;
-      const products = data?.products?.edges || [];
+			const data = response.data;
+			const products = data?.products?.edges || [];
 
       for (const edge of products) {
         const product = edge.node;
@@ -135,11 +130,11 @@ async function migrateShop(shop: string): Promise<MigrationStats> {
 
           stats.imagesProcessed += metafieldData.length;
 
-          // Create AIStudioMediaService instance
-          const aiStudioMediaService = new AIStudioMediaService(
-            { graphql: admin.request.bind(admin) } as any,
-            prisma
-          );
+			// Create AIStudioMediaService instance
+			const aiStudioMediaService = new AIStudioMediaService(
+				{ graphql: admin.request.bind(admin) } as { graphql: AdminClient['request'] },
+				prisma,
+			);
 
           // Migrate each image
           const migrated = await aiStudioMediaService.migrateFromMetafield(
@@ -193,12 +188,7 @@ async function cleanupMetafields(shop: string, dryRun = true): Promise<void> {
     return;
   }
 
-  const admin = shopify.api.clients.createAdminApiClient({
-    session: {
-      shop,
-      accessToken: session.accessToken,
-    },
-  });
+  const admin = await createAdminClient(shop, session.accessToken);
 
   const query = `#graphql
     query GetProductsWithLibrary($cursor: String) {
@@ -242,8 +232,8 @@ async function cleanupMetafields(shop: string, dryRun = true): Promise<void> {
       variables: { cursor },
     });
 
-    const data = response.data as any;
-    const products = data?.products?.edges || [];
+		const data = response.data;
+		const products = data?.products?.edges || [];
 
     for (const edge of products) {
       const product = edge.node;
