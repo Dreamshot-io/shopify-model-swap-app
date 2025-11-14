@@ -252,10 +252,8 @@ export function Component({ title, onAction, children }: ComponentProps) {
 
 ### Environment Variables
 
-- `SHOPIFY_API_KEY` and `SHOPIFY_API_SECRET` - Shopify app credentials
 - `FAL_KEY` - fal.ai API key
 - `SHOPIFY_APP_URL` - App URL for Shopify configuration
-- `SCOPES` - Comma-separated Shopify API scopes
 
 ## Development Patterns
 
