@@ -15,6 +15,9 @@
 		"docker-start": "bun run setup && bun run start",
 		"setup": "prisma generate && prisma db push",
 		"lint": "eslint --cache --cache-location ./node_modules/.cache/eslint .",
+		"test": "vitest run",
+		"test:watch": "vitest",
+		"test:ui": "vitest --ui",
 		"shopify": "shopify",
 		"prisma": "prisma",
 		"graphql-codegen": "graphql-codegen",
@@ -70,12 +73,14 @@
 		"@types/node": "^22.2.0",
 		"@types/react": "^18.2.31",
 		"@types/react-dom": "^18.2.14",
+		"@vitest/ui": "^2.1.8",
 		"eslint": "^8.42.0",
 		"eslint-config-prettier": "^10.0.1",
 		"prettier": "^3.2.4",
 		"terser": "^5.44.0",
 		"typescript": "^5.2.2",
-		"vite": "^6.2.2"
+		"vite": "^6.2.2",
+		"vitest": "^2.1.8"
 	},
 	"workspaces": [
 		"extensions/*"
