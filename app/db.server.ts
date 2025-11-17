@@ -1,4 +1,5 @@
 import { PrismaClient } from "@prisma/client";
+import { encrypt, decrypt, isEncrypted } from "./services/encryption.server";
 
 // Reuse Prisma client across serverless invocations to avoid exhausting DB connections
 declare global {
@@ -6,16 +7,23 @@ declare global {
   var prisma: PrismaClient | undefined;
 }
 
-const prisma =
+// Encrypt apiSecret on write operations
+function encryptApiSecret(data: unknown) {
+	if (!data || typeof data !== 'object') {
+		return;
+	}
+
+	const record = data as { apiSecret?: string };
+	if (record.apiSecret && !isEncrypted(record.apiSecret)) {
+		record.apiSecret = encrypt(record.apiSecret);
+	}
+}
+
+const prismaBase =
   globalThis.prisma ??
   new PrismaClient({
     log: process.env.NODE_ENV === "development" ? ["error", "warn"] : ["error"],
   });
-
-// In development, preserve the client across HMR; in production, cache for warm lambdas
-if (process.env.NODE_ENV !== "production") {
-  globalThis.prisma = prisma;
-}
 
 const SHOP_AWARE_MODELS = new Set([
   "Session",
@@ -49,7 +57,7 @@ export function forgetShopId(shop: string | null | undefined) {
   shopIdCache.delete(normalized);
 }
 
-async function lookupShopId(shop: string) {
+export async function lookupShopId(shop: string) {
   const normalized = normalizeShopDomain(shop);
   if (!normalized) {
     return null;
@@ -60,7 +68,7 @@ async function lookupShopId(shop: string) {
     return cached;
   }
 
-	const credential = await prisma['shopCredential'].findUnique({
+	const credential = await prismaBase['shopCredential'].findUnique({
 		where: { shopDomain: normalized },
 		select: { id: true },
 	});
@@ -96,35 +104,57 @@ async function attachShopId(data: unknown) {
   }
 }
 
-type PrismaMiddlewareParams = {
-	model?: string;
-	action: string;
-	args?: {
-		data?: unknown;
-		create?: unknown;
-		update?: unknown;
-	};
-};
-
-type PrismaMiddlewareNext = (params: PrismaMiddlewareParams) => Promise<unknown>;
-
-prisma.$use(async (params: PrismaMiddlewareParams, next: PrismaMiddlewareNext) => {
-	if (!params.model || params.model === 'ShopCredential' || !SHOP_AWARE_MODELS.has(params.model)) {
-		return next(params);
-	}
-
-	if (params.action === 'create' || params.action === 'update') {
-		await attachShopId(params.args?.data);
-	} else if (params.action === 'upsert') {
-		await attachShopId(params.args?.create);
-		await attachShopId(params.args?.update);
-	} else if (params.action === 'createMany') {
-		await attachShopId(params.args?.data);
-	} else if (params.action === 'updateMany') {
-		await attachShopId(params.args?.data);
-	}
-
-	return next(params);
+// Prisma client extension for transparent encryption/decryption and shopId attachment
+const prisma = prismaBase.$extends({
+	query: {
+		shopCredential: {
+			async create({ args, query }) {
+				encryptApiSecret(args.data);
+				return query(args);
+			},
+			async update({ args, query }) {
+				encryptApiSecret(args.data);
+				return query(args);
+			},
+			async upsert({ args, query }) {
+				encryptApiSecret(args.create);
+				encryptApiSecret(args.update);
+				return query(args);
+			},
+			async createMany({ args, query }) {
+				if (Array.isArray(args.data)) {
+					args.data.forEach(encryptApiSecret);
+				}
+				return query(args);
+			},
+			async updateMany({ args, query }) {
+				encryptApiSecret(args.data);
+				return query(args);
+			},
+		},
+	},
+	result: {
+		shopCredential: {
+			apiSecret: {
+				needs: { apiSecret: true },
+				compute(credential: { apiSecret: string }) {
+					// Decrypt if encrypted, otherwise return as-is (for backward compatibility)
+					if (!credential.apiSecret) {
+						return credential.apiSecret;
+					}
+					if (isEncrypted(credential.apiSecret)) {
+						return decrypt(credential.apiSecret);
+					}
+					return credential.apiSecret;
+				},
+			},
+		},
+	},
 });
+
+// In development, preserve the client across HMR; in production, cache for warm lambdas
+if (process.env.NODE_ENV !== "production") {
+  globalThis.prisma = prisma;
+}
 
 export default prisma;

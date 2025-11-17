@@ -5,7 +5,7 @@ import { useLoaderData, useSearchParams, useFetcher, useNavigate } from '@remix-
 import { Page, Text, BlockStack, Modal } from '@shopify/polaris';
 import { TitleBar, useAppBridge } from '@shopify/app-bridge-react';
 import { authenticate } from '../shopify.server';
-import db from '../db.server';
+import db, { lookupShopId } from '../db.server';
 import { AIStudioMediaService } from '../services/ai-studio-media.server';
 import { checkAIProviderHealth } from '../services/ai-providers.server';
 import { ImagePreviewModal } from '../features/ai-studio/components/ImagePreviewModal';
@@ -127,16 +127,21 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 		const aiStudioMediaService = new AIStudioMediaService(admin, db);
 
 		// Check if there's metafield data to migrate
+		const shopId = await lookupShopId(session.shop);
+		if (!shopId) {
+			throw new Error(`Unable to resolve shopId for shop: ${session.shop}`);
+		}
+
 		const metafieldValue = product.metafield?.value;
 		if (metafieldValue) {
 			// Migrate metafield data to database
-			await aiStudioMediaService.migrateFromMetafield(session.shop, productId, metafieldValue);
+			await aiStudioMediaService.migrateFromMetafield(session.shop, productId, metafieldValue, shopId);
 
 			// TODO: Remove the metafield after successful migration (in a separate task)
 		}
 
 		// Get library items from database
-		const dbImages = await aiStudioMediaService.getLibraryImages(session.shop, productId);
+		const dbImages = await aiStudioMediaService.getLibraryImages(session.shop, productId, undefined, shopId);
 
 		// Convert to LibraryItem format for compatibility
 		libraryItems = dbImages.map(img => ({

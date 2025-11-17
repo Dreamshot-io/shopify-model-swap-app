@@ -27,7 +27,7 @@ import { TitleBar, useAppBridge } from "@shopify/app-bridge-react";
 import type { AdminApiContext } from "@shopify/shopify-app-remix/server";
 import { Prisma } from "@prisma/client";
 import { authenticate } from "../shopify.server";
-import db from "../db.server";
+import db, { lookupShopId } from "../db.server";
 import { SimpleRotationService } from "../services/simple-rotation.server";
 import { AuditService } from "../services/audit.server";
 import { MediaGalleryService } from "../services/media-gallery.server";
@@ -70,8 +70,13 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         productsData.data?.products?.edges?.map((edge: any) => edge.node) || [];
 
       // Get test counts per product for badges
+      const shopId = await lookupShopId(session.shop);
+      if (!shopId) {
+        throw new Error(`Unable to resolve shopId for shop: ${session.shop}`);
+      }
+
       const tests = await db.aBTest.findMany({
-        where: { shop: session.shop },
+        where: { shopId },
         select: { productId: true, status: true },
       });
 
@@ -121,10 +126,15 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       return json({ error: "Product not found" }, { status: 404 });
     }
 
+    const shopId = await lookupShopId(session.shop);
+    if (!shopId) {
+      throw new Error(`Unable to resolve shopId for shop: ${session.shop}`);
+    }
+
     // Fetch all tests for this product
     const tests = await db.aBTest.findMany({
       where: {
-        shop: session.shop,
+        shopId,
         productId,
       },
       include: {

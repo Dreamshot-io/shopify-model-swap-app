@@ -1,6 +1,6 @@
 import type { AdminApiContext } from "@shopify/shopify-app-remix/server";
 import { json } from "@remix-run/node";
-import db from "../../../db.server";
+import db, { lookupShopId } from "../../../db.server";
 import {
   uploadImageToShopify,
   createStagedUpload,
@@ -38,6 +38,11 @@ export async function handleSaveToLibrary(
   admin: AdminApiContext,
   shop: string,
 ) {
+  const shopId = await lookupShopId(shop);
+  if (!shopId) {
+    throw new Error(`Unable to resolve shopId for shop: ${shop}`);
+  }
+
   const imageUrl = String(formData.get("imageUrl") || "");
   const sourceUrl = String(formData.get("sourceUrl") || "");
   const productId = String(formData.get("productId") || "");
@@ -59,7 +64,7 @@ export async function handleSaveToLibrary(
   const aiStudioMediaService = new AIStudioMediaService(admin, db);
 
   // Check if already exists
-  const exists = await aiStudioMediaService.imageExists(shop, productId, imageUrl);
+  const exists = await aiStudioMediaService.imageExists(shop, productId, imageUrl, shopId);
   if (exists) {
     const duplicateResponse: LibraryActionResponse = {
       ok: true,
@@ -84,6 +89,7 @@ export async function handleSaveToLibrary(
     // Save to library using the new service
     await aiStudioMediaService.saveToLibrary({
       shop,
+      shopId,
       productId,
       url: imageUrl,
       source,
@@ -98,6 +104,7 @@ export async function handleSaveToLibrary(
         data: {
           id: crypto.randomUUID(),
           shop,
+          shopId,
           eventType: 'SAVED_TO_LIBRARY',
           productId,
           imageUrl,
@@ -130,6 +137,11 @@ export async function handleDeleteFromLibrary(
   admin: AdminApiContext,
   shop: string,
 ) {
+  const shopId = await lookupShopId(shop);
+  if (!shopId) {
+    throw new Error(`Unable to resolve shopId for shop: ${shop}`);
+  }
+
   const imageUrl = String(formData.get("imageUrl") || "");
   const productId = String(formData.get("productId") || "");
 
@@ -148,7 +160,7 @@ export async function handleDeleteFromLibrary(
     const aiStudioMediaService = new AIStudioMediaService(admin, db);
 
     // Find the image in database by URL
-    const images = await aiStudioMediaService.getAllImages(shop, productId);
+    const images = await aiStudioMediaService.getAllImages(shop, productId, undefined, shopId);
     const imageToDelete = images.find(img => img.url === imageUrl);
 
     if (!imageToDelete) {
@@ -163,7 +175,7 @@ export async function handleDeleteFromLibrary(
     }
 
     // Delete from database (and gallery if published)
-    await aiStudioMediaService.deleteImage(imageToDelete.id);
+    await aiStudioMediaService.deleteImage(imageToDelete.id, shopId);
 
     // Log metric event
     try {
@@ -171,6 +183,7 @@ export async function handleDeleteFromLibrary(
         data: {
           id: crypto.randomUUID(),
           shop,
+          shopId,
           eventType: 'DRAFT_DELETED',
           productId,
           imageUrl,
@@ -203,6 +216,11 @@ export async function handleUpload(
   admin: AdminApiContext,
   shop: string,
 ) {
+  const shopId = await lookupShopId(shop);
+  if (!shopId) {
+    throw new Error(`Unable to resolve shopId for shop: ${shop}`);
+  }
+
   const startTime = Date.now();
   console.log("[UPLOAD:SERVER] Handler called - shop:", shop);
 
@@ -255,10 +273,11 @@ export async function handleUpload(
     const aiStudioMediaService = new AIStudioMediaService(admin, db);
 
     // Check if already exists
-    const exists = await aiStudioMediaService.imageExists(shop, productId, uploadedFile.url);
+    const exists = await aiStudioMediaService.imageExists(shop, productId, uploadedFile.url, shopId);
     if (!exists) {
       await aiStudioMediaService.saveToLibrary({
         shop,
+        shopId,
         productId,
         url: uploadedFile.url,
         source: "MANUAL_UPLOAD",
@@ -275,6 +294,7 @@ export async function handleUpload(
         data: {
           id: crypto.randomUUID(),
           shop,
+          shopId,
           eventType: 'UPLOADED',
           productId,
           imageUrl: uploadedFile.url,
@@ -392,6 +412,11 @@ export async function handleCompleteUpload(
   admin: AdminApiContext,
   shop: string,
 ) {
+  const shopId = await lookupShopId(shop);
+  if (!shopId) {
+    throw new Error(`Unable to resolve shopId for shop: ${shop}`);
+  }
+
   const startTime = Date.now();
   console.log("[COMPLETE_UPLOAD] Handler called - shop:", shop);
 
@@ -443,10 +468,11 @@ export async function handleCompleteUpload(
     const aiStudioMediaService = new AIStudioMediaService(admin, db);
 
     // Check if already exists
-    const exists = await aiStudioMediaService.imageExists(shop, productId, uploadedFile.url);
+    const exists = await aiStudioMediaService.imageExists(shop, productId, uploadedFile.url, shopId);
     if (!exists) {
       await aiStudioMediaService.saveToLibrary({
         shop,
+        shopId,
         productId,
         url: uploadedFile.url,
         source: "MANUAL_UPLOAD",
@@ -464,6 +490,7 @@ export async function handleCompleteUpload(
         data: {
           id: crypto.randomUUID(),
           shop,
+          shopId,
           eventType: 'UPLOADED',
           productId,
           imageUrl: uploadedFile.url,

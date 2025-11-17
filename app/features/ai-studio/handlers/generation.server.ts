@@ -1,12 +1,17 @@
 import { json } from '@remix-run/node';
 import type { AdminApiContext } from '@shopify/shopify-app-remix/server';
-import db from '../../../db.server';
+import db, { lookupShopId } from '../../../db.server';
 import { generateAIImage } from '../../../services/ai-providers.server';
 import type { AspectRatio } from '../../../services/ai-providers';
 import { AIStudioMediaService } from '../../../services/ai-studio-media.server';
 import type { GenerateImageResponse, ActionErrorResponse } from '../types';
 
 export async function handleGenerate(formData: FormData, shop: string, admin?: AdminApiContext) {
+	const shopId = await lookupShopId(shop);
+	if (!shopId) {
+		throw new Error(`Unable to resolve shopId for shop: ${shop}`);
+	}
+
 	const requestId = crypto.randomUUID().slice(0, 8);
 	console.log(`[HANDLER:${requestId}] handleGenerate called for shop: ${shop}`);
 
@@ -57,6 +62,7 @@ export async function handleGenerate(formData: FormData, shop: string, admin?: A
 				data: {
 					id: crypto.randomUUID(),
 					shop,
+					shopId,
 					eventType: 'GENERATED',
 					productId,
 					imageUrl: result.imageUrl,
@@ -76,6 +82,7 @@ export async function handleGenerate(formData: FormData, shop: string, admin?: A
 
 				const savedImage = await aiStudioMediaService.saveToLibrary({
 					shop,
+					shopId,
 					productId,
 					url: result.imageUrl,
 					source: "AI_GENERATED",
