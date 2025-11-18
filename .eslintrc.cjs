@@ -5,4 +5,14 @@ module.exports = {
 	globals: {
 		shopify: 'readonly',
 	},
+	rules: {
+		'@typescript-eslint/no-explicit-any': 'error',
+		'no-restricted-syntax': [
+			'error',
+			{
+				selector: 'TSAsExpression[typeAnnotation.typeName.name="any"]',
+				message: 'Type assertion to "any" is not allowed. Use proper types instead.',
+			},
+		],
+	},
 };

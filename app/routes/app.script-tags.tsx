@@ -32,11 +32,11 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
-  const { admin, session } = await authenticate.admin(request);
+  const { admin, shopCredential } = await authenticate.admin(request);
   const formData = await request.formData();
   const action = formData.get("action");
 
-  const appUrl = process.env.SHOPIFY_APP_URL || "https://shopify.dreamshot.io";
+  const appUrl = shopCredential.appUrl;
   const scriptUrl = `${appUrl}/api/tracking-script.js`;
 
   if (action === "install") {

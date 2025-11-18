@@ -27,3 +27,5 @@ database.sqlite
 .vercel
 .vercel*
 .env*.local
+scripts/import-credentials-from-comments.mjs
+test-output.log

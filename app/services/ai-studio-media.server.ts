@@ -5,7 +5,7 @@
 
 import type { AdminApiContext } from "@shopify/shopify-app-remix/server";
 import { PrismaClient } from "@prisma/client";
-import db from "../db.server";
+import db, { lookupShopId } from "../db.server";
 import { MediaGalleryService } from "./media-gallery.server";
 
 export type ImageState = "LIBRARY" | "PUBLISHED";
@@ -13,6 +13,7 @@ export type ImageSource = "AI_GENERATED" | "MANUAL_UPLOAD" | "GALLERY_IMPORT";
 
 export interface AIStudioImageInput {
   shop: string;
+  shopId?: string;
   productId: string;
   url: string;
   source: ImageSource;
@@ -43,14 +44,26 @@ export class AIStudioMediaService {
     this.mediaGallery = new MediaGalleryService(admin);
   }
 
+  private async resolveShopId(shop: string, shopId?: string): Promise<string | null> {
+    if (shopId) {
+      return shopId;
+    }
+    return await lookupShopId(shop);
+  }
+
   /**
    * Save an image to the library (not published to gallery)
    */
   async saveToLibrary(input: AIStudioImageInput): Promise<AIStudioImage> {
+    const shopId = await this.resolveShopId(input.shop, input.shopId);
+    if (!shopId) {
+      throw new Error(`Unable to resolve shopId for shop: ${input.shop}`);
+    }
+
     // Check if image already exists (by URL)
     const existing = await this.prisma.aIStudioImage.findFirst({
       where: {
-        shop: input.shop,
+        shopId,
         productId: input.productId,
         url: input.url,
       },
@@ -65,6 +78,7 @@ export class AIStudioMediaService {
     const image = await this.prisma.aIStudioImage.create({
       data: {
         shop: input.shop,
+        shopId,
         productId: input.productId,
         url: input.url,
         state: "LIBRARY" as ImageState, // Always starts in library
@@ -83,13 +97,18 @@ export class AIStudioMediaService {
   /**
    * Publish a library image to the Shopify product gallery
    */
-  async publishToGallery(imageId: string): Promise<AIStudioImage> {
+  async publishToGallery(imageId: string, shopId?: string): Promise<AIStudioImage> {
     const image = await this.prisma.aIStudioImage.findUnique({
       where: { id: imageId },
     });
 
     if (!image) {
       throw new Error(`Image ${imageId} not found`);
+    }
+
+    // Verify shopId matches if provided
+    if (shopId && image.shopId !== shopId) {
+      throw new Error(`Image ${imageId} does not belong to shop ${shopId}`);
     }
 
     if (image.state === "PUBLISHED" && image.mediaId) {
@@ -129,13 +148,18 @@ export class AIStudioMediaService {
   /**
    * Unpublish an image from gallery (move back to library only)
    */
-  async unpublishFromGallery(imageId: string): Promise<AIStudioImage> {
+  async unpublishFromGallery(imageId: string, shopId?: string): Promise<AIStudioImage> {
     const image = await this.prisma.aIStudioImage.findUnique({
       where: { id: imageId },
     });
 
     if (!image) {
       throw new Error(`Image ${imageId} not found`);
+    }
+
+    // Verify shopId matches if provided
+    if (shopId && image.shopId !== shopId) {
+      throw new Error(`Image ${imageId} does not belong to shop ${shopId}`);
     }
 
     if (image.state === "LIBRARY") {
@@ -161,10 +185,16 @@ export class AIStudioMediaService {
   async getLibraryImages(
     shop: string,
     productId: string,
-    variantId?: string
+    variantId?: string,
+    shopId?: string
   ): Promise<AIStudioImage[]> {
+    const resolvedShopId = shopId || await this.resolveShopId(shop);
+    if (!resolvedShopId) {
+      throw new Error(`Unable to resolve shopId for shop: ${shop}`);
+    }
+
     const where: any = {
-      shop,
+      shopId: resolvedShopId,
       productId,
       state: "LIBRARY",
     };
@@ -190,11 +220,17 @@ export class AIStudioMediaService {
    */
   async getPublishedImages(
     shop: string,
-    productId: string
+    productId: string,
+    shopId?: string
   ): Promise<AIStudioImage[]> {
+    const resolvedShopId = shopId || await this.resolveShopId(shop);
+    if (!resolvedShopId) {
+      throw new Error(`Unable to resolve shopId for shop: ${shop}`);
+    }
+
     const images = await this.prisma.aIStudioImage.findMany({
       where: {
-        shop,
+        shopId: resolvedShopId,
         productId,
         state: "PUBLISHED",
       },
@@ -210,10 +246,16 @@ export class AIStudioMediaService {
   async getAllImages(
     shop: string,
     productId: string,
-    variantId?: string
+    variantId?: string,
+    shopId?: string
   ): Promise<AIStudioImage[]> {
+    const resolvedShopId = shopId || await this.resolveShopId(shop);
+    if (!resolvedShopId) {
+      throw new Error(`Unable to resolve shopId for shop: ${shop}`);
+    }
+
     const where: any = {
-      shop,
+      shopId: resolvedShopId,
       productId,
     };
 
@@ -235,7 +277,7 @@ export class AIStudioMediaService {
   /**
    * Delete an image from both library and gallery
    */
-  async deleteImage(imageId: string): Promise<void> {
+  async deleteImage(imageId: string, shopId?: string): Promise<void> {
     const image = await this.prisma.aIStudioImage.findUnique({
       where: { id: imageId },
     });
@@ -244,9 +286,14 @@ export class AIStudioMediaService {
       throw new Error(`Image ${imageId} not found`);
     }
 
+    // Verify shopId matches if provided
+    if (shopId && image.shopId !== shopId) {
+      throw new Error(`Image ${imageId} does not belong to shop ${shopId}`);
+    }
+
     // If published, remove from gallery first
     if (image.state === "PUBLISHED" && image.mediaId) {
-      await this.unpublishFromGallery(imageId);
+      await this.unpublishFromGallery(imageId, shopId);
     }
 
     // Delete from database
@@ -264,12 +311,18 @@ export class AIStudioMediaService {
     shop: string,
     productId: string,
     mediaId: string,
-    url: string
+    url: string,
+    shopId?: string
   ): Promise<AIStudioImage> {
+    const resolvedShopId = shopId || await this.resolveShopId(shop);
+    if (!resolvedShopId) {
+      throw new Error(`Unable to resolve shopId for shop: ${shop}`);
+    }
+
     // Check if already imported
     const existing = await this.prisma.aIStudioImage.findFirst({
       where: {
-        shop,
+        shopId: resolvedShopId,
         productId,
         mediaId,
       },
@@ -283,6 +336,7 @@ export class AIStudioMediaService {
     const image = await this.prisma.aIStudioImage.create({
       data: {
         shop,
+        shopId: resolvedShopId,
         productId,
         mediaId,
         url,
@@ -302,9 +356,15 @@ export class AIStudioMediaService {
   async migrateFromMetafield(
     shop: string,
     productId: string,
-    metafieldValue: string
+    metafieldValue: string,
+    shopId?: string
   ): Promise<number> {
     try {
+      const resolvedShopId = shopId || await this.resolveShopId(shop);
+      if (!resolvedShopId) {
+        throw new Error(`Unable to resolve shopId for shop: ${shop}`);
+      }
+
       const libraryItems = JSON.parse(metafieldValue);
       let migrated = 0;
 
@@ -317,7 +377,7 @@ export class AIStudioMediaService {
         // Skip if already migrated
         const existing = await this.prisma.aIStudioImage.findFirst({
           where: {
-            shop,
+            shopId: resolvedShopId,
             productId,
             url: imageData.imageUrl,
           },
@@ -339,6 +399,7 @@ export class AIStudioMediaService {
         await this.prisma.aIStudioImage.create({
           data: {
             shop,
+            shopId: resolvedShopId,
             productId,
             url: imageData.imageUrl,
             state: "LIBRARY" as ImageState, // Metafield items are library items
@@ -366,11 +427,17 @@ export class AIStudioMediaService {
   async imageExists(
     shop: string,
     productId: string,
-    url: string
+    url: string,
+    shopId?: string
   ): Promise<boolean> {
+    const resolvedShopId = shopId || await this.resolveShopId(shop);
+    if (!resolvedShopId) {
+      throw new Error(`Unable to resolve shopId for shop: ${shop}`);
+    }
+
     const count = await this.prisma.aIStudioImage.count({
       where: {
-        shop,
+        shopId: resolvedShopId,
         productId,
         url,
       },

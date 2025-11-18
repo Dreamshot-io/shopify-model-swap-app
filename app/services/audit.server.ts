@@ -68,7 +68,7 @@ export class AuditService {
         metadata: {
           testName: test.name,
           productId: test.productId,
-          imageCount: (test.testImages as any)?.length || 0,
+			imageCount: Array.isArray(test.testImages) ? test.testImages.length : 0,
           variantCount: 0,
           ...details,
         },

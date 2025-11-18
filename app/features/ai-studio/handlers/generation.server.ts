@@ -1,18 +1,28 @@
 import { json } from '@remix-run/node';
 import type { AdminApiContext } from '@shopify/shopify-app-remix/server';
-import db from '../../../db.server';
+import db, { lookupShopId } from '../../../db.server';
 import { generateAIImage } from '../../../services/ai-providers.server';
+import type { AspectRatio } from '../../../services/ai-providers';
 import { AIStudioMediaService } from '../../../services/ai-studio-media.server';
 import type { GenerateImageResponse, ActionErrorResponse } from '../types';
 
 export async function handleGenerate(formData: FormData, shop: string, admin?: AdminApiContext) {
+	const shopId = await lookupShopId(shop);
+	if (!shopId) {
+		throw new Error(`Unable to resolve shopId for shop: ${shop}`);
+	}
+
 	const requestId = crypto.randomUUID().slice(0, 8);
 	console.log(`[HANDLER:${requestId}] handleGenerate called for shop: ${shop}`);
 
 	const sourceImageUrl = String(formData.get('sourceImageUrl') || '');
 	const prompt = String(formData.get('prompt') || '');
 	const productId = String(formData.get('productId') || '');
-	const aspectRatio = String(formData.get('aspectRatio') || 'match_input_image');
+	const aspectRatioRaw = String(formData.get('aspectRatio') || 'match_input_image');
+	const validAspectRatios: AspectRatio[] = ['match_input_image', '16:9', '4:3', '3:2', '1:1', '2:3', '3:4', '9:16'];
+	const aspectRatio: AspectRatio = validAspectRatios.includes(aspectRatioRaw as AspectRatio)
+		? (aspectRatioRaw as AspectRatio)
+		: 'match_input_image';
 
 	console.log(`[HANDLER:${requestId}] Parsed inputs:`, {
 		sourceImageUrl: sourceImageUrl ? sourceImageUrl.substring(0, 50) + '...' : 'missing',
@@ -38,7 +48,7 @@ export async function handleGenerate(formData: FormData, shop: string, admin?: A
 			prompt,
 			productId,
 			modelType: 'swap',
-			aspectRatio: aspectRatio as any,
+			aspectRatio,
 		});
 		console.log(`[HANDLER:${requestId}] generateAIImage succeeded:`, {
 			hasImageUrl: !!result.imageUrl,
@@ -52,6 +62,7 @@ export async function handleGenerate(formData: FormData, shop: string, admin?: A
 				data: {
 					id: crypto.randomUUID(),
 					shop,
+					shopId,
 					eventType: 'GENERATED',
 					productId,
 					imageUrl: result.imageUrl,
@@ -71,6 +82,7 @@ export async function handleGenerate(formData: FormData, shop: string, admin?: A
 
 				const savedImage = await aiStudioMediaService.saveToLibrary({
 					shop,
+					shopId,
 					productId,
 					url: result.imageUrl,
 					source: "AI_GENERATED",

@@ -1,6 +1,6 @@
 import type { LoaderFunctionArgs } from '@remix-run/node';
 import { json } from '@remix-run/node';
-import { authenticate } from '../shopify.server';
+import { authenticate, extractShopDomainFromRequest } from '../shopify.server';
 import { SimpleRotationService } from '../services/simple-rotation.server';
 import { AuditService } from '../services/audit.server';
 import db from '../db.server';
@@ -55,6 +55,14 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       console.warn('[rotation-state] App proxy auth failed, using public access', {
         error: error instanceof Error ? error.message : 'Unknown error'
       });
+    }
+  }
+
+  // Fallback: extract shop from request headers (Origin, Referer, etc.)
+  if (!shopDomain) {
+    shopDomain = extractShopDomainFromRequest(request) || undefined;
+    if (shopDomain) {
+      console.log('[rotation-state] Extracted shop from request headers:', shopDomain);
     }
   }
 

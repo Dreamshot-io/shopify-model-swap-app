@@ -61,11 +61,22 @@ export async function uploadR2ImageToShopify(
         throw new Error('No body in R2 response');
       }
 
-      // Convert stream to buffer
-      const chunks: Uint8Array[] = [];
-      for await (const chunk of response.Body as any) {
-        chunks.push(chunk);
-      }
+		// Convert stream to buffer
+		const chunks: Uint8Array[] = [];
+		type BodyStream = AsyncIterable<Uint8Array> | ReadableStream<Uint8Array>;
+		const bodyStream = response.Body as BodyStream;
+		if (Symbol.asyncIterator in bodyStream) {
+			for await (const chunk of bodyStream as AsyncIterable<Uint8Array>) {
+				chunks.push(chunk);
+			}
+		} else {
+			const reader = (bodyStream as ReadableStream<Uint8Array>).getReader();
+			while (true) {
+				const { done, value } = await reader.read();
+				if (done) break;
+				if (value) chunks.push(value);
+			}
+		}
       buffer = Buffer.concat(chunks);
 
       // Get content type

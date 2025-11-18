@@ -1,5 +1,5 @@
 import type { AdminApiContext } from "@shopify/shopify-app-remix/server";
-import { PrismaClient } from "@prisma/client";
+import type { PrismaClient } from "@prisma/client";
 import {
   SimpleRotationService,
   type RotationResult,
@@ -15,16 +15,10 @@ export class CompatibilityRotationService {
   async rotateTest(
     testId: string,
     targetCase: TestCase,
-    triggeredBy: string = "SYSTEM",
-  ): Promise<RotationResult> {
-    return SimpleRotationService.rotateTest(
-      testId,
-      triggeredBy as any,
-      undefined,
-      this.admin,
-      targetCase,
-    );
-  }
+	triggeredBy: 'CRON' | 'MANUAL' | 'SYSTEM' = 'SYSTEM',
+	): Promise<RotationResult> {
+		return SimpleRotationService.rotateTest(testId, triggeredBy, undefined, this.admin, targetCase);
+	}
 
   async canUseV2(testId: string): Promise<boolean> {
     const test = await this.prisma.aBTest.findUnique({

@@ -5,7 +5,7 @@ import { useLoaderData, useSearchParams, useFetcher, useNavigate } from '@remix-
 import { Page, Text, BlockStack, Modal } from '@shopify/polaris';
 import { TitleBar, useAppBridge } from '@shopify/app-bridge-react';
 import { authenticate } from '../shopify.server';
-import db from '../db.server';
+import db, { lookupShopId } from '../db.server';
 import { AIStudioMediaService } from '../services/ai-studio-media.server';
 import { checkAIProviderHealth } from '../services/ai-providers.server';
 import { ImagePreviewModal } from '../features/ai-studio/components/ImagePreviewModal';
@@ -127,16 +127,21 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 		const aiStudioMediaService = new AIStudioMediaService(admin, db);
 
 		// Check if there's metafield data to migrate
+		const shopId = await lookupShopId(session.shop);
+		if (!shopId) {
+			throw new Error(`Unable to resolve shopId for shop: ${session.shop}`);
+		}
+
 		const metafieldValue = product.metafield?.value;
 		if (metafieldValue) {
 			// Migrate metafield data to database
-			await aiStudioMediaService.migrateFromMetafield(session.shop, productId, metafieldValue);
+			await aiStudioMediaService.migrateFromMetafield(session.shop, productId, metafieldValue, shopId);
 
 			// TODO: Remove the metafield after successful migration (in a separate task)
 		}
 
 		// Get library items from database
-		const dbImages = await aiStudioMediaService.getLibraryImages(session.shop, productId);
+		const dbImages = await aiStudioMediaService.getLibraryImages(session.shop, productId, undefined, shopId);
 
 		// Convert to LibraryItem format for compatibility
 		libraryItems = dbImages.map(img => ({
@@ -312,7 +317,8 @@ export default function AIStudio() {
 	const authenticatedAppFetch = useAuthenticatedAppFetch();
 
 	// Variant state management
-	const variants = (product?.variants?.nodes || []) as any[];
+	type VariantNode = { id: string; title: string; [key: string]: unknown };
+	const variants: VariantNode[] = (product?.variants?.nodes || []) as VariantNode[];
 
 	// State management
 	const [selectedImages, setSelectedImages] = useState<SelectedImage[]>([]);
@@ -567,16 +573,18 @@ export default function AIStudio() {
 	};
 
 	useEffect(() => {
-		const data = fetcher.data as
-			| ({ ok: true; result: any } & any)
-			| ({ ok: true; published: true } & any)
-			| ({ ok: true; savedToLibrary: true } & any)
+		type ActionData =
+			| { ok: true; result: GeneratedImage }
+			| { ok: true; published: true }
+			| { ok: true; savedToLibrary: true; duplicate?: boolean }
 			| { ok: false; error: string }
 			| undefined;
+		const data = fetcher.data as ActionData;
 
 		// Handle single image generation (legacy mode - not batch processing)
-		if (data?.ok && pendingAction === 'generate' && (data as any).result && !batchProcessingState.isProcessing) {
-			const result = (data as any).result;
+		type ActionDataWithResult = { ok: true; result: GeneratedImage };
+		if (data?.ok && pendingAction === 'generate' && 'result' in data && !batchProcessingState.isProcessing) {
+			const result = (data as ActionDataWithResult).result;
 			// Ensure the generated image has a proper structure
 			const generatedImage: GeneratedImage = {
 				id: result.id || `generated_${Date.now()}`,
@@ -595,9 +603,10 @@ export default function AIStudio() {
 			shopify.toast.show('Published to product');
 			setPendingAction(null);
 		} else if (data?.ok && pendingAction === 'saveToLibrary') {
-			if ((data as any).duplicate) {
+			type ActionDataWithLibrary = { ok: true; savedToLibrary: true; duplicate?: boolean };
+			if ('duplicate' in data && (data as ActionDataWithLibrary).duplicate) {
 				shopify.toast.show('Item already in library', { isError: false });
-			} else if ((data as any).savedToLibrary) {
+			} else if ('savedToLibrary' in data && (data as ActionDataWithLibrary).savedToLibrary) {
 				shopify.toast.show('Saved to library');
 			}
 			const img = (fetcher.formData?.get && (fetcher.formData.get('imageUrl') as string)) || null;

@@ -1,9 +1,9 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from '@remix-run/node';
 import { json } from '@remix-run/node';
+import type { AdminApiContext } from '@shopify/shopify-app-remix/server';
 import { SimpleRotationService } from '../services/simple-rotation.server';
 import { CompatibilityRotationService } from '../services/compatibility-rotation.server';
 import { AuditService } from '../services/audit.server';
-import { authenticate } from '../shopify.server';
 import db from '../db.server';
 
 const AUTH_HEADER = 'authorization';
@@ -57,35 +57,38 @@ async function handleRotationRequest(request: Request) {
           throw new Error(`No valid session found for shop ${test.shop}`);
         }
 
-        // Create an admin GraphQL client directly using the stored access token
-        // Must match the interface that the real admin object uses
-        const admin = {
-          graphql: async (query: string, options?: { variables?: any }) => {
-            const response = await fetch(`https://${test.shop}/admin/api/2025-01/graphql.json`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'X-Shopify-Access-Token': session.accessToken,
-              },
-              body: JSON.stringify({
-                query,
-                variables: options?.variables || undefined
-              }),
-            });
+		// Create an admin GraphQL client directly using the stored access token
+		// Must match the interface that the real admin object uses
+		type AdminGraphQLClient = {
+			graphql: (query: string, options?: { variables?: Record<string, unknown> }) => Promise<Response>;
+		};
+		const admin: AdminGraphQLClient = {
+			graphql: async (query: string, options?: { variables?: Record<string, unknown> }) => {
+				const response = await fetch(`https://${test.shop}/admin/api/2025-01/graphql.json`, {
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json',
+						'X-Shopify-Access-Token': session.accessToken,
+					},
+					body: JSON.stringify({
+						query,
+						variables: options?.variables || undefined,
+					}),
+				});
 
-            if (!response.ok) {
-              const errorText = await response.text();
-              console.error('[Cron Admin] GraphQL request failed:', response.status, errorText);
-              throw new Error(`GraphQL request failed: ${response.statusText}`);
-            }
+				if (!response.ok) {
+					const errorText = await response.text();
+					console.error('[Cron Admin] GraphQL request failed:', response.status, errorText);
+					throw new Error(`GraphQL request failed: ${response.statusText}`);
+				}
 
-            // Return the response object (caller will call .json() on it)
-            return response;
-          }
-        };
+				// Return the response object (caller will call .json() on it)
+				return response;
+			},
+		};
 
-        // Use CompatibilityRotationService for automatic V1/V2 selection
-        const compatibilityService = new CompatibilityRotationService(admin as any, db);
+		// Use CompatibilityRotationService for automatic V1/V2 selection
+		const compatibilityService = new CompatibilityRotationService(admin as AdminApiContext, db);
 
         // Determine target case (toggle from current)
         const targetCase = test.currentCase === 'BASE' ? 'TEST' : 'BASE';

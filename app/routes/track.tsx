@@ -1,6 +1,6 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from '@remix-run/node';
 import { json } from '@remix-run/node';
-import { authenticate } from '../shopify.server';
+import { authenticate, extractShopDomainFromRequest } from '../shopify.server';
 import db from '../db.server';
 import { AuditService } from '../services/audit.server';
 // import { trackingRateLimiter, applyRateLimit } from '../utils/rate-limiter';
@@ -71,6 +71,14 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 			console.warn('[track] App proxy auth failed, using public access', {
 				error: error instanceof Error ? error.message : 'Unknown error',
 			});
+		}
+	}
+
+	// Fallback: extract shop from request headers (Origin, Referer, etc.)
+	if (!shopDomain) {
+		shopDomain = extractShopDomainFromRequest(request) || undefined;
+		if (shopDomain) {
+			console.log('[track] Extracted shop from request headers:', shopDomain);
 		}
 	}
 

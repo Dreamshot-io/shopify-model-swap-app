@@ -1,50 +1,423 @@
 import "@shopify/shopify-app-remix/adapters/vercel";
 import {
-  ApiVersion,
-  AppDistribution,
-  BillingInterval,
-  shopifyApp,
+	ApiVersion,
+	AppDistribution,
+	BillingInterval,
+	LoginErrorType,
+	shopifyApp,
 } from "@shopify/shopify-app-remix/server";
 import { PrismaSessionStorage } from "@shopify/shopify-app-session-storage-prisma";
+
 import prisma from "./db.server";
+import { findShopCredential, requireShopCredential } from "./services/shops.server";
+
+type ShopCredentialType = {
+	id: string;
+	shopDomain: string;
+	apiKey: string;
+	apiSecret: string;
+	appHandle: string;
+	appUrl: string;
+	apiVersion: string;
+	scopes: string[];
+	distribution: string | null;
+	customDomain: string | null;
+	redirectUrls: string[];
+	metadata: any;
+	status: string;
+	createdAt: Date;
+	updatedAt: Date;
+};
 
 export const MONTHLY_PLAN = "Monthly subscription";
 
-const shopify = shopifyApp({
-  apiKey: process.env.SHOPIFY_API_KEY,
-  apiSecretKey: process.env.SHOPIFY_API_SECRET || "",
-  apiVersion: ApiVersion.January25,
-  scopes: process.env.SCOPES?.split(","),
-  appUrl: process.env.SHOPIFY_APP_URL || "",
-  authPathPrefix: "/auth",
-  sessionStorage: new PrismaSessionStorage(prisma),
-  distribution: AppDistribution.AppStore,
-  billing: {
-    [MONTHLY_PLAN]: {
-      lineItems: [
-        {
-          amount: 9.99,
-          currencyCode: "USD",
-          interval: BillingInterval.Every30Days,
-        },
-      ],
-      trialDays: 7,
-    },
-  },
+const sessionStorage = new PrismaSessionStorage(prisma);
+const DEFAULT_API_VERSION = ApiVersion.January25;
+const BILLING_CONFIG = {
+	[MONTHLY_PLAN]: {
+		lineItems: [{ amount: 9.99, currencyCode: 'USD', interval: BillingInterval.Every30Days }],
+		trialDays: 7,
+	},
+};
+
+type ShopifyAppInstance = ReturnType<typeof shopifyApp>;
+
+const appCache = new Map<string, ShopifyAppInstance>();
+
+const normalizeShopDomain = (value?: string | null) => value?.trim().toLowerCase() ?? null;
+
+const coerceApiVersion = (value?: string | null) => {
+	if (!value) {
+		return DEFAULT_API_VERSION;
+	}
+
+	return (ApiVersion as Record<string, ApiVersion>)[value as keyof typeof ApiVersion] ?? DEFAULT_API_VERSION;
+};
+
+const coerceDistribution = (value?: string | null) => {
+	if (!value) {
+		return AppDistribution.AppStore;
+	}
+
+	return (
+		(AppDistribution as Record<string, AppDistribution>)[value as keyof typeof AppDistribution] ??
+		AppDistribution.AppStore
+	);
+};
+
+const decodeBase64Url = (value: string) => {
+	const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
+	const padLength = (4 - (normalized.length % 4)) % 4;
+	return Buffer.from(normalized.padEnd(normalized.length + padLength, "="), "base64").toString("utf-8");
+};
+
+const decodeJwtPayload = (token: string) => {
+	const [, payload] = token.split(".");
+	if (!payload) {
+		return null;
+	}
+
+	try {
+		return JSON.parse(decodeBase64Url(payload));
+	} catch {
+		return null;
+	}
+};
+
+const getSessionTokenFromRequest = (request: Request) => {
+	const header = request.headers.get("Authorization");
+	if (header?.startsWith("Bearer ")) {
+		return header.slice("Bearer ".length);
+	}
+
+	const url = new URL(request.url);
+	return url.searchParams.get("session_token");
+};
+
+const extractClientId = (request: Request) => {
+	const token = getSessionTokenFromRequest(request);
+	if (token) {
+		const payload = decodeJwtPayload(token);
+		if (payload?.aud) {
+			return Array.isArray(payload.aud) ? payload.aud[0] : payload.aud;
+		}
+	}
+
+	const headerClientId = request.headers.get("X-Shopify-Client-Id");
+	if (headerClientId) {
+		return headerClientId;
+	}
+
+	const url = new URL(request.url);
+	const queryClientId = url.searchParams.get("client_id");
+	if (queryClientId) {
+		return queryClientId;
+	}
+
+	return null;
+};
+
+const extractShopFromHostParam = (hostParam: string | null) => {
+	if (!hostParam) {
+		return null;
+	}
+
+	try {
+		const decoded = decodeBase64Url(hostParam);
+		const [shop] = decoded.split("/admin");
+		return normalizeShopDomain(shop);
+	} catch {
+		return null;
+	}
+};
+
+const extractShopFromSessionToken = (request: Request) => {
+	const token = getSessionTokenFromRequest(request);
+	if (!token) {
+		return null;
+	}
+
+	const payload = decodeJwtPayload(token);
+	if (!payload?.dest) {
+		return null;
+	}
+
+	try {
+		const url = new URL(payload.dest);
+		return normalizeShopDomain(url.hostname);
+	} catch {
+		return null;
+	}
+};
+
+const extractShopFromOrigin = (origin: string | null) => {
+	if (!origin) {
+		return null;
+	}
+
+	try {
+		const originUrl = new URL(origin);
+		const hostname = originUrl.hostname;
+
+		if (hostname.endsWith(".myshopify.com")) {
+			return normalizeShopDomain(hostname);
+		}
+
+		if (hostname.includes("myshopify.com")) {
+			const parts = hostname.split(".");
+			const shopPart = parts[0];
+			return normalizeShopDomain(`${shopPart}.myshopify.com`);
+		}
+	} catch {
+		// ignore invalid origin
+	}
+
+	return null;
+};
+
+const extractShopDomain = (request: Request) => {
+	const headerShop = request.headers.get("X-Shopify-Shop-Domain");
+	if (headerShop) {
+		return normalizeShopDomain(headerShop);
+	}
+
+	const url = new URL(request.url);
+	const queryShop = url.searchParams.get("shop");
+	if (queryShop) {
+		return normalizeShopDomain(queryShop);
+	}
+
+	const hostShop = extractShopFromHostParam(url.searchParams.get("host"));
+	if (hostShop) {
+		return hostShop;
+	}
+
+	const originShop = extractShopFromOrigin(request.headers.get("Origin"));
+	if (originShop) {
+		return originShop;
+	}
+
+	const referer = request.headers.get("Referer");
+	if (referer) {
+		try {
+			const refererUrl = new URL(referer);
+			const refererShop = refererUrl.searchParams.get("shop");
+			if (refererShop) {
+				return normalizeShopDomain(refererShop);
+			}
+
+			const refererHostname = refererUrl.hostname;
+			if (refererHostname.endsWith(".myshopify.com")) {
+				return normalizeShopDomain(refererHostname);
+			}
+		} catch {
+			// ignore invalid referer
+		}
+	}
+
+	return extractShopFromSessionToken(request);
+};
+
+const resolveCredentialFromRequest = async (request: Request) => {
+	const clientId = extractClientId(request);
+	if (clientId) {
+		const credential = await findShopCredential({ clientId });
+		if (credential) {
+			return credential;
+		}
+	}
+
+	const shop = extractShopDomain(request);
+	if (shop) {
+		return requireShopCredential({ shopDomain: shop });
+	}
+
+	throw new Response("Unable to resolve shop context", { status: 401 });
+};
+
+const extractShopInput = async (request: Request) => {
+	const url = new URL(request.url);
+	const fromQuery = url.searchParams.get("shop");
+	if (fromQuery) {
+		return fromQuery;
+	}
+
+	if (request.method === "POST") {
+		const cloned = request.clone();
+		const formData = await cloned.formData();
+		const field = formData.get("shop");
+		if (typeof field === "string") {
+			return field;
+		}
+	}
+
+	return null;
+};
+
+const sanitizeShopInput = (input: string) => {
+	const cleaned = input.trim();
+	if (!cleaned) {
+		return null;
+	}
+
+	const withoutProtocol = cleaned.replace(/^https?:\/\//i, "").split("/")[0];
+	const candidate = withoutProtocol.includes(".") ? withoutProtocol : `${withoutProtocol}.myshopify.com`;
+	const normalized = normalizeShopDomain(candidate);
+
+	if (!normalized || !normalized.endsWith(".myshopify.com")) {
+		return null;
+	}
+
+	return normalized;
+};
+
+const getShopifyAppForCredential = async (credential: ShopCredentialType) => {
+	const cached = appCache.get(credential.id);
+	if (cached) {
+		return cached;
+	}
+
+	const app = shopifyApp({
+		apiKey: credential.apiKey,
+		apiSecretKey: credential.apiSecret,
+		apiVersion: coerceApiVersion(credential.apiVersion),
+		scopes: credential.scopes,
+		appUrl: credential.appUrl,
+		authPathPrefix: "/auth",
+		sessionStorage,
+		distribution: coerceDistribution(credential.distribution),
+		billing: BILLING_CONFIG,
   future: {
     unstable_newEmbeddedAuthStrategy: true,
     removeRest: true,
   },
-  ...(process.env.SHOP_CUSTOM_DOMAIN
-    ? { customShopDomains: [process.env.SHOP_CUSTOM_DOMAIN] }
-    : {}),
+		...(credential.customDomain ? { customShopDomains: [credential.customDomain] } : {}),
+	});
+
+	appCache.set(credential.id, app);
+	return app;
+};
+
+const resolveAppForRequest = async (request: Request) => {
+	const credential = await resolveCredentialFromRequest(request);
+	const app = await getShopifyAppForCredential(credential);
+	return { app, credential };
+};
+
+export const getShopifyContextByShopDomain = async (shopDomain: string) => {
+	const normalized = normalizeShopDomain(shopDomain);
+	if (!normalized) {
+		throw new Error("Invalid shop domain");
+	}
+
+	const credential = await requireShopCredential({ shopDomain: normalized });
+	const app = await getShopifyAppForCredential(credential);
+	return { app, credential };
+};
+
+const linkSessionToShopId = async (sessionId: string | undefined, shopId: string) => {
+	if (!sessionId) {
+		return;
+	}
+
+	try {
+		await prisma.session.update({
+			where: { id: sessionId },
+			data: { shopId },
+		});
+	} catch (error) {
+		console.error('[shopify.server] Failed to link session to shopId', error);
+	}
+};
+
+const decorateResult = <T extends object>(result: T, credential: ShopCredentialType) => ({
+	...result,
+	shopCredential: credential,
+	shopDomain: credential.shopDomain,
+	shopId: credential.id,
 });
 
-export default shopify;
-export const apiVersion = ApiVersion.January25;
-export const addDocumentResponseHeaders = shopify.addDocumentResponseHeaders;
-export const authenticate = shopify.authenticate;
-export const unauthenticated = shopify.unauthenticated;
-export const login = shopify.login;
-export const registerWebhooks = shopify.registerWebhooks;
-export const sessionStorage = shopify.sessionStorage;
+export const authenticate = {
+	admin: async (request: Request) => {
+		const { app, credential } = await resolveAppForRequest(request);
+		const context = await app.authenticate.admin(request);
+		await linkSessionToShopId(context.session?.id, credential.id);
+		return decorateResult(context, credential);
+	},
+	public: {
+		appProxy: async (request: Request) => {
+			const { app, credential } = await resolveAppForRequest(request);
+			const context = await app.authenticate.public.appProxy(request);
+			return decorateResult(context, credential);
+		},
+	},
+	webhook: async (request: Request) => {
+		const { app, credential } = await resolveAppForRequest(request);
+		const context = await app.authenticate.webhook(request);
+		return decorateResult(context, credential);
+	},
+};
+
+export const unauthenticated = {
+	admin: async (shop: string) => {
+		const credential = await requireShopCredential({ shopDomain: shop });
+		const app = await getShopifyAppForCredential(credential);
+		return app.unauthenticated.admin(shop);
+	},
+	storefront: async (shop: string) => {
+		const credential = await requireShopCredential({ shopDomain: shop });
+		const app = await getShopifyAppForCredential(credential);
+		return app.unauthenticated.storefront(shop);
+	},
+};
+
+export const login = async (request: Request) => {
+	const url = new URL(request.url);
+	if (request.method === "GET" && !url.searchParams.get("shop")) {
+		return {};
+	}
+
+	const shopInput = await extractShopInput(request);
+	if (!shopInput) {
+		return { shop: LoginErrorType.MissingShop };
+	}
+
+	const sanitizedShop = sanitizeShopInput(shopInput);
+	if (!sanitizedShop) {
+		return { shop: LoginErrorType.InvalidShop };
+	}
+
+	const credential = await findShopCredential({ shopDomain: sanitizedShop });
+	if (!credential) {
+		return { shop: LoginErrorType.InvalidShop };
+	}
+
+	const app = await getShopifyAppForCredential(credential);
+	return app.login(request);
+};
+
+export const registerWebhooks = async (
+	shopDomain: string,
+	params: Parameters<ShopifyAppInstance["registerWebhooks"]>[0],
+) => {
+	const credential = await requireShopCredential({ shopDomain });
+	const app = await getShopifyAppForCredential(credential);
+	return app.registerWebhooks(params);
+};
+
+export const addDocumentResponseHeaders = async (request: Request, headers: Headers) => {
+	const { app } = await resolveAppForRequest(request);
+	app.addDocumentResponseHeaders(request, headers);
+};
+
+export const extractShopDomainFromRequest = extractShopDomain;
+
+export { sessionStorage };
+export const apiVersion = DEFAULT_API_VERSION;
+export const __testing__ = {
+	normalizeShopDomain,
+	sanitizeShopInput,
+	extractClientId,
+	extractShopDomain,
+	extractShopFromOrigin,
+};

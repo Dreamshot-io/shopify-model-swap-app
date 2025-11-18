@@ -57,10 +57,10 @@ echo "----------------------"
 
 # Check for standard Shopify env vars
 VARS_TO_CHECK=(
-  "SHOPIFY_API_KEY"
-  "SHOPIFY_API_SECRET"
   "SHOPIFY_APP_URL"
   "DATABASE_URL"
+  "DIRECT_URL"
+  "FAL_KEY"
 )
 
 for var in "${VARS_TO_CHECK[@]}"; do
@@ -76,29 +76,6 @@ for var in "${VARS_TO_CHECK[@]}"; do
     echo "  [MISSING] $var = NOT SET"
   fi
 done
-
-# Check for multi-client env vars if client slug detected
-if [ -n "$CLIENT_SLUG" ]; then
-  CLIENT_KEY=$(echo "$CLIENT_SLUG" | tr '[:lower:]' '[:upper:]' | tr '-' '_')
-  CLIENT_ID_VAR="CLIENT_${CLIENT_KEY}_ID"
-  CLIENT_SECRET_VAR="CLIENT_${CLIENT_KEY}_SECRET"
-
-  echo ""
-  echo "Client-Specific Variables (for $CLIENT_SLUG):"
-  echo "---------------------------------------------"
-
-  if [ -n "${!CLIENT_ID_VAR}" ]; then
-    echo "  [OK] $CLIENT_ID_VAR = ${!CLIENT_ID_VAR:0:8}..."
-  else
-    echo "  [MISSING] $CLIENT_ID_VAR = NOT SET (required for multi-client)"
-  fi
-
-  if [ -n "${!CLIENT_SECRET_VAR}" ]; then
-    echo "  [OK] $CLIENT_SECRET_VAR = ${!CLIENT_SECRET_VAR:0:4}...${!CLIENT_SECRET_VAR: -4}"
-  else
-    echo "  [MISSING] $CLIENT_SECRET_VAR = NOT SET (required for multi-client)"
-  fi
-fi
 
 echo ""
 echo "Verification complete"

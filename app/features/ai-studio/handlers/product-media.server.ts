@@ -1,6 +1,6 @@
 import type { AdminApiContext } from "@shopify/shopify-app-remix/server";
 import { json } from "@remix-run/node";
-import db from "../../../db.server";
+import db, { lookupShopId } from "../../../db.server";
 import type {
   PublishImageResponse,
   LibraryActionResponse,
@@ -12,6 +12,11 @@ export async function handlePublish(
   admin: AdminApiContext,
   shop: string,
 ) {
+  const shopId = await lookupShopId(shop);
+  if (!shopId) {
+    throw new Error(`Unable to resolve shopId for shop: ${shop}`);
+  }
+
   const imageUrl = String(formData.get("imageUrl") || "");
   const productId = String(formData.get("productId") || "");
 
@@ -51,6 +56,7 @@ export async function handlePublish(
       data: {
         id: crypto.randomUUID(),
         shop,
+        shopId,
         eventType: "PUBLISHED",
         productId,
         imageUrl,
@@ -70,6 +76,11 @@ export async function handleDeleteFromProduct(
   admin: AdminApiContext,
   shop: string,
 ) {
+  const shopId = await lookupShopId(shop);
+  if (!shopId) {
+    throw new Error(`Unable to resolve shopId for shop: ${shop}`);
+  }
+
   const mediaId = String(formData.get("mediaId") || "");
   const productId = String(formData.get("productId") || "");
 
@@ -121,6 +132,7 @@ export async function handleDeleteFromProduct(
       data: {
         id: crypto.randomUUID(),
         shop,
+        shopId,
         eventType: "MEDIA_DELETED",
         productId,
       },

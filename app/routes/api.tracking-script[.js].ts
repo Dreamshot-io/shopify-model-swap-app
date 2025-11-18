@@ -1,7 +1,8 @@
 import type { LoaderFunctionArgs } from '@remix-run/node';
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const appUrl = process.env.SHOPIFY_APP_URL || "https://shopify.dreamshot.io";
+  const { origin } = new URL(request.url);
+  const appUrl = origin;
 
   // The tracking script that will run on the storefront
   const script = `

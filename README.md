@@ -52,15 +52,28 @@ The stable URL uses ngrok to maintain a consistent tunnel URL across restarts, p
 
 Required variables in `.env`:
 
-- `SHOPIFY_API_KEY` - Shopify app credentials
-- `SHOPIFY_API_SECRET` - Shopify app credentials
-- `FAL_KEY` - fal.ai API key
-- `SHOPIFY_APP_URL` - App URL for Shopify configuration
-- `SCOPES` - Comma-separated Shopify API scopes
+- `SHOPIFY_APP_URL` - Shared Remix host used for OAuth callbacks and script tags
 - `DATABASE_URL` - PostgreSQL connection string
   - Local: `postgresql://postgres:postgres@localhost:5432/dreamshot?schema=public` (see `prd/DEV-DB-POSTGRES.md`)
   - Hosted: May require `?sslmode=require`
 - `DIRECT_URL` - (Optional) Only needed when using connection pooling on Vercel (see `prd/VERCEL-ENV.md`)
+- `FAL_KEY` - fal.ai API key
+- `S3_*` - Storage credentials when using R2/S3 (see `.env` template)
+
+> Shopify API keys and secrets now live in the `ShopCredential` table. Seed new credentials with `node scripts/seed-shop-credential.mjs --shop-domain=<shop>.myshopify.com --config=shopify.app.toml --api-secret=<secret>`.
+
+### Security: Credential Encryption
+
+**API secrets are encrypted at rest** using AES-256-GCM encryption. The encryption key is stored in the `ENCRYPTION_KEY` environment variable.
+
+**Required environment variable:**
+- `ENCRYPTION_KEY` - 32+ character encryption key (generate with: `openssl rand -base64 32`)
+
+**Important:**
+- Store `ENCRYPTION_KEY` securely (e.g., in your hosting provider's secrets manager)
+- Never commit `ENCRYPTION_KEY` to version control
+- If you lose the key, encrypted credentials cannot be recovered
+- To encrypt existing credentials: `bun scripts/encrypt-existing-credentials.mjs`
 
 ## Tech Stack
 
@@ -96,26 +109,28 @@ prisma/              # Database schema and migrations
 extensions/          # Shopify app extensions
 ```
 
-## Multi-Client Configuration (Future)
+## Multi-Client Credential Store
 
-The codebase includes preparation for multi-client Shopify app configuration management. This enables serving multiple Shopify Plus clients from a single backend deployment.
+Each Shopify app (API key + secret) now lives in the `ShopCredential` table. Incoming requests resolve the correct credential using:
 
-**Status:** Preparation phase complete - Ready for implementation
+- `session_token` JWT `aud` claim (embedded admin fetch calls)
+- `shop` query param or `X-Shopify-Shop-Domain` header (OAuth, proxies, webhooks)
+- `client_id` query param (OAuth flows)
+
+Sessions, AI Studio media, AB tests, and audit rows now store a `shopId` foreign key, enabling safe cross-tenant analytics.
 
 **Key Files:**
 
-- `shopify.app.template.toml` - Template for client-specific configs
-- `app/config/client-credentials.template.ts` - Credential mapping (to be populated)
-- `scripts/list-shopify-configs.sh` - List available configurations
-- `scripts/verify-shopify-config.sh` - Verify current config
-- `scripts/use-shopify-config.sh` - Switch between client configs
+- `prisma/schema.prisma` – `ShopCredential` model + `shopId` relations
+- `app/shopify.server.ts` – dynamic credential resolver + authenticate wrappers
+- `app/services/shops.server.ts` – Prisma helpers + in-memory cache
+- `scripts/seed-shop-credential.mjs` – CLI to import `shopify.app*.toml` configs
 
-**Documentation:**
+**Onboarding Flow:**
 
-- [PRD: Multi-Client Configuration](./prd/PRD-Multi-Client-Shopify-App-Configuration.md)
-- [Multi-Client Onboarding Guide](./docs/multi-client-onboarding.md)
-- [Multi-Client Troubleshooting](./docs/multi-client-troubleshooting.md)
-- [Client Registry](./docs/client-registry.md)
+1. Ensure `DATABASE_URL` and `SHOPIFY_APP_URL` are configured.
+2. Run `node scripts/seed-shop-credential.mjs --shop-domain=<shop>.myshopify.com --config=shopify.app.toml --api-secret=<secret>`.
+3. Install the app normally; Remix will resolve credentials from the database.
 
 **Note:** Current implementation uses single-client configuration. Multi-client support is prepared but not yet active.
 
