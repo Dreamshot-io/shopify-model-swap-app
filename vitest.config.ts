@@ -10,6 +10,14 @@ export default defineConfig({
 			'build',
 			'.cache',
 			'extensions/**/node_modules/**',
+			'extensions/**/*.test.ts',
+			'extensions/**/*.test.tsx',
 		],
+		environmentMatchGlobs: [
+			// jsdom required for React component tests
+			// Install jsdom if running component tests: bun add -d jsdom
+			['**/components/**/*.test.tsx', 'jsdom'],
+		],
+		setupFiles: ['./vitest.setup.ts'],
 	},
 });
