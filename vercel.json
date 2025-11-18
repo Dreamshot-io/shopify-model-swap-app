@@ -5,6 +5,10 @@
 		{
 			"path": "/api/rotation",
 			"schedule": "*/10 * * * *"
+		},
+		{
+			"path": "/api/statistics-export/daily",
+			"schedule": "0 0 * * *"
 		}
 	]
 }

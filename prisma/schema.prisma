@@ -56,13 +56,15 @@ model ShopCredential {
   createdAt    DateTime             @default(now())
   updatedAt    DateTime             @updatedAt
 
-  sessions       Session[]
-  abTests        ABTest[]
-  auditLogs      AuditLog[]
-  metricEvents   MetricEvent[]
-  productRules   ProductSuggestionRule[]
-  generations    GenerationHistory[]
-  aiStudioImages AIStudioImage[]
+  sessions           Session[]
+  abTests            ABTest[]
+  auditLogs          AuditLog[]
+  metricEvents       MetricEvent[]
+  productRules       ProductSuggestionRule[]
+  generations        GenerationHistory[]
+  aiStudioImages     AIStudioImage[]
+  statisticsExports  StatisticsExport[]
+  productImageBackups ProductImageBackup[]
 
   @@index([status])
 }
@@ -344,5 +346,65 @@ model AIStudioImage {
   @@index([shop, productId])
   @@index([shop, productId, state])
   @@index([createdAt])
+  @@index([shopId])
+}
+
+// Product image backup tracking for statistics exports
+model ProductImageBackup {
+  id       String @id @default(cuid())
+  shop     String
+  productId String
+  variantId String
+  mediaId  String // Shopify media ID (e.g., gid://shopify/MediaImage/123)
+
+  // Image URLs
+  shopifyUrl String // Shopify CDN URL
+  r2Url      String? // R2 permanent URL (null if not yet backed up)
+  r2Key      String? // R2 object key: product-images/{shopId}/{productId}/{variantId}/{mediaId}.{ext}
+
+  // Metadata
+  backedUpAt DateTime? // When image was backed up to R2
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  shopId         String?
+  shopCredential ShopCredential? @relation(fields: [shopId], references: [id], onDelete: SetNull)
+
+  @@unique([shop, mediaId])
+  @@index([shop, productId])
+  @@index([shop, variantId])
+  @@index([shopId])
+}
+
+// Daily statistics export records
+model StatisticsExport {
+  id        String @id @default(cuid())
+  shop      String
+  productId String
+  variantId String
+  date      DateTime // UTC date of the export (YYYY-MM-DD)
+
+  // R2 storage references
+  csvR2Key  String // statistic-exports/{shopId}/{productId}/{variantId}/YYYYMMDD.csv
+  jsonR2Key String // statistic-exports/{shopId}/{productId}/{variantId}/YYYYMMDD.json
+  csvUrl    String // Signed R2 URL for CSV
+  jsonUrl   String // Signed R2 URL for JSON
+
+  // Snapshot of metrics at export time
+  metricsSnapshot Json // { impressions, addToCarts, ctr, orders, revenue }
+  imagesSnapshot  Json // Array of { mediaId, shopifyUrl, r2Url, r2Key, backedUpAt }
+
+  // Metadata
+  exportedAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  shopId         String?
+  shopCredential ShopCredential? @relation(fields: [shopId], references: [id], onDelete: SetNull)
+
+  @@unique([shop, productId, variantId, date])
+  @@index([shop, date])
+  @@index([shop, productId])
+  @@index([date])
   @@index([shopId])
 }
