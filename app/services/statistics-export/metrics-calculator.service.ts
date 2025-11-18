@@ -4,7 +4,7 @@
  */
 
 import type { ABTestEvent } from '@prisma/client';
-import { prisma } from '~/db.server';
+import prisma from '~/db.server';
 import type { VariantMetrics } from '~/features/statistics-export/types';
 import { Decimal } from '@prisma/client/runtime/library';
 

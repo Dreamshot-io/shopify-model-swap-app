@@ -3,7 +3,7 @@
  * Handles backing up Shopify product images to R2 storage
  */
 
-import { prisma } from '~/db.server';
+import prisma from '~/db.server';
 import { uploadImageFromUrlToR2 } from '~/services/storage.server';
 import type {
 	ImageBackupParams,

@@ -16,7 +16,7 @@ import type { ABTestEvent } from '@prisma/client';
 const mockPrismaFindMany = vi.fn();
 
 vi.mock('~/db.server', () => ({
-	prisma: {
+	default: {
 		aBTestEvent: {
 			findMany: (...args: unknown[]) => mockPrismaFindMany(...args),
 		},

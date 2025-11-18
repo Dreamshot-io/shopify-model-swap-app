@@ -18,7 +18,7 @@ const mockPrismaFindUnique = vi.fn();
 const mockPrismaFindMany = vi.fn();
 
 vi.mock('~/db.server', () => ({
-	prisma: {
+	default: {
 		productImageBackup: {
 			create: (...args: unknown[]) => mockPrismaCreate(...args),
 			findUnique: (...args: unknown[]) => mockPrismaFindUnique(...args),

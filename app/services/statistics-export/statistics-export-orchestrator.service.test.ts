@@ -8,7 +8,7 @@ import type { ExportVariantParams } from './statistics-export-orchestrator.servi
 
 // Mock all dependencies
 vi.mock('~/db.server', () => ({
-	prisma: {
+	default: {
 		productImageBackup: {
 			findMany: vi.fn(),
 		},
@@ -44,7 +44,8 @@ vi.mock('./export-storage.service', () => ({
 const { exportProductVariantStatistics, exportProductStatistics } = await import(
 	'./statistics-export-orchestrator.service'
 );
-const { prisma } = await import('~/db.server');
+const prismaModule = await import('~/db.server');
+const prisma = prismaModule.default;
 const { getVariantMetricsForDate } = await import('./metrics-calculator.service');
 const { backupProductVariantImages } = await import('./image-backup.service');
 const { getProductVariants, getProductImages } = await import('./product-fetcher.service');

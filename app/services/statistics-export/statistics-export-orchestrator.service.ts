@@ -4,7 +4,7 @@
  */
 
 import type { AdminApiContext } from '@shopify/shopify-app-remix/server';
-import { prisma } from '~/db.server';
+import prisma from '~/db.server';
 import type { VariantStatistics, ImageReference } from '~/features/statistics-export/types';
 import { getVariantMetricsForDate } from './metrics-calculator.service';
 import { backupProductVariantImages } from './image-backup.service';

@@ -6,9 +6,9 @@
 
 import type { ActionFunctionArgs } from '@remix-run/node';
 import { json } from '@remix-run/node';
-import { prisma } from '~/db.server';
+import prisma from '~/db.server';
 import { exportProductStatistics } from '~/services/statistics-export';
-import { shopify } from '~/shopify.server';
+import { unauthenticated } from '~/shopify.server';
 
 /**
  * Validate request is from Vercel Cron
@@ -45,7 +45,7 @@ async function getShopifyAdmin(shopDomain: string) {
 	}
 
 	// Create Shopify admin client from session
-	const admin = shopify.unauthenticated.admin(shopDomain);
+	const admin = unauthenticated.admin(shopDomain);
 
 	return {
 		graphql: admin.graphql,
