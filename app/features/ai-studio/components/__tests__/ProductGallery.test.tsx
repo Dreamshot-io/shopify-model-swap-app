@@ -1,11 +1,41 @@
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import React from 'react';
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
-import { ProductGallery } from "../ProductGallery";
 import "@testing-library/jest-dom";
 
+// Setup window.matchMedia BEFORE importing Polaris components
+// Polaris components access window.matchMedia during module initialization
+if (typeof window !== 'undefined') {
+	const matchMediaMock = vi.fn().mockImplementation(query => {
+		const mediaQueryList = {
+			matches: false,
+			media: query,
+			onchange: null,
+			addListener: vi.fn(),
+			removeListener: vi.fn(),
+			addEventListener: vi.fn(),
+			removeEventListener: vi.fn(),
+			dispatchEvent: vi.fn(),
+		};
+		return mediaQueryList;
+	});
+	
+	Object.defineProperty(window, 'matchMedia', {
+		writable: true,
+		configurable: true,
+		value: matchMediaMock,
+	});
+}
+
+import { AppProvider } from "@shopify/polaris";
+import { ProductGallery } from "../ProductGallery";
+
 // Mock Shopify Polaris components that need special handling
-jest.mock("@shopify/polaris", () => ({
-  ...jest.requireActual("@shopify/polaris"),
-  Modal: jest.fn(({ children, open, onClose, primaryAction, secondaryActions, title }) =>
+vi.mock("@shopify/polaris", async () => {
+  const actual = await vi.importActual("@shopify/polaris");
+  
+  // Create Modal mock with Section subcomponent
+  const ModalMock = vi.fn(({ children, open, onClose, primaryAction, secondaryActions, title }) =>
     open ? (
       <div data-testid="modal" role="dialog" aria-label={title}>
         <h2>{title}</h2>
@@ -25,14 +55,84 @@ jest.mock("@shopify/polaris", () => ({
         ))}
       </div>
     ) : null
-  ),
-  "Modal.Section": jest.fn(({ children }) => <div>{children}</div>),
-}));
+  );
+  
+  // Attach Section as a property to Modal
+  ModalMock.Section = vi.fn(({ children }) => <div>{children}</div>);
+  
+  return {
+    ...actual,
+    Modal: ModalMock,
+  };
+});
+
+// Helper function to wrap components with AppProvider
+const renderWithAppProvider = (component: React.ReactElement) => {
+	const result = render(
+		<AppProvider 
+			i18n={{
+				locale: 'en',
+				fallbackLocale: 'en',
+				translations: {},
+			}}
+		>
+			{component}
+		</AppProvider>
+	);
+	
+	// Override rerender to also wrap with AppProvider
+	const originalRerender = result.rerender;
+	result.rerender = (component: React.ReactElement) => {
+		return originalRerender(
+			<AppProvider 
+				i18n={{
+					locale: 'en',
+					fallbackLocale: 'en',
+					translations: {},
+				}}
+			>
+				{component}
+			</AppProvider>
+		);
+	};
+	
+	return result;
+};
 
 describe("ProductGallery", () => {
-  const mockOnDelete = jest.fn();
-  const mockOnPublishFromLibrary = jest.fn();
-  const mockOnRemoveFromLibrary = jest.fn();
+  const mockOnDelete = vi.fn();
+  const mockOnPublishFromLibrary = vi.fn();
+  const mockOnRemoveFromLibrary = vi.fn();
+
+  beforeEach(() => {
+    // Arrange - Clear mocks before each test
+    vi.clearAllMocks();
+    
+    // Setup window.matchMedia using plain functions (not vi.fn) so clearAllMocks doesn't affect it
+    if (typeof window !== 'undefined') {
+      const createMediaQueryList = (query: string) => ({
+        matches: false,
+        media: query,
+        onchange: null,
+        addListener: () => {},
+        removeListener: () => {},
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        dispatchEvent: () => true,
+      });
+      
+      // Use a plain function instead of vi.fn() so clearAllMocks doesn't affect it
+      const matchMediaMock = (query: string) => {
+        return createMediaQueryList(query);
+      };
+      
+      Object.defineProperty(window, 'matchMedia', {
+        writable: true,
+        configurable: true,
+        value: matchMediaMock,
+      });
+    }
+  });
 
   const mockPublishedImages = [
     {
@@ -62,29 +162,29 @@ describe("ProductGallery", () => {
     { imageUrl: "https://cdn.shopify.com/library2.webp", sourceUrl: "https://source.jpg" },
   ];
 
-  beforeEach(() => {
-    jest.clearAllMocks();
-  });
 
   describe("Component Rendering", () => {
-    it("renders empty state when no images exist", () => {
-      render(
-        <ProductGallery
-          images={[]}
-          libraryItems={[]}
-          onDelete={mockOnDelete}
-          isDeleting={false}
-        />
-      );
+    it("should render empty state when no images exist", () => {
+      // Arrange
+      const props = {
+        images: [],
+        libraryItems: [],
+        onDelete: mockOnDelete,
+        isDeleting: false,
+      };
 
+      // Act
+      renderWithAppProvider(<ProductGallery {...props} />);
+
+      // Assert
       expect(screen.getByText("No product images")).toBeInTheDocument();
       expect(
         screen.getByText(/This product doesn't have any images yet/i)
       ).toBeInTheDocument();
     });
 
-    it("renders published images with correct badges", () => {
-      render(
+    it("should render published images with correct badges", () => {
+      renderWithAppProvider(
         <ProductGallery
           images={mockPublishedImages}
           libraryItems={[]}
@@ -106,7 +206,7 @@ describe("ProductGallery", () => {
     });
 
     it("renders library items with correct badges", () => {
-      render(
+      renderWithAppProvider(
         <ProductGallery
           images={[]}
           libraryItems={mockLibraryItems}
@@ -129,7 +229,7 @@ describe("ProductGallery", () => {
     });
 
     it("renders both published and library images together", () => {
-      render(
+      renderWithAppProvider(
         <ProductGallery
           images={mockPublishedImages}
           libraryItems={mockLibraryItems}
@@ -157,7 +257,7 @@ describe("ProductGallery", () => {
     });
 
     it("displays images with proper alt text", () => {
-      render(
+      renderWithAppProvider(
         <ProductGallery
           images={mockPublishedImages}
           libraryItems={mockLibraryItems}
@@ -171,7 +271,7 @@ describe("ProductGallery", () => {
       expect(screen.getByAltText("Product back")).toBeInTheDocument();
 
       // Check library images alt text
-      const libraryImages = screen.getAllByAltText("Library image");
+      const libraryImages = screen.getAllByAltText("Stored library variant");
       expect(libraryImages).toHaveLength(2);
     });
 
@@ -181,7 +281,7 @@ describe("ProductGallery", () => {
         "https://cdn.shopify.com/string2.jpg",
       ];
 
-      render(
+      renderWithAppProvider(
         <ProductGallery
           images={[]}
           libraryItems={stringLibraryItems}
@@ -199,7 +299,7 @@ describe("ProductGallery", () => {
 
   describe("Delete Functionality - Published Images", () => {
     it("shows delete button for published images", () => {
-      render(
+      renderWithAppProvider(
         <ProductGallery
           images={mockPublishedImages}
           libraryItems={[]}
@@ -213,7 +313,7 @@ describe("ProductGallery", () => {
     });
 
     it("opens confirmation modal when delete button is clicked", () => {
-      render(
+      renderWithAppProvider(
         <ProductGallery
           images={mockPublishedImages}
           libraryItems={[]}
@@ -233,7 +333,7 @@ describe("ProductGallery", () => {
     });
 
     it("calls onDelete when confirming deletion", async () => {
-      render(
+      renderWithAppProvider(
         <ProductGallery
           images={mockPublishedImages}
           libraryItems={[]}
@@ -254,7 +354,7 @@ describe("ProductGallery", () => {
     });
 
     it("closes modal when canceling deletion", () => {
-      render(
+      renderWithAppProvider(
         <ProductGallery
           images={mockPublishedImages}
           libraryItems={[]}
@@ -274,7 +374,7 @@ describe("ProductGallery", () => {
     });
 
     it("disables delete buttons when isDeleting is true", () => {
-      render(
+      renderWithAppProvider(
         <ProductGallery
           images={mockPublishedImages}
           libraryItems={[]}
@@ -285,14 +385,15 @@ describe("ProductGallery", () => {
 
       const deleteButtons = screen.getAllByLabelText("Delete image");
       deleteButtons.forEach(button => {
-        expect(button).toBeDisabled();
+        expect(button).toHaveAttribute('aria-disabled', 'true');
+        expect(button).toHaveAttribute('tabindex', '-1');
       });
     });
   });
 
   describe("Library Item Actions", () => {
     it("shows publish button for library items", () => {
-      render(
+      renderWithAppProvider(
         <ProductGallery
           images={[]}
           libraryItems={mockLibraryItems}
@@ -308,7 +409,7 @@ describe("ProductGallery", () => {
     });
 
     it("shows remove button for library items", () => {
-      render(
+      renderWithAppProvider(
         <ProductGallery
           images={[]}
           libraryItems={mockLibraryItems}
@@ -324,7 +425,7 @@ describe("ProductGallery", () => {
     });
 
     it("calls onPublishFromLibrary when publish button is clicked", () => {
-      render(
+      renderWithAppProvider(
         <ProductGallery
           images={[]}
           libraryItems={mockLibraryItems}
@@ -342,7 +443,7 @@ describe("ProductGallery", () => {
     });
 
     it("shows confirmation modal when remove button is clicked", () => {
-      render(
+      renderWithAppProvider(
         <ProductGallery
           images={[]}
           libraryItems={mockLibraryItems}
@@ -364,7 +465,7 @@ describe("ProductGallery", () => {
     });
 
     it("calls onRemoveFromLibrary when confirming removal", async () => {
-      render(
+      renderWithAppProvider(
         <ProductGallery
           images={[]}
           libraryItems={mockLibraryItems}
@@ -378,8 +479,15 @@ describe("ProductGallery", () => {
       const removeButtons = screen.getAllByText("Remove");
       fireEvent.click(removeButtons[0]);
 
-      // Find the confirm button in the modal (second "Remove" button)
-      const confirmButton = screen.getAllByText("Remove")[1];
+      // Wait for modal to appear and find the confirm button
+      await waitFor(() => {
+        expect(screen.getByText("Remove from library?")).toBeInTheDocument();
+      });
+
+      // Find the primary action button in the modal (there are multiple Remove buttons)
+      const allRemoveButtons = screen.getAllByRole('button', { name: /^Remove$/ });
+      // The last one should be the modal's primary action button
+      const confirmButton = allRemoveButtons[allRemoveButtons.length - 1];
       fireEvent.click(confirmButton);
 
       await waitFor(() => {
@@ -388,7 +496,7 @@ describe("ProductGallery", () => {
     });
 
     it("does not show action buttons when callbacks are not provided", () => {
-      render(
+      renderWithAppProvider(
         <ProductGallery
           images={[]}
           libraryItems={mockLibraryItems}
@@ -404,7 +512,7 @@ describe("ProductGallery", () => {
 
   describe("Mixed Content Display", () => {
     it("correctly displays WebP images in library", () => {
-      render(
+      renderWithAppProvider(
         <ProductGallery
           images={[]}
           libraryItems={mockLibraryItems}
@@ -422,7 +530,7 @@ describe("ProductGallery", () => {
     });
 
     it("maintains correct order of published and library images", () => {
-      render(
+      renderWithAppProvider(
         <ProductGallery
           images={mockPublishedImages}
           libraryItems={mockLibraryItems}
@@ -460,7 +568,7 @@ describe("ProductGallery", () => {
         },
       ];
 
-      render(
+      renderWithAppProvider(
         <ProductGallery
           images={imagesWithInvalid}
           libraryItems={[]}
@@ -477,7 +585,7 @@ describe("ProductGallery", () => {
 
   describe("Badge Display Logic", () => {
     it("shows success tone for published badges", () => {
-      render(
+      renderWithAppProvider(
         <ProductGallery
           images={mockPublishedImages}
           libraryItems={[]}
@@ -492,7 +600,7 @@ describe("ProductGallery", () => {
     });
 
     it("shows default tone for library badges", () => {
-      render(
+      renderWithAppProvider(
         <ProductGallery
           images={[]}
           libraryItems={mockLibraryItems}
@@ -507,7 +615,7 @@ describe("ProductGallery", () => {
     });
 
     it("displays correct count in header badges", () => {
-      render(
+      renderWithAppProvider(
         <ProductGallery
           images={[{ ...mockPublishedImages[0] }]}
           libraryItems={[mockLibraryItems[0], mockLibraryItems[1], "https://extra.jpg"]}
@@ -521,7 +629,7 @@ describe("ProductGallery", () => {
     });
 
     it("does not show count badges when no images exist", () => {
-      render(
+      renderWithAppProvider(
         <ProductGallery
           images={[]}
           libraryItems={[]}
@@ -537,7 +645,7 @@ describe("ProductGallery", () => {
 
   describe("Immediate UI Updates", () => {
     it("immediately reflects new library items", () => {
-      const { rerender } = render(
+      const { rerender } = renderWithAppProvider(
         <ProductGallery
           images={[]}
           libraryItems={[]}
@@ -564,7 +672,7 @@ describe("ProductGallery", () => {
     });
 
     it("immediately reflects removed library items", () => {
-      const { rerender } = render(
+      const { rerender } = renderWithAppProvider(
         <ProductGallery
           images={[]}
           libraryItems={mockLibraryItems}
@@ -589,7 +697,7 @@ describe("ProductGallery", () => {
     });
 
     it("immediately shows uploaded WebP images", () => {
-      const { rerender } = render(
+      const { rerender } = renderWithAppProvider(
         <ProductGallery
           images={[]}
           libraryItems={[]}
@@ -620,7 +728,7 @@ describe("ProductGallery", () => {
 
   describe("Accessibility", () => {
     it("provides proper ARIA labels for delete buttons", () => {
-      render(
+      renderWithAppProvider(
         <ProductGallery
           images={mockPublishedImages}
           libraryItems={[]}
@@ -634,7 +742,7 @@ describe("ProductGallery", () => {
     });
 
     it("modal has proper ARIA attributes", () => {
-      render(
+      renderWithAppProvider(
         <ProductGallery
           images={mockPublishedImages}
           libraryItems={[]}
@@ -651,7 +759,7 @@ describe("ProductGallery", () => {
     });
 
     it("images have appropriate alt text", () => {
-      render(
+      renderWithAppProvider(
         <ProductGallery
           images={mockPublishedImages}
           libraryItems={mockLibraryItems}

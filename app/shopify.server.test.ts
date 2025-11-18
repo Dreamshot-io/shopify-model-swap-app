@@ -1,23 +1,50 @@
-import { describe, expect, it } from '@jest/globals';
-
+import { describe, it, expect } from 'vitest';
 import { __testing__ } from './shopify.server';
 
 const { sanitizeShopInput, normalizeShopDomain } = __testing__;
 
 describe('shopify.server helpers', () => {
-	it('sanitizes full Shopify URLs', () => {
-		expect(sanitizeShopInput('https://example-shop.myshopify.com/admin')).toBe('example-shop.myshopify.com');
+	it('should sanitize full Shopify URLs', () => {
+		// Arrange
+		const input = 'https://example-shop.myshopify.com/admin';
+
+		// Act
+		const result = sanitizeShopInput(input);
+
+		// Assert
+		expect(result).toBe('example-shop.myshopify.com');
 	});
 
-	it('appends Shopify domain suffix when missing', () => {
-		expect(sanitizeShopInput('coolstore')).toBe('coolstore.myshopify.com');
+	it('should append Shopify domain suffix when missing', () => {
+		// Arrange
+		const input = 'coolstore';
+
+		// Act
+		const result = sanitizeShopInput(input);
+
+		// Assert
+		expect(result).toBe('coolstore.myshopify.com');
 	});
 
-	it('rejects non-Shopify domains', () => {
-		expect(sanitizeShopInput('malicious.example.com')).toBeNull();
+	it('should reject non-Shopify domains', () => {
+		// Arrange
+		const input = 'malicious.example.com';
+
+		// Act
+		const result = sanitizeShopInput(input);
+
+		// Assert
+		expect(result).toBeNull();
 	});
 
-	it('normalizes uppercase shops', () => {
-		expect(normalizeShopDomain('My-Shop.MyShopify.com')).toBe('my-shop.myshopify.com');
+	it('should normalize uppercase shops', () => {
+		// Arrange
+		const input = 'My-Shop.MyShopify.com';
+
+		// Act
+		const result = normalizeShopDomain(input);
+
+		// Assert
+		expect(result).toBe('my-shop.myshopify.com');
 	});
 });
