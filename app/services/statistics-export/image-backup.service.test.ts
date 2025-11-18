@@ -52,7 +52,7 @@ describe('image-backup.service', () => {
 			const key = generateR2Key(shopId, productId, variantId, mediaId, extension);
 
 			// Assert
-			expect(key).toBe('shop123/products/prod456/variants/var789/media/media001.jpg');
+			expect(key).toBe('product-images/shop123/prod456/var789/media001.jpg');
 		});
 
 		it('should handle different extensions', () => {
@@ -83,9 +83,10 @@ describe('image-backup.service', () => {
 			const key = generateR2Key(shopId, productId, variantId, mediaId, extension);
 
 			// Assert
-			expect(key.startsWith('myshop/products/')).toBe(true);
-			expect(key).toContain('/variants/');
-			expect(key).toContain('/media/');
+			expect(key.startsWith('product-images/')).toBe(true);
+			expect(key).toContain('/myshop/');
+			expect(key).toContain('/product1/');
+			expect(key).toContain('/variant1/');
 		});
 	});
 
@@ -165,7 +166,7 @@ describe('image-backup.service', () => {
 				shop: params.shopId,
 				mediaId: params.mediaId,
 				r2Url: 'https://r2.example.com/existing.jpg',
-				r2Key: 'shop123/products/prod456/variants/var789/media/media001.jpg',
+				r2Key: 'product-images/shop123/prod456/var789/media001.jpg',
 				backedUpAt: new Date(),
 			});
 
@@ -199,7 +200,7 @@ describe('image-backup.service', () => {
 				mediaId: params.mediaId,
 				shopifyUrl: params.shopifyUrl,
 				r2Url: expectedR2Url,
-				r2Key: 'shop123/products/prod456/variants/var789/media/media001.jpg',
+				r2Key: 'product-images/shop123/prod456/var789/media001.jpg',
 				backedUpAt: new Date(),
 			});
 
@@ -212,7 +213,7 @@ describe('image-backup.service', () => {
 			expect(mockUploadImageFromUrlToR2).toHaveBeenCalledWith(
 				params.shopifyUrl,
 				expect.objectContaining({
-					keyPrefix: expect.stringContaining('shop123/products/prod456'),
+					keyPrefix: expect.stringContaining('product-images/shop123/prod456'),
 				}),
 			);
 			expect(mockPrismaCreate).toHaveBeenCalled();

@@ -360,7 +360,7 @@ model ProductImageBackup {
   // Image URLs
   shopifyUrl String // Shopify CDN URL
   r2Url      String? // R2 permanent URL (null if not yet backed up)
-  r2Key      String? // R2 object key: {shopId}/products/{productId}/variants/{variantId}/media/{mediaId}.{ext}
+  r2Key      String? // R2 object key: product-images/{shopId}/{productId}/{variantId}/{mediaId}.{ext}
 
   // Metadata
   backedUpAt DateTime? // When image was backed up to R2

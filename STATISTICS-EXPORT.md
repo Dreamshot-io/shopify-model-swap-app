@@ -54,14 +54,13 @@ statistic-exports/
 │   │   │   ├── 20251119.json
 │   │   │   └── ...
 
-{shopId}/products/
-├── {productId}/
-│   ├── variants/
+product-images/
+├── {shopId}/
+│   ├── {productId}/
 │   │   ├── {variantId}/
-│   │   │   ├── media/
-│   │   │   │   ├── {mediaId}.jpg
-│   │   │   │   ├── {mediaId}.png
-│   │   │   │   └── ...
+│   │   │   ├── {mediaId}.jpg
+│   │   │   ├── {mediaId}.png
+│   │   │   └── ...
 ```
 
 ## Setup

@@ -12,7 +12,7 @@ import type {
 
 /**
  * Generate R2 key for product image backup
- * Format: {shopId}/products/{productId}/variants/{variantId}/media/{mediaId}.{ext}
+ * Format: product-images/{shopId}/{productId}/{variantId}/{mediaId}.{ext}
  */
 export function generateR2Key(
 	shopId: string,
@@ -21,7 +21,7 @@ export function generateR2Key(
 	mediaId: string,
 	extension: string,
 ): string {
-	return `${shopId}/products/${productId}/variants/${variantId}/media/${mediaId}.${extension}`;
+	return `product-images/${shopId}/${productId}/${variantId}/${mediaId}.${extension}`;
 }
 
 /**
@@ -92,7 +92,7 @@ export async function backupImageToR2(
 		const r2Key = generateR2Key(shopId, productId, variantId, mediaId, extension);
 
 		// Upload to R2
-		const keyPrefix = `${shopId}/products/${productId}/variants/${variantId}/media/`;
+		const keyPrefix = `product-images/${shopId}/${productId}/${variantId}/`;
 		const r2Url = await uploadImageFromUrlToR2(shopifyUrl, {
 			keyPrefix,
 			productId,

@@ -34,7 +34,7 @@ describe('export-formatter.service', () => {
 						mediaId: 'gid://shopify/MediaImage/1',
 						shopifyUrl: 'https://cdn.shopify.com/image1.jpg',
 						r2Url: 'https://r2.example.com/image1.jpg',
-						r2Key: 'shop123/products/prod456/variants/var789/media/1.jpg',
+						r2Key: 'product-images/shop123/prod456/var789/1.jpg',
 						backedUpAt: new Date('2025-11-18T10:00:00Z'),
 					},
 					{
@@ -201,7 +201,7 @@ describe('export-formatter.service', () => {
 						mediaId: 'gid://shopify/MediaImage/1',
 						shopifyUrl: 'https://cdn.shopify.com/image1.jpg',
 						r2Url: 'https://r2.example.com/image1.jpg',
-						r2Key: 'shop123/products/prod456/variants/var789/media/1.jpg',
+						r2Key: 'product-images/shop123/prod456/var789/1.jpg',
 						backedUpAt: new Date('2025-11-18T10:00:00Z'),
 					},
 				],
