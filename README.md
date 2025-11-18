@@ -8,6 +8,7 @@ AI-powered model swapping app for Shopify product images. Transform product phot
 - 🔄 Model swapping for product images
 - 📊 A/B testing for image variants
 - 🎯 App proxy integration for seamless customer experience
+- 📈 Daily statistics export to R2 (CSV/JSON) - See [STATISTICS-EXPORT.md](./STATISTICS-EXPORT.md)
 
 ## Prerequisites
 
@@ -59,6 +60,7 @@ Required variables in `.env`:
 - `DIRECT_URL` - (Optional) Only needed when using connection pooling on Vercel (see `prd/VERCEL-ENV.md`)
 - `FAL_KEY` - fal.ai API key
 - `S3_*` - Storage credentials when using R2/S3 (see `.env` template)
+- `STATISTICS_EXPORT_API_KEY` - Secure API key for daily export cron (generate with: `openssl rand -base64 32`)
 
 > Shopify API keys and secrets now live in the `ShopCredential` table. Seed new credentials with `node scripts/seed-shop-credential.mjs --shop-domain=<shop>.myshopify.com --config=shopify.app.toml --api-secret=<secret>`.
 
@@ -138,6 +140,7 @@ Sessions, AI Studio media, AB tests, and audit rows now store a `shopId` foreign
 
 - **[AGENTS.md](./AGENTS.md)** - Quick reference for agentic coding tools (commands, style, architecture)
 - **[CLAUDE.md](./CLAUDE.md)** - Comprehensive development guide (philosophy, patterns, examples)
+- **[STATISTICS-EXPORT.md](./STATISTICS-EXPORT.md)** - Daily product statistics export setup and usage
 
 ## Resources
 

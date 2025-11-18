@@ -7,8 +7,9 @@
 - **Dev**: `bun run dev` (includes Shopify CLI tunnel)
 - **Build**: `bun run build` (Prisma generate + migrate + Remix build)
 - **Lint**: `bun run lint`
-- **Test**: Tests use `@jest/globals` - run with `bun test <file>` (no test runner configured in package.json yet)
+- **Test**: `bun run test` (Vitest), `bun run test:watch` (watch mode)
 - **DB**: `bun run setup` (generate + db push), `bun run prisma` (Prisma CLI)
+- **Statistics Export**: See [STATISTICS-EXPORT.md](./STATISTICS-EXPORT.md) for setup and usage
 
 ## Code Style
 
@@ -25,5 +26,6 @@
 
 - **Remix** framework with file-based routing in `app/routes/`
 - **Features** in `app/features/<name>/` with components, handlers, types colocated
-- **Services** in `app/services/` for business logic (AI providers, storage, etc.)
+- **Services** in `app/services/` for business logic (AI providers, storage, statistics-export, etc.)
 - **Tests** live next to code they test (`__tests__/` or `.test.ts`)
+- **Statistics Export**: Modular services in `app/services/statistics-export/` (6 services, 51 tests)

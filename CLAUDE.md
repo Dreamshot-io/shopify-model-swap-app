@@ -119,8 +119,9 @@ Closes #123
 
 - `app/` - Main application code (Remix convention)
     - `features/ai-studio/` - AI image generation feature with components and types
+    - `features/statistics-export/` - Daily statistics export types and constants
     - `routes/` - Remix routes (file-based routing)
-    - `services/` - Business logic services (AI providers, storage)
+    - `services/` - Business logic services (AI providers, storage, statistics export)
 - `prisma/` - Database schema and migrations
 - `extensions/` - Shopify app extensions
 
@@ -131,6 +132,13 @@ Closes #123
     - `FalAIProvider` implementation for fal.ai integration
     - `AIProviderFactory` for provider management
 - **Storage Service** (`app/services/storage.server.ts`): Handles file storage operations
+- **Statistics Export** (`app/services/statistics-export/`): Daily product metrics export system
+    - `image-backup.service.ts` - R2 image backup with idempotent operations
+    - `metrics-calculator.service.ts` - CTR, revenue, conversion calculations
+    - `product-fetcher.service.ts` - Shopify GraphQL product/variant queries
+    - `export-formatter.service.ts` - CSV/JSON formatting
+    - `export-storage.service.ts` - R2 upload with strategic key naming
+    - `statistics-export-orchestrator.service.ts` - Coordinates all services
 - **Database** (`app/db.server.ts`): Prisma client configuration
 
 ## Essential Commands
