@@ -60,7 +60,7 @@ Required variables in `.env`:
 - `DIRECT_URL` - (Optional) Only needed when using connection pooling on Vercel (see `prd/VERCEL-ENV.md`)
 - `FAL_KEY` - fal.ai API key
 - `S3_*` - Storage credentials when using R2/S3 (see `.env` template)
-- `STATISTICS_EXPORT_API_KEY` - Secure API key for daily export cron (generate with: `openssl rand -base64 32`)
+- `CRON_SECRET` - Automatically provided by Vercel for cron job authentication
 
 > Shopify API keys and secrets now live in the `ShopCredential` table. Seed new credentials with `node scripts/seed-shop-credential.mjs --shop-domain=<shop>.myshopify.com --config=shopify.app.toml --api-secret=<secret>`.
 

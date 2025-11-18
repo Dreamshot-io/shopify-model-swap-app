@@ -68,13 +68,11 @@ statistic-exports/
 
 ### 1. Environment Variables
 
-Add to `.env` and Vercel project settings:
+**Vercel automatically provides:**
+- `CRON_SECRET` - Auto-generated secret for cron job authentication
 
+**Existing R2/S3 credentials (already configured):**
 ```bash
-# Required for daily automated exports
-STATISTICS_EXPORT_API_KEY=<generate-secure-random-key>
-
-# Existing R2/S3 credentials (already configured)
 S3_ENDPOINT=https://<account-id>.r2.cloudflarestorage.com
 S3_ACCESS_KEY=<r2-access-key>
 S3_SECRET_KEY=<r2-secret-key>
@@ -82,27 +80,17 @@ S3_REGION=auto
 S3_BUCKET=<bucket-name>
 ```
 
-**Generate API Key:**
-```bash
-openssl rand -base64 32
-```
-
-**Add to Vercel:**
-```bash
-vercel env add STATISTICS_EXPORT_API_KEY
-# Paste generated key when prompted
-# Select: Production, Preview, Development
-```
+**No additional environment variables needed!** Vercel automatically adds the `CRON_SECRET` and includes it in the `Authorization` header when calling cron endpoints.
 
 ### 2. Database Migration
 
-Run Prisma migration to create new tables:
+**Already completed!** Tables created via:
 
 ```bash
-npx prisma migrate dev --name add_statistics_export_tables
+npx prisma db push
 ```
 
-This creates:
+Created tables:
 - `ProductImageBackup` - Image R2 backup tracking
 - `StatisticsExport` - Export metadata and snapshots
 
@@ -125,15 +113,20 @@ The `vercel.json` file is pre-configured with the daily export cron:
 
 **Important**: Cron jobs only run on **Production** deployments, not Preview.
 
-### 4. Verify Setup
+### 4. Deploy and Verify
 
-Deploy to Vercel:
+**Deploy to Vercel:**
 
 ```bash
 vercel --prod
 ```
 
-Check cron job status:
+Vercel will automatically:
+- ✅ Set up `CRON_SECRET` environment variable
+- ✅ Configure cron job from `vercel.json`
+- ✅ Schedule daily execution at 00:00 UTC
+
+**Verify cron job:**
 ```bash
 vercel cron ls
 ```
@@ -143,6 +136,8 @@ Expected output:
 Path                              Schedule    Next Execution
 /api/statistics-export/daily      0 0 * * *   2025-11-19T00:00:00.000Z
 ```
+
+**That's it!** No manual environment variable setup needed.
 
 ## Usage
 
@@ -319,14 +314,16 @@ vercel --prod
 
 **Symptom**: `401 Unauthorized`
 
-**Cause**: Missing or incorrect `STATISTICS_EXPORT_API_KEY`
+**Cause**: Missing `CRON_SECRET` (Vercel not properly configured)
 
 **Fix**:
 ```bash
-# Regenerate and add API key
-openssl rand -base64 32
-vercel env add STATISTICS_EXPORT_API_KEY
+# Redeploy to ensure Vercel sets up CRON_SECRET
 vercel --prod
+
+# Verify environment variables
+vercel env ls
+# Should show CRON_SECRET in Production
 ```
 
 ### No Data in Exports
@@ -399,16 +396,16 @@ The system automatically batches requests within limits.
 
 ## Security
 
-### API Key Protection
+### Cron Authentication
 
-- ✅ Never commit `STATISTICS_EXPORT_API_KEY` to git
-- ✅ Use Vercel environment variables
-- ✅ Rotate keys periodically (quarterly recommended)
-- ✅ Use different keys for production/staging
+- ✅ Uses Vercel's `CRON_SECRET` (automatically managed)
+- ✅ No manual API key configuration needed
+- ✅ Secret is unique per Vercel project
+- ✅ Automatically rotated by Vercel
 
 ### Access Control
 
-- **Daily Export**: Protected by `STATISTICS_EXPORT_API_KEY`
+- **Daily Export**: Protected by Vercel `CRON_SECRET`
 - **Manual Export**: Requires Shopify admin session authentication
 - **R2 Storage**: Private with signed URLs
 

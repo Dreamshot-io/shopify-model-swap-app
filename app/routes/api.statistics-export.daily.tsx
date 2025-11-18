@@ -11,18 +11,19 @@ import { exportProductStatistics } from '~/services/statistics-export';
 import { shopify } from '~/shopify.server';
 
 /**
- * Validate API key from request
+ * Validate request is from Vercel Cron
+ * Vercel automatically adds Authorization header with CRON_SECRET
  */
-function validateApiKey(request: Request): boolean {
+function validateCronRequest(request: Request): boolean {
 	const authHeader = request.headers.get('authorization');
-	const apiKey = process.env.STATISTICS_EXPORT_API_KEY;
+	const cronSecret = process.env.CRON_SECRET;
 
-	if (!apiKey) {
-		console.warn('[statistics-export] STATISTICS_EXPORT_API_KEY not configured');
+	if (!cronSecret) {
+		console.warn('[statistics-export] CRON_SECRET not configured');
 		return false;
 	}
 
-	return authHeader === `Bearer ${apiKey}`;
+	return authHeader === `Bearer ${cronSecret}`;
 }
 
 /**
@@ -157,8 +158,8 @@ async function exportShopStatistics(
  * Runs daily statistics export for all shops
  */
 export const action = async ({ request }: ActionFunctionArgs) => {
-	// Validate API key
-	if (!validateApiKey(request)) {
+	// Validate request is from Vercel Cron
+	if (!validateCronRequest(request)) {
 		return json({ error: 'Unauthorized' }, { status: 401 });
 	}
 
