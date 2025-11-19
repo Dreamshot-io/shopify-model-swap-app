@@ -28,7 +28,7 @@ jobs:
         run: npx prisma generate
 
       - name: Push schema to database
-        run: npx prisma db push --accept-data-loss
+        run: npx prisma db push
         env:
           DATABASE_URL: ${{ env.DATABASE_URL }}
 
