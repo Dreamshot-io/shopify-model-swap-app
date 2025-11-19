@@ -42,3 +42,10 @@ export {
 	isImageBackedUp,
 	backupProductVariantImages,
 } from './image-backup.service';
+
+export {
+	saveVariantStatistics,
+	getVariantStatistics,
+	getProductStatisticsHistory,
+	type SaveVariantStatisticsParams,
+} from './statistics-persistence.service';

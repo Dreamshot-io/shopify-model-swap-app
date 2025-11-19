@@ -40,6 +40,10 @@ vi.mock('./export-storage.service', () => ({
 	uploadStatisticsExport: vi.fn(),
 }));
 
+vi.mock('./statistics-persistence.service', () => ({
+	saveVariantStatistics: vi.fn(),
+}));
+
 // Import after mocks
 const { exportProductVariantStatistics, exportProductStatistics } = await import(
 	'./statistics-export-orchestrator.service'
@@ -51,6 +55,7 @@ const { backupProductVariantImages } = await import('./image-backup.service');
 const { getProductVariants, getProductImages } = await import('./product-fetcher.service');
 const { formatStatisticsToCSV, formatStatisticsToJSON } = await import('./export-formatter.service');
 const { uploadStatisticsExport } = await import('./export-storage.service');
+const { saveVariantStatistics } = await import('./statistics-persistence.service');
 
 describe('statistics-export-orchestrator.service', () => {
 	beforeEach(() => {
@@ -130,7 +135,7 @@ describe('statistics-export-orchestrator.service', () => {
 
 			// Mock database create
 			vi.mocked(prisma.statisticsExport.create).mockResolvedValue({
-				id: '1',
+				id: 'export123',
 				shop: 'shop123',
 				productId: 'prod456',
 				variantId: 'var789',
@@ -147,6 +152,25 @@ describe('statistics-export-orchestrator.service', () => {
 				shopId: null,
 			});
 
+			// Mock saveVariantStatistics
+			vi.mocked(saveVariantStatistics).mockResolvedValue({
+				id: 'stat123',
+				exportId: 'export123',
+				shop: 'shop123',
+				productId: 'prod456',
+				variantId: 'var789',
+				date: new Date('2025-11-18'),
+				impressions: 100,
+				addToCarts: 15,
+				ctr: 0.15,
+				orders: 3,
+				revenue: 89.97,
+				conversionRate: 0.03,
+				createdAt: new Date(),
+				updatedAt: new Date(),
+				shopId: null,
+			} as never);
+
 			// Act
 			const result = await exportProductVariantStatistics(params);
 
@@ -162,6 +186,15 @@ describe('statistics-export-orchestrator.service', () => {
 			expect(backupProductVariantImages).toHaveBeenCalled();
 			expect(uploadStatisticsExport).toHaveBeenCalledTimes(2); // CSV + JSON
 			expect(prisma.statisticsExport.create).toHaveBeenCalled();
+			expect(saveVariantStatistics).toHaveBeenCalledWith(
+				expect.objectContaining({
+					exportId: 'export123',
+					shopId: 'shop123',
+					productId: 'prod456',
+					variantId: 'var789',
+					imageBackupIds: ['1'],
+				}),
+			);
 		});
 
 		it('should return error if upload fails', async () => {
@@ -248,7 +281,10 @@ describe('statistics-export-orchestrator.service', () => {
 				r2Key: 'key',
 				r2Url: 'url',
 			});
-			vi.mocked(prisma.statisticsExport.create).mockResolvedValue({} as never);
+			vi.mocked(prisma.statisticsExport.create).mockResolvedValue({
+				id: 'export123',
+			} as never);
+			vi.mocked(saveVariantStatistics).mockResolvedValue({} as never);
 
 			// Act
 			const results = await exportProductStatistics(

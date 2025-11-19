@@ -4,7 +4,7 @@ client_id = "4dc2e8d3f47c4f7be299ded5b9965ab8"
 name = "dreamshot-model-swap-haanbrand"
 
 # Shared backend URL (same for all clients)
-application_url = "https://shopify-model-swap-haanbrand.vercel.app"
+application_url = "https://shopify.dreamshot.io"
 
 embedded = true
 handle = "dreamshot-model-swap-haanbrand"
@@ -37,13 +37,13 @@ scopes = "write_files,write_products,read_orders"
 
 [auth]
 redirect_urls = [
-  "https://shopify-model-swap-haanbrand.vercel.app/auth/callback",
-  "https://shopify-model-swap-haanbrand.vercel.app/auth/shopify/callback",
-  "https://shopify-model-swap-haanbrand.vercel.app/api/auth/callback"
+  "https://shopify.dreamshot.io/auth/callback",
+  "https://shopify.dreamshot.io/auth/shopify/callback",
+  "https://shopify.dreamshot.io/api/auth/callback"
 ]
 
 [app_proxy]
-url = "https://shopify-model-swap-haanbrand.vercel.app"
+url = "https://shopify.dreamshot.io"
 subpath = "model-swap"
 prefix = "apps"
 

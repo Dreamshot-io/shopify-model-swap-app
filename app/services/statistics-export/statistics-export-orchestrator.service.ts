@@ -11,6 +11,7 @@ import { backupProductVariantImages } from './image-backup.service';
 import { getProductVariants, getProductImages } from './product-fetcher.service';
 import { formatStatisticsToCSV, formatStatisticsToJSON } from './export-formatter.service';
 import { uploadStatisticsExport } from './export-storage.service';
+import { saveVariantStatistics } from './statistics-persistence.service';
 
 /**
  * Parameters for generating a single variant statistics export
@@ -146,8 +147,8 @@ export async function exportProductVariantStatistics(
 			);
 		}
 
-		// 6. Save export record to database
-		await prisma.statisticsExport.create({
+		// 6. Save export record to database with statistics
+		const exportRecord = await prisma.statisticsExport.create({
 			data: {
 				shop: shopId,
 				productId,
@@ -160,6 +161,28 @@ export async function exportProductVariantStatistics(
 				metricsSnapshot: metrics,
 				imagesSnapshot: images,
 			},
+		});
+
+		// 7. Get ProductImageBackup IDs for linking
+		const mediaIds = images.map((img) => img.mediaId);
+		const imageBackups = await prisma.productImageBackup.findMany({
+			where: {
+				shop: shopId,
+				mediaId: { in: mediaIds },
+			},
+			select: { id: true },
+		});
+		const imageBackupIds = imageBackups.map((backup) => backup.id);
+
+		// 8. Save queryable statistics to VariantDailyStatistics
+		await saveVariantStatistics({
+			exportId: exportRecord.id,
+			shopId,
+			productId,
+			variantId,
+			date,
+			metrics,
+			imageBackupIds,
 		});
 
 		return {

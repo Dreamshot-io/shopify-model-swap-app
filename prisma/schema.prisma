@@ -56,15 +56,16 @@ model ShopCredential {
   createdAt    DateTime             @default(now())
   updatedAt    DateTime             @updatedAt
 
-  sessions           Session[]
-  abTests            ABTest[]
-  auditLogs          AuditLog[]
-  metricEvents       MetricEvent[]
-  productRules       ProductSuggestionRule[]
-  generations        GenerationHistory[]
-  aiStudioImages     AIStudioImage[]
-  statisticsExports  StatisticsExport[]
-  productImageBackups ProductImageBackup[]
+  sessions              Session[]
+  abTests               ABTest[]
+  auditLogs             AuditLog[]
+  metricEvents          MetricEvent[]
+  productRules          ProductSuggestionRule[]
+  generations           GenerationHistory[]
+  aiStudioImages        AIStudioImage[]
+  statisticsExports     StatisticsExport[]
+  productImageBackups   ProductImageBackup[]
+  variantDailyStatistics VariantDailyStatistics[]
 
   @@index([status])
 }
@@ -370,6 +371,9 @@ model ProductImageBackup {
   shopId         String?
   shopCredential ShopCredential? @relation(fields: [shopId], references: [id], onDelete: SetNull)
 
+  // Relations
+  dailyStatistics VariantDailyStatistics[]
+
   @@unique([shop, mediaId])
   @@index([shop, productId])
   @@index([shop, variantId])
@@ -390,9 +394,9 @@ model StatisticsExport {
   csvUrl    String // Signed R2 URL for CSV
   jsonUrl   String // Signed R2 URL for JSON
 
-  // Snapshot of metrics at export time
-  metricsSnapshot Json // { impressions, addToCarts, ctr, orders, revenue }
-  imagesSnapshot  Json // Array of { mediaId, shopifyUrl, r2Url, r2Key, backedUpAt }
+  // Snapshot of metrics at export time (deprecated - use VariantDailyStatistics)
+  metricsSnapshot Json? // { impressions, addToCarts, ctr, orders, revenue }
+  imagesSnapshot  Json? // Array of { mediaId, shopifyUrl, r2Url, r2Key, backedUpAt }
 
   // Metadata
   exportedAt DateTime @default(now())
@@ -402,9 +406,51 @@ model StatisticsExport {
   shopId         String?
   shopCredential ShopCredential? @relation(fields: [shopId], references: [id], onDelete: SetNull)
 
+  // Relations
+  statistics VariantDailyStatistics?
+
   @@unique([shop, productId, variantId, date])
   @@index([shop, date])
   @@index([shop, productId])
   @@index([date])
   @@index([shopId])
+}
+
+// Variant daily statistics - queryable metrics data
+model VariantDailyStatistics {
+  id        String   @id @default(cuid())
+  exportId  String   @unique
+  shop      String
+  productId String
+  variantId String
+  date      DateTime // UTC date of statistics (YYYY-MM-DD)
+
+  // Raw metrics
+  impressions Int     @default(0)
+  addToCarts  Int     @default(0)
+  orders      Int     @default(0)
+  revenue     Decimal @db.Decimal(12, 2) @default(0)
+
+  // Pre-computed metrics (for query performance)
+  ctr            Decimal @db.Decimal(10, 6) @default(0) // addToCarts / impressions
+  conversionRate Decimal @db.Decimal(10, 6) @default(0) // orders / impressions
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  export         StatisticsExport     @relation(fields: [exportId], references: [id], onDelete: Cascade)
+  imageBackups   ProductImageBackup[] // Images active for this variant on this date
+  shopId         String?
+  shopCredential ShopCredential?      @relation(fields: [shopId], references: [id], onDelete: SetNull)
+
+  @@unique([shop, productId, variantId, date])
+  @@index([shop, date])
+  @@index([productId, date])
+  @@index([variantId, date])
+  @@index([date])
+  @@index([shopId])
+  @@index([impressions])
+  @@index([revenue])
 }
