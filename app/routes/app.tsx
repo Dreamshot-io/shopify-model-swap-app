@@ -5,7 +5,7 @@ import { AppProvider } from "@shopify/shopify-app-remix/react";
 import { NavMenu } from "@shopify/app-bridge-react";
 import polarisStyles from "@shopify/polaris/build/esm/styles.css?url";
 
-import { authenticate, MONTHLY_PLAN } from "../shopify.server";
+import { authenticate } from "../shopify.server";
 
 export const links = () => [{ rel: "stylesheet", href: polarisStyles }];
 
@@ -13,21 +13,22 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   try {
     console.log("[app.tsx] Loader called, URL:", request.url);
 
-    const { billing, shopCredential } = await authenticate.admin(request);
+    const { shopCredential } = await authenticate.admin(request);
     console.log("[app.tsx] Authentication successful for shop:", shopCredential.shopDomain);
 
-    if (!process.env.DISABLE_BILLING) {
-      await billing.require({
-        plans: [MONTHLY_PLAN],
-        isTest: process.env.NODE_ENV !== "production",
-        onFailure: async () =>
-          billing.request({
-            plan: MONTHLY_PLAN,
-            isTest: process.env.NODE_ENV !== "production",
-          }),
-      });
-      console.log("[app.tsx] Billing check passed");
-    }
+    // TODO: Re-enable billing once config format is fixed for SDK 3.8+
+    // if (!process.env.DISABLE_BILLING) {
+    //   await billing.require({
+    //     plans: [MONTHLY_PLAN],
+    //     isTest: process.env.NODE_ENV !== "production",
+    //     onFailure: async () =>
+    //       billing.request({
+    //         plan: MONTHLY_PLAN],
+    //         isTest: process.env.NODE_ENV !== "production",
+    //       }),
+    //   });
+    //   console.log("[app.tsx] Billing check passed");
+    // }
 
     return { apiKey: shopCredential.apiKey, appUrl: shopCredential.appUrl };
   } catch (error) {
