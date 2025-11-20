@@ -111,36 +111,52 @@ prisma/              # Database schema and migrations
 extensions/          # Shopify app extensions
 ```
 
-## Multi-Client Credential Store
+## Multi-Mode Architecture (Public + Private Apps)
 
-Each Shopify app (API key + secret) now lives in the `ShopCredential` table. Incoming requests resolve the correct credential using:
+**NEW:** The app now supports both **public** (App Store) and **private** (custom client) installations in a single codebase.
 
-- `session_token` JWT `aud` claim (embedded admin fetch calls)
-- `shop` query param or `X-Shopify-Shop-Domain` header (OAuth, proxies, webhooks)
-- `client_id` query param (OAuth flows)
+### Installation Modes
 
-Sessions, AI Studio media, AB tests, and audit rows now store a `shopId` foreign key, enabling safe cross-tenant analytics.
+- **PUBLIC**: Shopify App Store installations using shared credentials
+- **PRIVATE**: Custom client apps with dedicated API keys
 
-**Key Files:**
+### How It Works
 
-- `prisma/schema.prisma` – `ShopCredential` model + `shopId` relations
-- `app/shopify.server.ts` – dynamic credential resolver + authenticate wrappers
-- `app/services/shops.server.ts` – Prisma helpers + in-memory cache
-- `scripts/seed-shop-credential.mjs` – CLI to import `shopify.app*.toml` configs
+Each installation is stored in the `ShopCredential` table with a `mode` field. The app automatically detects and routes requests based on:
 
-**Onboarding Flow:**
+- Public apps: Use `SHOPIFY_PUBLIC_API_KEY` environment variable
+- Private apps: Use client-specific credentials from database
 
-1. Ensure `DATABASE_URL` and `SHOPIFY_APP_URL` are configured.
-2. Run `node scripts/seed-shop-credential.mjs --shop-domain=<shop>.myshopify.com --config=shopify.app.toml --api-secret=<secret>`.
-3. Install the app normally; Remix will resolve credentials from the database.
+**Quick Start:**
+1. Set `SHOPIFY_PUBLIC_API_KEY` and `SHOPIFY_PUBLIC_API_SECRET` in Vercel
+2. Deploy → Migration runs automatically
+3. Existing private apps continue working unchanged
+4. New public installations work immediately
 
-**Note:** Current implementation uses single-client configuration. Multi-client support is prepared but not yet active.
+**For Private Client Setup:**
+```bash
+node scripts/seed-shop-credential.mjs \
+  --shop-domain=<shop>.myshopify.com \
+  --config=shopify.app.toml \
+  --api-secret=<secret>
+```
+
+**Documentation:**
+- 📖 **[Quick Start Guide](./docs/QUICK-START.md)** - Deploy in 5 minutes
+- 📝 **[Deployment Guide](./docs/DEPLOYMENT-GUIDE.md)** - Complete deployment process
+- 🏗️ **[Architecture Guide](./docs/PUBLIC-PRIVATE-APP-ARCHITECTURE.md)** - Technical details
 
 ## Documentation
 
-- **[AGENTS.md](./AGENTS.md)** - Quick reference for agentic coding tools (commands, style, architecture)
-- **[CLAUDE.md](./CLAUDE.md)** - Comprehensive development guide (philosophy, patterns, examples)
-- **[STATISTICS-EXPORT.md](./STATISTICS-EXPORT.md)** - Daily product statistics export setup and usage
+### Getting Started
+- 📖 **[Quick Start](./docs/QUICK-START.md)** - Deploy public + private architecture in 5 minutes
+- 📝 **[Deployment Guide](./docs/DEPLOYMENT-GUIDE.md)** - Complete deployment process with verification steps
+- 🏗️ **[Architecture Guide](./docs/PUBLIC-PRIVATE-APP-ARCHITECTURE.md)** - Technical implementation details
+
+### Development
+- **[AGENTS.md](./AGENTS.md)** - Quick reference for agentic coding tools
+- **[CLAUDE.md](./CLAUDE.md)** - Comprehensive development guide
+- **[STATISTICS-EXPORT.md](./STATISTICS-EXPORT.md)** - Daily statistics export setup and usage
 
 ## Resources
 
