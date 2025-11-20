@@ -35,7 +35,12 @@ All in a single codebase with **zero breaking changes** to existing functionalit
    - Deletes `ShopCredential` for public uninstalls (clean slate)
    - Preserves `ShopCredential` for private uninstalls (reinstall support)
 
-4. **Environment Configuration**
+4. **Homepage Install Form**
+   - Updated `login()` function with public app fallback
+   - Enables new shops to install directly from homepage
+   - Maintains backward compatibility with private apps
+
+5. **Environment Configuration**
    - `SHOPIFY_PUBLIC_API_KEY` for public app
    - `SHOPIFY_PUBLIC_API_SECRET` for public app
    - Backward compatible with legacy variables
