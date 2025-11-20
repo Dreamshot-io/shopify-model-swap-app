@@ -25,6 +25,7 @@ type ShopCredentialType = {
 	redirectUrls: string[];
 	metadata: any;
 	status: string;
+	mode?: string;
 	createdAt: Date;
 	updatedAt: Date;
 };
@@ -39,6 +40,49 @@ const BILLING_CONFIG = {
 		trialDays: 7,
 	},
 };
+
+const PUBLIC_APP_CONFIG = {
+	apiKey: process.env.SHOPIFY_PUBLIC_API_KEY,
+	apiSecret: process.env.SHOPIFY_PUBLIC_API_SECRET,
+	appUrl: process.env.SHOPIFY_APP_URL || 'https://shopify.dreamshot.io',
+	scopes: process.env.SCOPES?.split(',') || [],
+	distribution: 'AppStore',
+	appHandle: 'dreamshot-model-swap',
+} as const;
+
+function isPublicAppConfigured() {
+	return !!(PUBLIC_APP_CONFIG.apiKey && PUBLIC_APP_CONFIG.apiSecret);
+}
+
+function createPublicCredential(shopDomain: string): ShopCredentialType {
+	if (!isPublicAppConfigured()) {
+		throw new Error('Public app credentials not configured');
+	}
+
+	const normalized = normalizeShopDomain(shopDomain);
+	if (!normalized) {
+		throw new Error('Invalid shop domain');
+	}
+
+	return {
+		id: `public:${normalized}`,
+		shopDomain: normalized,
+		apiKey: PUBLIC_APP_CONFIG.apiKey!,
+		apiSecret: PUBLIC_APP_CONFIG.apiSecret!,
+		appHandle: PUBLIC_APP_CONFIG.appHandle,
+		appUrl: PUBLIC_APP_CONFIG.appUrl,
+		apiVersion: DEFAULT_API_VERSION,
+		scopes: PUBLIC_APP_CONFIG.scopes,
+		distribution: PUBLIC_APP_CONFIG.distribution,
+		customDomain: null,
+		redirectUrls: [],
+		metadata: { mode: 'PUBLIC' },
+		status: 'ACTIVE',
+		mode: 'PUBLIC',
+		createdAt: new Date(),
+		updatedAt: new Date(),
+	};
+}
 
 type ShopifyAppInstance = ReturnType<typeof shopifyApp>;
 
@@ -220,16 +264,38 @@ const extractShopDomain = (request: Request) => {
 
 const resolveCredentialFromRequest = async (request: Request) => {
 	const clientId = extractClientId(request);
+	
+	// Attempt 1: Find by clientId in database
 	if (clientId) {
 		const credential = await findShopCredential({ clientId });
 		if (credential) {
 			return credential;
 		}
+
+		// If clientId matches public app and no DB record exists, create virtual credential
+		if (isPublicAppConfigured() && clientId === PUBLIC_APP_CONFIG.apiKey) {
+			const shop = extractShopDomain(request);
+			if (!shop) {
+				throw new Response("Shop domain required for public app installation", { status: 400 });
+			}
+			return createPublicCredential(shop);
+		}
 	}
 
+	// Attempt 2: Find by shopDomain in database
 	const shop = extractShopDomain(request);
 	if (shop) {
-		return requireShopCredential({ shopDomain: shop });
+		const credential = await findShopCredential({ shopDomain: shop });
+		if (credential) {
+			return credential;
+		}
+
+		// If no DB record and public app configured, assume new public installation
+		if (isPublicAppConfigured()) {
+			return createPublicCredential(shop);
+		}
+
+		throw new Response("Shop credential not found", { status: 404 });
 	}
 
 	throw new Response("Unable to resolve shop context", { status: 401 });
@@ -337,10 +403,45 @@ const decorateResult = <T extends object>(result: T, credential: ShopCredentialT
 	shopId: credential.id,
 });
 
+async function persistPublicInstallation(shopDomain: string, sessionData: any) {
+	const existing = await findShopCredential({ shopDomain });
+	if (existing) {
+		return existing;
+	}
+
+	console.log(`[shopify.server] Registering new public installation: ${shopDomain}`);
+	
+	const { createShopCredential } = await import('./services/shops.server');
+	
+	return createShopCredential({
+		shopDomain,
+		apiKey: PUBLIC_APP_CONFIG.apiKey!,
+		apiSecret: PUBLIC_APP_CONFIG.apiSecret!,
+		appHandle: PUBLIC_APP_CONFIG.appHandle,
+		appUrl: PUBLIC_APP_CONFIG.appUrl,
+		scopes: PUBLIC_APP_CONFIG.scopes,
+		distribution: PUBLIC_APP_CONFIG.distribution,
+		metadata: { 
+			mode: 'PUBLIC',
+			installedAt: new Date().toISOString(),
+			installedVia: 'oauth',
+			sessionId: sessionData?.id,
+		},
+	});
+}
+
 export const authenticate = {
 	admin: async (request: Request) => {
 		const { app, credential } = await resolveAppForRequest(request);
 		const context = await app.authenticate.admin(request);
+		
+		// If virtual public credential, persist to database
+		if (credential.id.startsWith('public:')) {
+			const persisted = await persistPublicInstallation(credential.shopDomain, context.session);
+			await linkSessionToShopId(context.session?.id, persisted.id);
+			return decorateResult(context, persisted);
+		}
+		
 		await linkSessionToShopId(context.session?.id, credential.id);
 		return decorateResult(context, credential);
 	},
