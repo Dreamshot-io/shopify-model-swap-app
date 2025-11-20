@@ -1,0 +1,47 @@
+# Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
+
+client_id = "1f1e30b33a443ddfaf9d343bdd76843a"
+name = "dreamshot-ab-test"
+application_url = "https://app-dev.dreamshot.io"
+embedded = true
+
+[build]
+automatically_update_urls_on_dev = false
+
+[webhooks]
+api_version = "2025-07"
+
+  [[webhooks.subscriptions]]
+  topics = [ "orders/paid" ]
+  uri = "/webhooks/orders-paid"
+
+  [[webhooks.subscriptions]]
+  topics = [ "app_subscriptions/update" ]
+  uri = "/webhooks/app/subscriptions_update"
+
+  [[webhooks.subscriptions]]
+  topics = [ "app/scopes_update" ]
+  uri = "/webhooks/app/scopes_update"
+
+  [[webhooks.subscriptions]]
+  topics = [ "app/uninstalled" ]
+  uri = "/webhooks/app/uninstalled"
+
+[access_scopes]
+# Learn more at https://app-dev.dev/docs/apps/tools/cli/configuration#access_scopes
+scopes = "read_orders,write_files,write_products,write_pixels,read_customer_events,write_script_tags"
+
+[auth]
+redirect_urls = [
+  "https://app-dev.dreamshot.io/auth/callback",
+  "https://app-dev.dreamshot.io/auth/shopify/callback",
+  "https://app-dev.dreamshot.io/api/auth/callback"
+]
+
+[app_proxy]
+url = "https://app-dev.dreamshot.io"
+subpath = "model-swap"
+prefix = "apps"
+
+[pos]
+embedded = false

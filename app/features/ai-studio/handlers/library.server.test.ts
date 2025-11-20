@@ -1,8 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { handleSaveToLibrary, handleDeleteFromLibrary } from './library.server';
-import { lookupShopId } from '../../../db.server';
+import db, { lookupShopId } from '../../../db.server';
 import { AIStudioMediaService } from '../../../services/ai-studio-media.server';
-import db from '../../../db.server';
 
 vi.mock('../../../db.server', async () => {
 	const actual = await vi.importActual('../../../db.server');

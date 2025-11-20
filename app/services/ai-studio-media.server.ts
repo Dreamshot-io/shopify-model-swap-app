@@ -8,6 +8,9 @@ import { PrismaClient } from "@prisma/client";
 import db, { lookupShopId } from "../db.server";
 import { MediaGalleryService } from "./media-gallery.server";
 
+// Use the Prisma generated type directly
+import type { AIStudioImage as PrismaAIStudioImage } from "@prisma/client";
+
 export type ImageState = "LIBRARY" | "PUBLISHED";
 export type ImageSource = "AI_GENERATED" | "MANUAL_UPLOAD" | "GALLERY_IMPORT";
 
@@ -22,9 +25,6 @@ export interface AIStudioImageInput {
   aiProvider?: string;
   variantIds?: string[];
 }
-
-// Use the Prisma generated type directly
-import type { AIStudioImage as PrismaAIStudioImage } from "@prisma/client";
 export type AIStudioImage = PrismaAIStudioImage;
 
 export class AIStudioMediaService {

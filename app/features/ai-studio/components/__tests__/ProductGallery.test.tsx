@@ -3,6 +3,9 @@ import React from 'react';
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import "@testing-library/jest-dom";
 
+import { AppProvider } from "@shopify/polaris";
+import { ProductGallery } from "../ProductGallery";
+
 // Setup window.matchMedia BEFORE importing Polaris components
 // Polaris components access window.matchMedia during module initialization
 if (typeof window !== 'undefined') {
@@ -26,9 +29,6 @@ if (typeof window !== 'undefined') {
 		value: matchMediaMock,
 	});
 }
-
-import { AppProvider } from "@shopify/polaris";
-import { ProductGallery } from "../ProductGallery";
 
 // Mock Shopify Polaris components that need special handling
 vi.mock("@shopify/polaris", async () => {

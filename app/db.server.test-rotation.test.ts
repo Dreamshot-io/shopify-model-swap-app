@@ -1,5 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
+import { rememberShopId, forgetShopId, lookupShopId } from './db.server';
+
 const mockShopCredential = vi.hoisted(() => {
 	return {
 		findUnique: vi.fn().mockResolvedValue(null),
@@ -40,8 +42,6 @@ vi.mock('./services/encryption.server', () => ({
 	decrypt: vi.fn((x) => x),
 	isEncrypted: vi.fn(() => false),
 }));
-
-import { rememberShopId, forgetShopId, lookupShopId } from './db.server';
 
 describe('Test Rotation - db.server tests can run in any order', () => {
 	beforeEach(() => {

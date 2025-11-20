@@ -74,4 +74,7 @@ export default defineConfig({
   optimizeDeps: {
     include: ["@shopify/app-bridge-react", "@shopify/polaris"],
   },
+  resolve: {
+    dedupe: ["react", "react-dom", "@remix-run/react"],
+  },
 }) satisfies UserConfig;
