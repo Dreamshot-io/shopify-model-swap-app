@@ -487,7 +487,16 @@ export const login = async (request: Request) => {
 		return { shop: LoginErrorType.InvalidShop };
 	}
 
-	const credential = await findShopCredential({ shopDomain: sanitizedShop });
+	// Try to find existing credential (private app)
+	let credential = await findShopCredential({ shopDomain: sanitizedShop });
+	
+	// If not found, use public app credentials (if configured)
+	if (!credential && isPublicAppConfigured()) {
+		console.log('[shopify.server] No credential found for shop, using public app credentials');
+		credential = createPublicCredential(sanitizedShop);
+	}
+	
+	// If still no credential, return error
 	if (!credential) {
 		return { shop: LoginErrorType.InvalidShop };
 	}
