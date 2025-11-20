@@ -39,6 +39,11 @@ enum ShopCredentialStatus {
   DISABLED
 }
 
+enum ShopCredentialMode {
+  PUBLIC
+  PRIVATE
+}
+
 model ShopCredential {
   id           String               @id @default(cuid())
   shopDomain   String               @unique
@@ -53,6 +58,7 @@ model ShopCredential {
   redirectUrls String[]             @default([])
   metadata     Json?
   status       ShopCredentialStatus @default(ACTIVE)
+  mode         ShopCredentialMode   @default(PUBLIC)
   createdAt    DateTime             @default(now())
   updatedAt    DateTime             @updatedAt
 
@@ -68,6 +74,7 @@ model ShopCredential {
   variantDailyStatistics VariantDailyStatistics[]
 
   @@index([status])
+  @@index([mode])
 }
 
 // Core A/B Test model - simplified structure
