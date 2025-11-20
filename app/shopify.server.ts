@@ -286,9 +286,8 @@ const getShopifyAppForCredential = async (credential: ShopCredentialType) => {
 		authPathPrefix: "/auth",
 		sessionStorage,
 		distribution: coerceDistribution(credential.distribution),
-		billing: BILLING_CONFIG,
+		// billing: BILLING_CONFIG, // TODO: Fix billing config format for SDK 3.8+
   future: {
-    unstable_newEmbeddedAuthStrategy: true,
     removeRest: true,
   },
 		...(credential.customDomain ? { customShopDomains: [credential.customDomain] } : {}),
@@ -406,8 +405,12 @@ export const registerWebhooks = async (
 };
 
 export const addDocumentResponseHeaders = async (request: Request, headers: Headers) => {
-	const { app } = await resolveAppForRequest(request);
-	app.addDocumentResponseHeaders(request, headers);
+	try {
+		const { app } = await resolveAppForRequest(request);
+		app.addDocumentResponseHeaders(request, headers);
+	} catch (error) {
+		console.warn('[shopify.server] Could not resolve app for document headers:', error instanceof Error ? error.message : error);
+	}
 };
 
 export const extractShopDomainFromRequest = extractShopDomain;
