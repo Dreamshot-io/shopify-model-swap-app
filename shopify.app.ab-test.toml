@@ -2,7 +2,7 @@
 
 client_id = "1f1e30b33a443ddfaf9d343bdd76843a"
 name = "dreamshot-ab-test"
-application_url = "https://app-dev.dreamshot.io"
+application_url = "https://shopify-txl.dreamshot.io"
 embedded = true
 
 [build]
@@ -28,18 +28,18 @@ api_version = "2025-07"
   uri = "/webhooks/app/uninstalled"
 
 [access_scopes]
-# Learn more at https://app-dev.dev/docs/apps/tools/cli/configuration#access_scopes
+# Learn more at https://shopify-txl.dev/docs/apps/tools/cli/configuration#access_scopes
 scopes = "read_orders,write_files,write_products,write_pixels,read_customer_events,write_script_tags"
 
 [auth]
 redirect_urls = [
-  "https://app-dev.dreamshot.io/auth/callback",
-  "https://app-dev.dreamshot.io/auth/shopify/callback",
-  "https://app-dev.dreamshot.io/api/auth/callback"
+  "https://shopify-txl.dreamshot.io/auth/callback",
+  "https://shopify-txl.dreamshot.io/auth/shopify/callback",
+  "https://shopify-txl.dreamshot.io/api/auth/callback"
 ]
 
 [app_proxy]
-url = "https://app-dev.dreamshot.io"
+url = "https://shopify-txl.dreamshot.io"
 subpath = "model-swap"
 prefix = "apps"
 
