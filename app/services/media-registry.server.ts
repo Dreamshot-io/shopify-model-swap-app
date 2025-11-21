@@ -4,7 +4,7 @@
  * for managing media associations.
  */
 
-import { PrismaClient } from "@prisma/client";
+import type { PrismaClient } from "@prisma/client";
 
 export interface MediaMapping {
   testId: string;
