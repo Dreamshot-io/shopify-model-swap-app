@@ -9,7 +9,17 @@ import { unauthenticated } from '../app/shopify.server';
 
 const EXTENSION_UID = 'ecaa6226-8e43-2519-e06f-e0ea40d84876e26a2ae3';
 
-async function checkPixelStatus(graphql: any) {
+type GraphQLFunction = (query: string, options?: { variables?: Record<string, unknown> }) => Promise<Response>;
+
+interface PixelEdge {
+	node: {
+		id: string;
+		extensionId?: string;
+		settings?: Record<string, unknown>;
+	};
+}
+
+async function checkPixelStatus(graphql: GraphQLFunction) {
 	const response = await graphql(`
 		query {
 			webPixels(first: 10) {
@@ -25,11 +35,11 @@ async function checkPixelStatus(graphql: any) {
 	`);
 
 	const data = await response.json();
-	const pixels = data.data?.webPixels?.edges || [];
+	const pixels = (data.data?.webPixels?.edges || []) as PixelEdge[];
 
 	// Find our pixel
 	const ourPixel = pixels.find(
-		(edge: any) =>
+		(edge) =>
 			edge.node.extensionId?.includes(EXTENSION_UID) || edge.node.id,
 	);
 
@@ -41,7 +51,7 @@ async function checkPixelStatus(graphql: any) {
 	};
 }
 
-async function createPixel(appUrl: string, graphql: any) {
+async function createPixel(appUrl: string, graphql: GraphQLFunction) {
 	const response = await graphql(
 		`
 			mutation webPixelCreate($webPixel: WebPixelInput!) {
