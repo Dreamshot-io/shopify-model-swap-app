@@ -4,7 +4,7 @@ Set these in the Vercel dashboard (Project Settings → Environment Variables):
 
 ### Required
 
-- `SHOPIFY_APP_URL` (your Vercel prod URL, e.g., https://app.dev.dreamshot.io)
+- `SHOPIFY_APP_URL` (your Vercel prod URL, e.g., https://abtest.dreamshot.io)
 - `DATABASE_URL` (PostgreSQL connection string - use pooled URL for Vercel)
 - `DIRECT_URL` (Direct PostgreSQL connection string - only needed if using Prisma Accelerate or connection pooling)
 - `FAL_KEY`

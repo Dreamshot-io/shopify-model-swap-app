@@ -35,7 +35,7 @@ const DEFAULT_API_VERSION = ApiVersion.January25;
 const PUBLIC_APP_CONFIG = {
 	apiKey: process.env.SHOPIFY_PUBLIC_API_KEY,
 	apiSecret: process.env.SHOPIFY_PUBLIC_API_SECRET,
-	appUrl: process.env.SHOPIFY_APP_URL || 'https://shopify.dreamshot.io',
+	appUrl: process.env.SHOPIFY_APP_URL || 'https://abtest.dreamshot.io',
 	scopes: process.env.SCOPES?.split(',') || [],
 	distribution: 'AppStore',
 	appHandle: 'dreamshot-model-swap',
