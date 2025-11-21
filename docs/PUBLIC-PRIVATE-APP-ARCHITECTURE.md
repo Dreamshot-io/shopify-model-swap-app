@@ -1,8 +1,8 @@
 # Public + Private App Architecture
 
 **Status:** ✅ Implemented and Production Ready  
-**Date:** November 20, 2024  
-**Version:** 1.0
+**Date:** November 21, 2025  
+**Version:** 1.1
 
 ## Overview
 
@@ -83,20 +83,19 @@ Request → Extract clientId/shopDomain → Check Database
 SHOPIFY_PUBLIC_API_KEY=<client_id_from_partner_dashboard>
 SHOPIFY_PUBLIC_API_SECRET=<secret_from_partner_dashboard>
 
-# Legacy (for CLI compatibility)
-SHOPIFY_API_KEY=$SHOPIFY_PUBLIC_API_KEY
-SHOPIFY_API_SECRET=$SHOPIFY_PUBLIC_API_SECRET
-
-# App URL
+# App URL (Production)
 SHOPIFY_APP_URL=https://shopify.dreamshot.io
+
+# Development (use local tunnel domain)
+SHOPIFY_APP_URL=https://shopify-txl.dreamshot.io
 
 # Scopes
 SCOPES=read_orders,write_files,write_products,write_pixels,read_customer_events,write_script_tags
 ```
 
-### shopify.app.toml
+### shopify.app.toml Files
 
-Public app configuration:
+**Production**: `shopify.app.toml`
 ```toml
 client_id = "<SHOPIFY_PUBLIC_API_KEY>"
 name = "dreamshot-model-swap"
@@ -104,6 +103,16 @@ application_url = "https://shopify.dreamshot.io"
 embedded = true
 handle = "dreamshot-model-swap"
 ```
+
+**Development**: `shopify.app.ab-test.toml`
+```toml
+client_id = "<SHOPIFY_PUBLIC_API_KEY>"
+name = "dreamshot-ab-test"
+application_url = "https://shopify-txl.dreamshot.io"  # Dev tunnel
+embedded = true
+```
+
+**Important**: OAuth redirect URLs must match `application_url` exactly
 
 ## Deployment
 
@@ -269,12 +278,57 @@ Optional future migration:
 
 ## Troubleshooting
 
+### Issue: Empty app screen after install
+
+**Symptoms:** App loads blank page in Shopify Admin after OAuth
+
+**Root Cause:** Mismatch between:
+- Database ShopCredential (old/wrong API key)
+- Environment variables (new PUBLIC app key)
+- TOML config (dev tunnel URL)
+
+**Fix:**
+```bash
+# 1. Update .env to use PUBLIC app credentials
+SHOPIFY_APP_URL=https://shopify-txl.dreamshot.io  # or production URL
+SHOPIFY_PUBLIC_API_KEY=<your_public_api_key>
+SHOPIFY_PUBLIC_API_SECRET=<your_public_api_secret>
+
+# 2. Update database
+# Delete old credential and session
+DELETE FROM "Session" WHERE shop = '<shop>.myshopify.com';
+DELETE FROM "ShopCredential" WHERE "shopDomain" = '<shop>.myshopify.com';
+
+# 3. Restart dev server
+bun run dev
+
+# 4. Reinstall app in Shopify Admin
+```
+
+### Issue: Session not found for custom domain
+
+**Symptoms:** `No valid session found for shop: bumbba.com`
+
+**Root Cause:** Sessions stored with `.myshopify.com` domain, credentials use custom domain
+
+**Fix:**
+```bash
+# Link sessions to credentials via shopId FK
+bun run link:sessions
+```
+
+**How it works:**
+- Queries Shopify API for primary domain
+- Matches sessions to credentials
+- Updates `Session.shopId` FK
+
 ### Issue: Public app not resolving credentials
 
 **Check:**
 1. `SHOPIFY_PUBLIC_API_KEY` set in environment
 2. `SHOPIFY_PUBLIC_API_SECRET` set in environment
-3. Request contains valid `clientId` or `shop` parameter
+3. `SHOPIFY_APP_URL` matches TOML config
+4. Request contains valid `clientId` or `shop` parameter
 
 **Debug:**
 ```javascript
@@ -295,8 +349,10 @@ console.log('Shop domain:', extractShopDomain(request));
 -- Verify credential
 SELECT * FROM "ShopCredential" WHERE shopDomain = '<shop>.myshopify.com';
 
--- Check sessions
-SELECT * FROM "Session" WHERE shop = '<shop>.myshopify.com';
+-- Check sessions linked to credential
+SELECT s.* FROM "Session" s
+JOIN "ShopCredential" sc ON s.shopId = sc.id
+WHERE sc.shopDomain = '<shop>.myshopify.com';
 ```
 
 ### Issue: Duplicate credentials

@@ -237,11 +237,47 @@ async function getShopifyAdmin(shopDomain: string) {
 - **Sessions linked via shopId FK**: Fixed to handle custom domains
 - **Script**: `bun run link:sessions` to link orphaned sessions
 
+## Recent Fixes (Nov 21, 2025)
+
+### Empty App Screen Issue
+**Problem**: App showed blank page in Shopify Admin after install
+
+**Root Cause**: 
+- genlabs-dev-store had OLD private app credentials in database
+- New PUBLIC app credentials in environment variables
+- Mismatch caused authentication to fail silently
+
+**Solution**:
+1. Updated `.env` to use PUBLIC app credentials
+2. Deleted old ShopCredential and Session records
+3. Updated `shopify.app.ab-test.toml` with dev tunnel URL
+4. Reinstalled app (created new Session with correct credentials)
+
+**Key Learning**: Database credentials must match environment variables and TOML config exactly
+
+### Session Linking for Custom Domains
+**Problem**: Statistics export failed for custom domains (bumbba.com, haanbrand.com, hellomims.com)
+
+**Root Cause**: 
+- Sessions stored with `.myshopify.com` domain
+- ShopCredentials used custom domain
+- Lookup by domain string failed
+
+**Solution**:
+1. Created `scripts/link-sessions-to-credentials.ts`
+2. Queries Shopify API for primary/myshopify domain per shop
+3. Links Session.shopId to correct ShopCredential.id
+4. All session lookups now use FK instead of domain matching
+
+**Script**: `bun run link:sessions`
+
 ## Status
 
 ✅ **All systems operational**:
-- Sessions properly linked to credentials via FK
-- Custom domain support working
-- Backfill script functional for all shops
-- Cron job configured and active in vercel.json
-- CRON_SECRET automatically provided by Vercel in production
+- ✅ Sessions properly linked to credentials via FK
+- ✅ Custom domain support working
+- ✅ Backfill script functional for all shops
+- ✅ Cron job configured and active in vercel.json
+- ✅ CRON_SECRET automatically provided by Vercel in production
+- ✅ Dev environment configured with PUBLIC app credentials
+- ✅ genlabs-dev-store successfully using PUBLIC app mode
