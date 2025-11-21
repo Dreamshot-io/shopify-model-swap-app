@@ -98,13 +98,27 @@ export async function backupImageToR2(
 			productId,
 		});
 
-		// Create or update backup record
-		await prisma.productImageBackup.create({
-			data: {
+		// Create or update backup record (upsert for idempotency)
+		await prisma.productImageBackup.upsert({
+			where: {
+				shop_mediaId: {
+					shop: shopId,
+					mediaId,
+				},
+			},
+			create: {
 				shop: shopId,
 				productId,
 				variantId,
 				mediaId,
+				shopifyUrl,
+				r2Url,
+				r2Key,
+				backedUpAt: new Date(),
+			},
+			update: {
+				productId,
+				variantId,
 				shopifyUrl,
 				r2Url,
 				r2Key,

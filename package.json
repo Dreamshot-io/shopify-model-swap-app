@@ -33,7 +33,10 @@
 		"migrate:deploy": "if [ -z \"$DATABASE_URL\" ]; then echo \"DATABASE_URL not set. Skipping migrate deploy.\"; else npx prisma migrate deploy; fi",
 		"db:seed": "bash -lc 'if [ -z \"$DATABASE_URL\" ]; then echo \"DATABASE_URL not set. Skipping seed.\"; else ts-node --transpile-only prisma/seed.ts || node --loader ts-node/esm prisma/seed.ts || node build/prisma/seed.js; fi'",
 		"migrate:ai-studio": "bun run app/scripts/migrate-ai-studio-metafields.server.ts",
-		"migrate:ai-studio:cleanup": "bun run app/scripts/migrate-ai-studio-metafields.server.ts --cleanup"
+		"migrate:ai-studio:cleanup": "bun run app/scripts/migrate-ai-studio-metafields.server.ts --cleanup",
+		"backfill:statistics": "bun run --env-file=.env scripts/backfill-daily-statistics.ts",
+		"link:sessions": "bun run --env-file=.env scripts/link-sessions-to-credentials.ts",
+		"activate:pixels": "bun run --env-file=.env scripts/activate-pixel-all-shops.ts"
 	},
 	"type": "module",
 	"dependencies": {
