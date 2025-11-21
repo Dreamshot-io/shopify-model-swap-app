@@ -18,6 +18,7 @@ export interface AIStudioImageInput {
   shopId?: string;
   productId: string;
   url: string;
+  mediaId?: string; // Shopify media GID from upload
   source: ImageSource;
   prompt?: string;
   sourceImageUrl?: string;
@@ -80,6 +81,7 @@ export class AIStudioMediaService {
         shopId,
         productId: input.productId,
         url: input.url,
+        mediaId: input.mediaId || null, // Shopify media GID if uploaded
         state: "LIBRARY" as ImageState, // Always starts in library
         source: input.source as ImageSource,
         prompt: input.prompt || null,

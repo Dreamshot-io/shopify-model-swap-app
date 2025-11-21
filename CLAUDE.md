@@ -12,9 +12,32 @@ This is a Shopify app built with Remix that provides AI-powered model swapping f
 
 ## Subagents, PRP, and AI workflows
 
-- Always use subagents in a PROACTIVE WAY
+- Always use subagents/agents PROACTIVELY without asking - delegate research, code exploration, and complex searches
 - When creating a PRD, store the markdown in /prd folder
 - Do not start with the implementation until the PRD is validated by the user.
+
+## Documentation Requirements
+
+### Before Implementation
+- **Check relevant documentation first** before making changes:
+  - `prd/` - Product requirements and architecture decisions
+  - `docs/` - Technical guides and implementation details
+  - `AGENT_KNOWLEDGE_BASE.md` - Quick reference for system behavior
+  - `working-docs/` - Implementation status and notes
+- **All business decisions must be documented** in PRD or docs before implementing
+- If existing docs conflict with requested changes, clarify with user first
+
+### After Implementation
+- **Update affected documentation** when making changes that impact:
+  - Architecture or data flow
+  - API contracts or storage patterns
+  - User-facing behavior
+  - Integration points
+- Key docs to check for updates:
+  - `AGENT_KNOWLEDGE_BASE.md` - System overview and patterns
+  - `docs/UPLOAD_TESTING_GUIDE.md` - Upload/storage flows
+  - `prd/shopify-media-gallery-image-management.md` - Image management architecture
+  - Feature-specific docs in `docs/` folder
 
 ## Core Development Philosophy
 
@@ -119,11 +142,14 @@ Closes #123
 
 - `app/` - Main application code (Remix convention)
     - `features/ai-studio/` - AI image generation feature with components and types
+    - `features/ab-testing/` - A/B test creation and management
     - `features/statistics-export/` - Daily statistics export types and constants
     - `routes/` - Remix routes (file-based routing)
     - `services/` - Business logic services (AI providers, storage, statistics export)
 - `prisma/` - Database schema and migrations
 - `extensions/` - Shopify app extensions
+- `prd/` - Product requirements documents (check before major changes)
+- `docs/` - Technical documentation and guides
 
 ### Service Architecture
 
@@ -131,15 +157,20 @@ Closes #123
     - `AIProvider` interface for swappable AI services
     - `FalAIProvider` implementation for fal.ai integration
     - `AIProviderFactory` for provider management
-- **Storage Service** (`app/services/storage.server.ts`): Handles file storage operations
+- **Image Library** (`app/services/ai-studio-media.server.ts`): Manages AI Studio image storage
+    - All images stored in Shopify CDN (never external URLs)
+    - Tracks `mediaId` for A/B test integration
+    - States: LIBRARY (not on product) / PUBLISHED (on product)
+- **Media Gallery** (`app/services/media-gallery.server.ts`): Shopify media operations
+    - Upload via staged uploads
+    - Product media assignment/rotation
+- **File Upload** (`app/services/file-upload.server.ts`): Shopify staged upload workflow
 - **Statistics Export** (`app/services/statistics-export/`): Daily product metrics export system
-    - `image-backup.service.ts` - R2 image backup with idempotent operations
     - `metrics-calculator.service.ts` - CTR, revenue, conversion calculations
     - `product-fetcher.service.ts` - Shopify GraphQL product/variant queries
     - `export-formatter.service.ts` - CSV/JSON formatting
-    - `export-storage.service.ts` - R2 upload with strategic key naming
     - `statistics-export-orchestrator.service.ts` - Coordinates all services
-- **Database** (`app/db.server.ts`): Prisma client configuration
+- **Database** (`app/db.server.ts`): Prisma client configuration with encryption
 
 ## Essential Commands
 

@@ -6,6 +6,7 @@ The AI Studio supports manual image uploads for products. This guide explains ho
 
 ## Upload Flow Architecture
 
+### Manual Upload Flow
 ```mermaid
 graph TD
     A[User selects files] --> B[ImageUploader Component]
@@ -16,12 +17,27 @@ graph TD
     F --> G[handleUpload function]
     G --> H[uploadImageToShopify]
     H --> I[Create Staged Upload]
-    I --> J[Upload to S3]
+    I --> J[Upload to Shopify CDN]
     J --> K[Create File Asset]
     K --> L[Poll for Processing]
-    L --> M[Add to Library]
+    L --> M[Save to DB with mediaId]
     M --> N[Return Success]
 ```
+
+### AI Generation + Save to Library Flow
+```mermaid
+graph TD
+    A[User generates image] --> B[AI Provider returns URL]
+    B --> C[Preview shown to user]
+    C --> D[User clicks Save to Library]
+    D --> E[Fetch image from AI provider]
+    E --> F[Upload to Shopify CDN]
+    F --> G[Get mediaId]
+    G --> H[Save to DB with Shopify URL + mediaId]
+    H --> I[Return Success]
+```
+
+**Important**: AI provider URLs (fal.ai) are NEVER stored in our database. All images are uploaded to Shopify first.
 
 ## File Support
 
@@ -35,7 +51,7 @@ graph TD
 
 - **Max file size**: 10MB per file
 - **Max files per upload**: 5 files
-- **Total library size**: Unlimited (stored in Shopify metafields)
+- **Total library size**: Unlimited (stored in database with Shopify CDN URLs)
 
 ## Test Files
 
@@ -157,12 +173,13 @@ The debug version provides:
 
 #### Issue: Files don't appear in library
 
-**Cause**: Metafield update failed
+**Cause**: Database save failed or Shopify upload failed
 **Solution**:
 
-1. Check GraphQL response for errors
+1. Check server logs for upload errors
 2. Verify product ID is valid
-3. Check metafield permissions
+3. Check database connection
+4. Verify Shopify API credentials
 
 ### Server-Side Debugging
 
@@ -287,7 +304,7 @@ FAL_KEY=your_fal_api_key
 - [ ] Network requests complete successfully
 - [ ] Server logs show no errors
 - [ ] GraphQL mutations succeed
-- [ ] Metafields update correctly
+- [ ] Database records created with mediaId
 
 ## Support
 

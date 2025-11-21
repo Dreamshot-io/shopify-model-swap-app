@@ -86,12 +86,42 @@ export async function handleSaveToLibrary(
       source = "AI_GENERATED";
     }
 
+    // If not a Shopify URL, upload to Shopify first
+    let finalUrl = imageUrl;
+    let mediaId: string | undefined;
+    
+    const isShopifyUrl = imageUrl.includes('cdn.shopify.com') || imageUrl.includes('shopifycdn.com');
+    if (!isShopifyUrl) {
+      console.log("[saveToLibrary] Uploading external URL to Shopify:", imageUrl.substring(0, 50) + "...");
+      
+      // Fetch the image and upload to Shopify
+      const response = await fetch(imageUrl);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch image from ${imageUrl}: ${response.status}`);
+      }
+      
+      const blob = await response.blob();
+      const filename = `ai-generated-${Date.now()}.${blob.type.split('/')[1] || 'png'}`;
+      const file = new File([blob], filename, { type: blob.type });
+      
+      const uploadedFile = await uploadImageToShopify(
+        admin,
+        file,
+        prompt || `AI Studio - ${new Date().toISOString()}`,
+      );
+      
+      finalUrl = uploadedFile.url;
+      mediaId = uploadedFile.id;
+      console.log("[saveToLibrary] Uploaded to Shopify:", finalUrl, "mediaId:", mediaId);
+    }
+
     // Save to library using the new service
     await aiStudioMediaService.saveToLibrary({
       shop,
       shopId,
       productId,
-      url: imageUrl,
+      url: finalUrl,
+      mediaId,
       source,
       prompt: prompt || undefined,
       sourceImageUrl: sourceUrl || undefined,
@@ -280,10 +310,11 @@ export async function handleUpload(
         shopId,
         productId,
         url: uploadedFile.url,
+        mediaId: uploadedFile.id, // Store Shopify mediaId for later use in A/B tests
         source: "MANUAL_UPLOAD",
         variantIds,
       });
-      console.log("[UPLOAD:SERVER] Step 2/3: ✓ Saved to library database");
+      console.log("[UPLOAD:SERVER] Step 2/3: ✓ Saved to library database with mediaId:", uploadedFile.id);
     } else {
       console.log("[UPLOAD:SERVER] Step 2/3: ✓ Image already exists in library");
     }
@@ -475,10 +506,11 @@ export async function handleCompleteUpload(
         shopId,
         productId,
         url: uploadedFile.url,
+        mediaId: uploadedFile.id, // Store Shopify mediaId for later use in A/B tests
         source: "MANUAL_UPLOAD",
         variantIds,
       });
-      console.log("[COMPLETE_UPLOAD] Step 2/3: ✓ Saved to library database");
+      console.log("[COMPLETE_UPLOAD] Step 2/3: ✓ Saved to library database with mediaId:", uploadedFile.id);
     } else {
       console.log("[COMPLETE_UPLOAD] Step 2/3: ✓ Image already exists in library");
     }

@@ -210,6 +210,31 @@ const extractShopFromOrigin = (origin: string | null) => {
 	return null;
 };
 
+const SHOP_COOKIE_NAME = 'shopify_shop_domain';
+
+const extractShopFromCookie = (request: Request) => {
+	const cookieHeader = request.headers.get('Cookie');
+	if (!cookieHeader) {
+		return null;
+	}
+
+	const cookies = cookieHeader.split(';').map(c => c.trim());
+	for (const cookie of cookies) {
+		const [name, value] = cookie.split('=');
+		if (name === SHOP_COOKIE_NAME && value) {
+			return normalizeShopDomain(decodeURIComponent(value));
+		}
+	}
+	return null;
+};
+
+export const createShopCookie = (shop: string) => {
+	const encoded = encodeURIComponent(shop);
+	// HttpOnly=false so App Bridge can potentially read it; Secure in production
+	const secure = process.env.NODE_ENV === 'production' ? '; Secure' : '';
+	return `${SHOP_COOKIE_NAME}=${encoded}; Path=/; SameSite=Lax; Max-Age=86400${secure}`;
+};
+
 const extractShopDomain = (request: Request) => {
 	const headerShop = request.headers.get("X-Shopify-Shop-Domain");
 	if (headerShop) {
@@ -250,7 +275,13 @@ const extractShopDomain = (request: Request) => {
 		}
 	}
 
-	return extractShopFromSessionToken(request);
+	const tokenShop = extractShopFromSessionToken(request);
+	if (tokenShop) {
+		return tokenShop;
+	}
+
+	// Fallback: Try to extract from cookie (useful for HMR reloads)
+	return extractShopFromCookie(request);
 };
 
 const resolveCredentialFromRequest = async (request: Request) => {

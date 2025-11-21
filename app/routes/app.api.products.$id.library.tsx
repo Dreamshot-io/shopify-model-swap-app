@@ -1,9 +1,10 @@
 import type { LoaderFunctionArgs } from '@remix-run/node';
 import { json } from '@remix-run/node';
 import { authenticate } from '../shopify.server';
+import db, { lookupShopId } from '../db.server';
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
-  const { admin } = await authenticate.admin(request);
+  const { session } = await authenticate.admin(request);
   const productId = params.id;
 
   if (!productId) {
@@ -11,54 +12,32 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   }
 
   try {
-    const response = await admin.graphql(
-      `#graphql
-        query GetProductLibrary($productId: ID!) {
-          product(id: $productId) {
-            id
-            title
-            metafield(namespace: "dreamshot", key: "ai_library") {
-              value
-            }
-          }
-        }
-      `,
-      {
-        variables: { productId: decodeURIComponent(productId) },
-      }
-    );
+    const decodedProductId = decodeURIComponent(productId);
+    const shopId = await lookupShopId(session.shop);
 
-    const data = await response.json();
-    const product = data.data?.product;
-
-    if (!product) {
-      return json({ error: 'Product not found' }, { status: 404 });
+    if (!shopId) {
+      return json({ error: 'Shop not found' }, { status: 404 });
     }
 
-    // Parse library items from metafield
-    let libraryItems: Array<{ imageUrl: string; sourceUrl?: string | null }> = [];
-    if (product.metafield?.value) {
-      try {
-        const parsed = JSON.parse(product.metafield.value);
-        libraryItems = Array.isArray(parsed)
-          ? parsed.map(item => {
-              if (typeof item === 'string') {
-                return { imageUrl: item };
-              }
-              return {
-                imageUrl: item.imageUrl,
-                sourceUrl: item.sourceUrl || null,
-              };
-            })
-          : [];
-      } catch (parseError) {
-        console.error('Failed to parse library metafield:', parseError);
-      }
-    }
-
-    return json({
-      libraryItems,
+    // Fetch library items from database
+    const dbImages = await db.aIStudioImage.findMany({
+      where: {
+        shopId,
+        productId: decodedProductId,
+        state: 'LIBRARY',
+      },
+      orderBy: { createdAt: 'desc' },
     });
+
+    // Convert to LibraryItem format (include mediaId for A/B test creation)
+    const libraryItems = dbImages.map(img => ({
+      imageUrl: img.url,
+      mediaId: img.mediaId || null, // Shopify mediaId if already uploaded
+      sourceUrl: img.sourceImageUrl || null,
+      variantIds: img.variantIds,
+    }));
+
+    return json({ libraryItems });
   } catch (error) {
     console.error('Failed to fetch product library:', error);
     return json(

@@ -1,22 +1,26 @@
 import type { HeadersFunction, LoaderFunctionArgs } from "@remix-run/node";
+import { json } from "@remix-run/node";
 import { Link, Outlet, useLoaderData, useRouteError } from "@remix-run/react";
 import { boundary } from "@shopify/shopify-app-remix/server";
 import { AppProvider } from "@shopify/shopify-app-remix/react";
 import { NavMenu } from "@shopify/app-bridge-react";
 import polarisStyles from "@shopify/polaris/build/esm/styles.css?url";
 
-import { authenticate } from "../shopify.server";
+import { authenticate, createShopCookie } from "../shopify.server";
 
 export const links = () => [{ rel: "stylesheet", href: polarisStyles }];
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const { shopCredential } = await authenticate.admin(request);
+  const { shopCredential, shopDomain } = await authenticate.admin(request);
 
   // Note: Billing is managed through Shopify Partner Dashboard pricing plans
   // The app_subscriptions/update webhook handles subscription changes
   // No programmatic billing checks needed here
 
-  return { apiKey: shopCredential.apiKey, appUrl: shopCredential.appUrl };
+  return json(
+    { apiKey: shopCredential.apiKey, appUrl: shopCredential.appUrl },
+    { headers: { "Set-Cookie": createShopCookie(shopDomain) } }
+  );
 };
 
 export default function App() {
