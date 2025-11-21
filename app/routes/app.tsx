@@ -10,31 +10,22 @@ import { authenticate } from "../shopify.server";
 export const links = () => [{ rel: "stylesheet", href: polarisStyles }];
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  try {
-    console.log("[app.tsx] Loader called, URL:", request.url);
+  const { shopCredential } = await authenticate.admin(request);
 
-    const { shopCredential } = await authenticate.admin(request);
-    console.log("[app.tsx] Authentication successful for shop:", shopCredential.shopDomain);
+  // TODO: Re-enable billing once config format is fixed for SDK 3.8+
+  // if (!process.env.DISABLE_BILLING) {
+  //   await billing.require({
+  //     plans: [MONTHLY_PLAN],
+  //     isTest: process.env.NODE_ENV !== "production",
+  //     onFailure: async () =>
+  //       billing.request({
+  //         plan: MONTHLY_PLAN],
+  //         isTest: process.env.NODE_ENV !== "production",
+  //       }),
+  //   });
+  // }
 
-    // TODO: Re-enable billing once config format is fixed for SDK 3.8+
-    // if (!process.env.DISABLE_BILLING) {
-    //   await billing.require({
-    //     plans: [MONTHLY_PLAN],
-    //     isTest: process.env.NODE_ENV !== "production",
-    //     onFailure: async () =>
-    //       billing.request({
-    //         plan: MONTHLY_PLAN],
-    //         isTest: process.env.NODE_ENV !== "production",
-    //       }),
-    //   });
-    //   console.log("[app.tsx] Billing check passed");
-    // }
-
-    return { apiKey: shopCredential.apiKey, appUrl: shopCredential.appUrl };
-  } catch (error) {
-    console.error("[app.tsx] Loader error:", error);
-    throw error;
-  }
+  return { apiKey: shopCredential.apiKey, appUrl: shopCredential.appUrl };
 };
 
 export default function App() {
