@@ -2,7 +2,6 @@ import "@shopify/shopify-app-remix/adapters/vercel";
 import {
 	ApiVersion,
 	AppDistribution,
-	BillingInterval,
 	LoginErrorType,
 	shopifyApp,
 } from "@shopify/shopify-app-remix/server";
@@ -30,16 +29,8 @@ type ShopCredentialType = {
 	updatedAt: Date;
 };
 
-export const MONTHLY_PLAN = "Monthly subscription";
-
 const sessionStorage = new PrismaSessionStorage(prisma);
 const DEFAULT_API_VERSION = ApiVersion.January25;
-const BILLING_CONFIG = {
-	[MONTHLY_PLAN]: {
-		lineItems: [{ amount: 9.99, currencyCode: 'USD', interval: BillingInterval.Every30Days }],
-		trialDays: 7,
-	},
-};
 
 const PUBLIC_APP_CONFIG = {
 	apiKey: process.env.SHOPIFY_PUBLIC_API_KEY,
@@ -352,10 +343,9 @@ const getShopifyAppForCredential = async (credential: ShopCredentialType) => {
 		authPathPrefix: "/auth",
 		sessionStorage,
 		distribution: coerceDistribution(credential.distribution),
-		// billing: BILLING_CONFIG, // TODO: Fix billing config format for SDK 3.8+
-  future: {
-    removeRest: true,
-  },
+		future: {
+			removeRest: true,
+		},
 		...(credential.customDomain ? { customShopDomains: [credential.customDomain] } : {}),
 	});
 

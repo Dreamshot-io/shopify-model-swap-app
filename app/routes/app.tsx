@@ -12,18 +12,9 @@ export const links = () => [{ rel: "stylesheet", href: polarisStyles }];
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { shopCredential } = await authenticate.admin(request);
 
-  // TODO: Re-enable billing once config format is fixed for SDK 3.8+
-  // if (!process.env.DISABLE_BILLING) {
-  //   await billing.require({
-  //     plans: [MONTHLY_PLAN],
-  //     isTest: process.env.NODE_ENV !== "production",
-  //     onFailure: async () =>
-  //       billing.request({
-  //         plan: MONTHLY_PLAN],
-  //         isTest: process.env.NODE_ENV !== "production",
-  //       }),
-  //   });
-  // }
+  // Note: Billing is managed through Shopify Partner Dashboard pricing plans
+  // The app_subscriptions/update webhook handles subscription changes
+  // No programmatic billing checks needed here
 
   return { apiKey: shopCredential.apiKey, appUrl: shopCredential.appUrl };
 };
