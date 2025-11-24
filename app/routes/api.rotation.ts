@@ -11,24 +11,28 @@ const VERCEL_CRON_HEADER = 'x-vercel-cron';
 
 /**
  * Handle rotation requests from cron or manual trigger
+ * 
+ * Auth: Vercel automatically sends CRON_SECRET as Authorization header for cron jobs.
+ * Manual requests can also use Bearer token with CRON_SECRET value.
  */
 async function handleRotationRequest(request: Request) {
-  // TEMPORARILY DISABLED FOR TESTING
-  // const expectedToken = process.env.ROTATION_CRON_TOKEN;
+  const cronSecret = process.env.CRON_SECRET;
 
   // Check for Vercel cron header (Vercel automatically sets this for cron jobs)
   const vercelCronHeader = request.headers.get(VERCEL_CRON_HEADER);
   const isVercelCron = vercelCronHeader === '1';
 
-  // // Check for Bearer token (for manual POST requests)
-  // const token = extractBearerToken(request.headers.get(AUTH_HEADER));
-  // const isAuthorized = expectedToken && token === expectedToken;
+  // Vercel sends CRON_SECRET as Bearer token in Authorization header
+  const authHeader = request.headers.get(AUTH_HEADER);
+  const token = extractBearerToken(authHeader);
+  const isAuthorizedBySecret = cronSecret && token === cronSecret;
 
-  // if (!isVercelCron && !isAuthorized) {
-  //   return json({ error: 'Unauthorized' }, { status: 401 });
-  // }
+  if (!isVercelCron && !isAuthorizedBySecret) {
+    console.log('[Rotation] Unauthorized request rejected');
+    return json({ error: 'Unauthorized' }, { status: 401 });
+  }
 
-  console.log('[Rotation] Request received - auth check disabled for testing');
+  console.log('[Rotation] Cron triggered', { isVercelCron, hasSecret: !!isAuthorizedBySecret });
 
   const startTime = Date.now();
   const results = [];
@@ -36,6 +40,8 @@ async function handleRotationRequest(request: Request) {
   try {
     // Get all active tests due for rotation
     const tests = await SimpleRotationService.getTestsDueForRotation();
+
+    console.log('[Rotation] Found tests due for rotation:', tests.length);
 
     // Log cron job start
     await AuditService.logCronJob('SYSTEM', {
@@ -47,6 +53,8 @@ async function handleRotationRequest(request: Request) {
     // Rotate each test
     for (const test of tests) {
       try {
+        console.log('[Rotation] Processing test', { testId: test.id, shop: test.shop, currentCase: test.currentCase });
+
         // Get the session for this shop to get the access token
         const session = await db.session.findFirst({
           where: { shop: test.shop },
@@ -114,13 +122,17 @@ async function handleRotationRequest(request: Request) {
     }
 
     const duration = Date.now() - startTime;
+    const successful = results.filter(r => r.success).length;
+    const failed = results.filter(r => !r.success).length;
+
+    console.log('[Rotation] Completed', { processed: tests.length, successful, failed, duration });
 
     // Log cron job completion
     await AuditService.logCronJob('SYSTEM', {
       status: 'COMPLETED',
       duration,
-      testsRotated: results.filter(r => r.success).length,
-      testsFailed: results.filter(r => !r.success).length,
+      testsRotated: successful,
+      testsFailed: failed,
       results,
     });
 
@@ -128,20 +140,23 @@ async function handleRotationRequest(request: Request) {
       ok: true,
       summary: {
         processed: tests.length,
-        successful: results.filter(r => r.success).length,
-        failed: results.filter(r => !r.success).length,
+        successful,
+        failed,
         duration,
         results,
       },
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
+    const duration = Date.now() - startTime;
+
+    console.error('[Rotation] Failed', { error: message, duration });
 
     // Log cron job failure
     await AuditService.logCronJob('SYSTEM', {
       status: 'FAILED',
       error: message,
-      duration: Date.now() - startTime,
+      duration,
     });
 
     return json({ ok: false, error: message }, { status: 500 });

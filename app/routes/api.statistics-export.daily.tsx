@@ -4,7 +4,7 @@
  * Generates statistics exports for ALL products across ALL shops
  */
 
-import type { ActionFunctionArgs } from '@remix-run/node';
+import type { ActionFunctionArgs, LoaderFunctionArgs } from '@remix-run/node';
 import { json } from '@remix-run/node';
 import prisma from '~/db.server';
 import { exportProductStatistics } from '~/services/statistics-export';
@@ -154,20 +154,18 @@ async function exportShopStatistics(
 }
 
 /**
- * POST /api/statistics-export/daily
- * Runs daily statistics export for all shops
+ * Shared handler for statistics export
  */
-export const action = async ({ request }: ActionFunctionArgs) => {
+async function handleStatisticsExport(request: Request, dateStr?: string | null) {
 	// Validate request is from Vercel Cron
 	if (!validateCronRequest(request)) {
+		console.log('[statistics-export] Unauthorized request rejected');
 		return json({ error: 'Unauthorized' }, { status: 401 });
 	}
 
-	try {
-		// Parse request body
-		const formData = await request.formData();
-		const dateStr = formData.get('date') as string | null;
+	console.log('[statistics-export] Cron triggered');
 
+	try {
 		// Default to yesterday UTC
 		const date = dateStr
 			? new Date(dateStr)
@@ -228,4 +226,22 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 			{ status: 500 },
 		);
 	}
+}
+
+/**
+ * GET /api/statistics-export/daily
+ * Called by Vercel Cron
+ */
+export const loader = async ({ request }: LoaderFunctionArgs) => {
+	return handleStatisticsExport(request);
+};
+
+/**
+ * POST /api/statistics-export/daily
+ * For manual triggers with optional date parameter
+ */
+export const action = async ({ request }: ActionFunctionArgs) => {
+	const formData = await request.formData();
+	const dateStr = formData.get('date') as string | null;
+	return handleStatisticsExport(request, dateStr);
 };
