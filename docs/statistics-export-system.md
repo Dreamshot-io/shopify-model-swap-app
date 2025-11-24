@@ -180,7 +180,7 @@ type = "web_pixel_extension"
 [settings.fields.app_url]
 name = "App URL"
 type = "single_line_text_field"
-# Must be set to: https://shopify.dreamshot.io
+# Must be set to: https://abtest.dreamshot.io
 
 [settings.fields.enabled]
 name = "Enable A/B Testing"
@@ -199,7 +199,7 @@ type = "single_line_text_field"
 2. Find "ab-test-pixel" 
 3. Click to configure
 4. Set values:
-   - `app_url`: https://shopify.dreamshot.io
+   - `app_url`: https://abtest.dreamshot.io
    - `enabled`: true
    - `debug`: false
 5. Click "Connect" or "Save"
@@ -292,7 +292,7 @@ function getVariantMetricsForDate(shopId, productId, variantId, date) {
 1. Fetch images from Shopify
 2. Download from Shopify CDN
 3. Upload to R2 storage
-4. Upsert to ProductImageBackup table (idempotent)
+4. Upsert to ProductInfo table (idempotent)
 5. Link to VariantDailyStatistics
 
 **R2 Key Format**:
@@ -455,7 +455,7 @@ const session = await prisma.session.findFirst({
   - ABTestEvent
   - StatisticsExport
   - VariantDailyStatistics
-  - ProductImageBackup
+  - ProductInfo (renamed from ProductImageBackup)
 
 ## Environment Variables
 
