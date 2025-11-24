@@ -3,8 +3,15 @@
  * Integration-style tests for orchestration logic
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import type { ExportVariantParams } from './statistics-export-orchestrator.service';
+
+// Mock AWS SDK to prevent import errors
+vi.mock('@aws-sdk/client-s3', () => ({
+	S3Client: vi.fn().mockImplementation(() => ({ send: vi.fn() })),
+	PutObjectCommand: vi.fn(),
+	GetObjectCommand: vi.fn(),
+}));
 
 // Mock all dependencies
 vi.mock('~/db.server', () => ({
@@ -77,7 +84,7 @@ describe('statistics-export-orchestrator.service', () => {
 			};
 
 			// Mock metrics calculation
-			vi.mocked(getVariantMetricsForDate).mockResolvedValue({
+			(getVariantMetricsForDate as Mock).mockResolvedValue({
 				impressions: 100,
 				addToCarts: 15,
 				ctr: 0.15,
@@ -86,7 +93,7 @@ describe('statistics-export-orchestrator.service', () => {
 			});
 
 			// Mock image fetching
-			vi.mocked(getProductImages).mockResolvedValue([
+			(getProductImages as Mock).mockResolvedValue([
 				{
 					mediaId: 'gid://shopify/MediaImage/1',
 					url: 'https://cdn.shopify.com/image1.jpg',
@@ -95,7 +102,7 @@ describe('statistics-export-orchestrator.service', () => {
 			]);
 
 			// Mock image backup
-			vi.mocked(backupProductImages).mockResolvedValue([
+			(backupProductImages as Mock).mockResolvedValue([
 				{
 					success: true,
 					mediaId: 'gid://shopify/MediaImage/1',
@@ -106,7 +113,7 @@ describe('statistics-export-orchestrator.service', () => {
 
 			// Mock backup records (productInfo)
 			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			vi.mocked((prisma as any).productInfo.findMany).mockResolvedValue([
+			((prisma as any).productInfo.findMany as Mock).mockResolvedValue([
 				{
 					id: '1',
 					shop: 'shop123',
@@ -128,18 +135,18 @@ describe('statistics-export-orchestrator.service', () => {
 			]);
 
 			// Mock formatters
-			vi.mocked(formatStatisticsToCSV).mockReturnValue('csv content');
-			vi.mocked(formatStatisticsToJSON).mockReturnValue({ test: 'json' });
+			(formatStatisticsToCSV as Mock).mockReturnValue('csv content');
+			(formatStatisticsToJSON as Mock).mockReturnValue({ test: 'json' });
 
 			// Mock uploads
-			vi.mocked(uploadStatisticsExport).mockResolvedValue({
+			(uploadStatisticsExport as Mock).mockResolvedValue({
 				success: true,
 				r2Key: 'statistic-exports/shop123/prod456/var789/20251118.csv',
 				r2Url: 'https://r2.example.com/export.csv',
 			});
 
 			// Mock database create
-			vi.mocked(prisma.statisticsExport.create).mockResolvedValue({
+			(prisma.statisticsExport.create as Mock).mockResolvedValue({
 				id: 'export123',
 				shop: 'shop123',
 				productId: 'prod456',
@@ -158,7 +165,7 @@ describe('statistics-export-orchestrator.service', () => {
 			});
 
 			// Mock saveVariantStatistics
-			vi.mocked(saveVariantStatistics).mockResolvedValue({
+			(saveVariantStatistics as Mock).mockResolvedValue({
 				id: 'stat123',
 				exportId: 'export123',
 				shop: 'shop123',
@@ -174,7 +181,7 @@ describe('statistics-export-orchestrator.service', () => {
 				createdAt: new Date(),
 				updatedAt: new Date(),
 				shopId: null,
-			} as never);
+			});
 
 			// Act
 			const result = await exportProductVariantStatistics(params);
@@ -215,7 +222,7 @@ describe('statistics-export-orchestrator.service', () => {
 				date: new Date('2025-11-18T00:00:00Z'),
 			};
 
-			vi.mocked(getVariantMetricsForDate).mockResolvedValue({
+			(getVariantMetricsForDate as Mock).mockResolvedValue({
 				impressions: 0,
 				addToCarts: 0,
 				ctr: 0,
@@ -223,14 +230,14 @@ describe('statistics-export-orchestrator.service', () => {
 				revenue: 0,
 			});
 
-			vi.mocked(getProductImages).mockResolvedValue([]);
+			(getProductImages as Mock).mockResolvedValue([]);
 			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			vi.mocked((prisma as any).productInfo.findMany).mockResolvedValue([]);
-			vi.mocked(formatStatisticsToCSV).mockReturnValue('csv');
-			vi.mocked(formatStatisticsToJSON).mockReturnValue({});
+			((prisma as any).productInfo.findMany as Mock).mockResolvedValue([]);
+			(formatStatisticsToCSV as Mock).mockReturnValue('csv');
+			(formatStatisticsToJSON as Mock).mockReturnValue({});
 
 			// CSV upload fails
-			vi.mocked(uploadStatisticsExport).mockResolvedValueOnce({
+			(uploadStatisticsExport as Mock).mockResolvedValueOnce({
 				success: false,
 				r2Key: '',
 				r2Url: '',
@@ -257,7 +264,7 @@ describe('statistics-export-orchestrator.service', () => {
 			const date = new Date('2025-11-18T00:00:00Z');
 
 			// Mock variants
-			vi.mocked(getProductVariants).mockResolvedValue([
+			(getProductVariants as Mock).mockResolvedValue([
 				{
 					id: 'gid://shopify/ProductVariant/1',
 					title: 'Small',
@@ -271,27 +278,28 @@ describe('statistics-export-orchestrator.service', () => {
 			]);
 
 			// Mock successful export for each variant
-			vi.mocked(getVariantMetricsForDate).mockResolvedValue({
+			(getVariantMetricsForDate as Mock).mockResolvedValue({
 				impressions: 0,
 				addToCarts: 0,
 				ctr: 0,
 				orders: 0,
 				revenue: 0,
 			});
-			vi.mocked(getProductImages).mockResolvedValue([]);
+			(getProductImages as Mock).mockResolvedValue([]);
 			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			vi.mocked((prisma as any).productInfo.findMany).mockResolvedValue([]);
-			vi.mocked(formatStatisticsToCSV).mockReturnValue('csv');
-			vi.mocked(formatStatisticsToJSON).mockReturnValue({});
-			vi.mocked(uploadStatisticsExport).mockResolvedValue({
+			((prisma as any).productInfo.findMany as Mock).mockResolvedValue([]);
+			(formatStatisticsToCSV as Mock).mockReturnValue('csv');
+			(formatStatisticsToJSON as Mock).mockReturnValue({});
+			(uploadStatisticsExport as Mock).mockResolvedValue({
 				success: true,
 				r2Key: 'key',
 				r2Url: 'url',
 			});
-			vi.mocked(prisma.statisticsExport.create).mockResolvedValue({
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			((prisma as any).statisticsExport.create as Mock).mockResolvedValue({
 				id: 'export123',
-			} as never);
-			vi.mocked(saveVariantStatistics).mockResolvedValue({} as never);
+			});
+			(saveVariantStatistics as Mock).mockResolvedValue({});
 
 			// Act
 			const results = await exportProductStatistics(

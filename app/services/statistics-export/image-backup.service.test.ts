@@ -4,13 +4,6 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import {
-	generateR2Key,
-	backupImageToR2,
-	isImageBackedUp,
-	backupProductImages,
-	backupProductVariantImages,
-} from './image-backup.service';
 import type { ImageBackupParams } from '~/features/statistics-export/types';
 
 // Mock Prisma client
@@ -34,6 +27,15 @@ vi.mock('~/services/storage.server', () => ({
 	uploadImageFromUrlToR2: (...args: unknown[]) =>
 		mockUploadImageFromUrlToR2(...args),
 }));
+
+// Import after mocks using dynamic import
+const {
+	generateR2Key,
+	backupImageToR2,
+	isImageBackedUp,
+	backupProductImages,
+	backupProductVariantImages,
+} = await import('./image-backup.service');
 
 describe('image-backup.service', () => {
 	beforeEach(() => {
@@ -107,8 +109,8 @@ describe('image-backup.service', () => {
 			expect(result).toBe(true);
 			expect(mockPrismaFindUnique).toHaveBeenCalledWith({
 				where: {
-					shop_mediaId: {
-						shop: shopId,
+					shopId_mediaId: {
+						shopId,
 						mediaId,
 					},
 				},

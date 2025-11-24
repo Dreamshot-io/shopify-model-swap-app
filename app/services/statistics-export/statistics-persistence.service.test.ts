@@ -4,7 +4,6 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { VariantDailyStatistics, ProductInfo } from '@prisma/client';
 
 // Mock Prisma client
 const mockPrismaCreate = vi.fn();
@@ -83,7 +82,7 @@ describe('statistics-persistence.service', () => {
 			expect(mockPrismaCreate).toHaveBeenCalledWith({
 				data: {
 					exportId,
-					shop: shopId,
+					shopId,
 					productId,
 					variantId,
 					date,
@@ -241,11 +240,9 @@ describe('statistics-persistence.service', () => {
 			const variantId = 'var789';
 			const date = new Date('2025-01-15T00:00:00Z');
 
-			const mockStatistics: Partial<VariantDailyStatistics> & {
-				productInfo: Partial<ProductInfo>[];
-			} = {
+			const mockStatistics = {
 				id: 'stat123',
-				shop: shopId,
+				shopId,
 				productId,
 				variantId,
 				date,
@@ -274,8 +271,8 @@ describe('statistics-persistence.service', () => {
 			expect(result).toEqual(mockStatistics);
 			expect(mockPrismaFindUnique).toHaveBeenCalledWith({
 				where: {
-					shop_productId_variantId_date: {
-						shop: shopId,
+					shopId_productId_variantId_date: {
+						shopId,
 						productId,
 						variantId,
 						date,
@@ -342,7 +339,7 @@ describe('statistics-persistence.service', () => {
 			expect(result).toEqual(mockHistory);
 			expect(mockPrismaFindMany).toHaveBeenCalledWith({
 				where: {
-					shop: shopId,
+					shopId,
 					productId,
 					date: {
 						gte: startDate,
@@ -374,7 +371,7 @@ describe('statistics-persistence.service', () => {
 			// Assert
 			expect(mockPrismaFindMany).toHaveBeenCalledWith({
 				where: {
-					shop: shopId,
+					shopId,
 					productId,
 					variantId,
 					date: {

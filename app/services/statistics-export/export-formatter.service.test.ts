@@ -3,13 +3,31 @@
  * Following AAA (Arrange-Act-Assert) methodology
  */
 
-import { describe, it, expect } from 'vitest';
-import {
-	formatStatisticsToCSV,
-	formatStatisticsToJSON,
-	formatCSVRow,
-} from './export-formatter.service';
+import { describe, it, expect, beforeAll } from 'vitest';
 import type { VariantStatistics } from '~/features/statistics-export/types';
+
+let formatStatisticsToCSV: (statistics: VariantStatistics[]) => string;
+let formatStatisticsToJSON: (stats: VariantStatistics, shopDomain: string) => {
+	exportDate: string;
+	shopId: string;
+	shopDomain: string;
+	product: { productId: string; shopifyProductId: string };
+	variant: {
+		variantId: string;
+		shopifyVariantId: string;
+		metrics: { impressions: number; addToCarts: number; ctr: number; orders: number; revenue: number | string };
+		images: Array<{ mediaId: string; shopifyUrl: string; r2Url: string | null; r2Key: string | null; backedUpAt: string | null }>;
+	};
+};
+let formatCSVRow: (stats: VariantStatistics) => string;
+
+// Load module before all tests
+beforeAll(async () => {
+	const module = await import('./export-formatter.service?t=' + Date.now());
+	formatStatisticsToCSV = module.formatStatisticsToCSV;
+	formatStatisticsToJSON = module.formatStatisticsToJSON;
+	formatCSVRow = module.formatCSVRow;
+});
 
 describe('export-formatter.service', () => {
 	describe('formatCSVRow', () => {
