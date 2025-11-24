@@ -70,7 +70,7 @@ model ShopCredential {
   generations           GenerationHistory[]
   aiStudioImages        AIStudioImage[]
   statisticsExports     StatisticsExport[]
-  productImageBackups   ProductImageBackup[]
+  productInfo           ProductInfo[]
   variantDailyStatistics VariantDailyStatistics[]
 
   @@index([status])
@@ -357,34 +357,43 @@ model AIStudioImage {
   @@index([shopId])
 }
 
-// Product image backup tracking for statistics exports
-model ProductImageBackup {
-  id       String @id @default(cuid())
-  shop     String
+// Product info tracking - stores product media metadata and R2 backups
+model ProductInfo {
+  id        String  @id @default(cuid())
+  shop      String
   productId String
-  variantId String
-  mediaId  String // Shopify media ID (e.g., gid://shopify/MediaImage/123)
+  mediaId   String? // Shopify media ID (e.g., gid://shopify/MediaImage/123) - nullable for product-level entries
 
   // Image URLs
-  shopifyUrl String // Shopify CDN URL
+  shopifyUrl String? // Shopify CDN URL - nullable until fetched
   r2Url      String? // R2 permanent URL (null if not yet backed up)
-  r2Key      String? // R2 object key: product-images/{shopId}/{productId}/{variantId}/{mediaId}.{ext}
+  r2Key      String? // R2 object key: product-images/{shopId}/{productId}/{mediaId}.{ext}
 
-  // Metadata
+  // Backup metadata
   backedUpAt DateTime? // When image was backed up to R2
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
 
-  shopId         String?
-  shopCredential ShopCredential? @relation(fields: [shopId], references: [id], onDelete: SetNull)
+  // AI tagging metadata (for future use)
+  tags               String[]   @default([])
+  taggedAt           DateTime?  @db.Timestamptz(6)
+  taggingError       String?
+  strategicRationale String?
+
+  // Soft delete
+  deletedAt DateTime? @db.Timestamptz(6)
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Relations
+  shopId         String?
+  shopCredential ShopCredential? @relation(fields: [shopId], references: [id], onDelete: SetNull)
   dailyStatistics VariantDailyStatistics[]
 
   @@unique([shop, mediaId])
   @@index([shop, productId])
-  @@index([shop, variantId])
   @@index([shopId])
+  @@index([deletedAt])
 }
 
 // Daily statistics export records
@@ -448,7 +457,7 @@ model VariantDailyStatistics {
 
   // Relations
   export         StatisticsExport     @relation(fields: [exportId], references: [id], onDelete: Cascade)
-  imageBackups   ProductImageBackup[] // Images active for this variant on this date
+  productInfo    ProductInfo[] // Product media info for this variant on this date
   shopId         String?
   shopCredential ShopCredential?      @relation(fields: [shopId], references: [id], onDelete: SetNull)
 
