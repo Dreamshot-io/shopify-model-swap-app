@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { VariantDailyStatistics, ProductImageBackup } from '@prisma/client';
+import type { VariantDailyStatistics, ProductInfo } from '@prisma/client';
 
 // Mock Prisma client
 const mockPrismaCreate = vi.fn();
@@ -166,7 +166,7 @@ describe('statistics-persistence.service', () => {
 			});
 		});
 
-		it('should link image backups using connect', async () => {
+		it('should link product info using connect', async () => {
 			// Arrange
 			const params = {
 				exportId: 'exp123',
@@ -181,7 +181,7 @@ describe('statistics-persistence.service', () => {
 					orders: 5,
 					revenue: 250,
 				},
-				imageBackupIds: ['img1', 'img2', 'img3'],
+				productInfoIds: ['img1', 'img2', 'img3'],
 			};
 
 			mockPrismaCreate.mockResolvedValueOnce({
@@ -195,14 +195,14 @@ describe('statistics-persistence.service', () => {
 			// Assert
 			expect(mockPrismaCreate).toHaveBeenCalledWith({
 				data: expect.objectContaining({
-					imageBackups: {
+					productInfo: {
 						connect: [{ id: 'img1' }, { id: 'img2' }, { id: 'img3' }],
 					},
 				}),
 			});
 		});
 
-		it('should handle missing imageBackupIds gracefully', async () => {
+		it('should handle missing productInfoIds gracefully', async () => {
 			// Arrange
 			const params = {
 				exportId: 'exp123',
@@ -227,14 +227,14 @@ describe('statistics-persistence.service', () => {
 			// Assert
 			expect(mockPrismaCreate).toHaveBeenCalledWith({
 				data: expect.not.objectContaining({
-					imageBackups: expect.anything(),
+					productInfo: expect.anything(),
 				}),
 			});
 		});
 	});
 
 	describe('getVariantStatistics', () => {
-		it('should retrieve statistics with imageBackups included', async () => {
+		it('should retrieve statistics with productInfo included', async () => {
 			// Arrange
 			const shopId = 'shop.myshopify.com';
 			const productId = 'prod456';
@@ -242,7 +242,7 @@ describe('statistics-persistence.service', () => {
 			const date = new Date('2025-01-15T00:00:00Z');
 
 			const mockStatistics: Partial<VariantDailyStatistics> & {
-				imageBackups: Partial<ProductImageBackup>[];
+				productInfo: Partial<ProductInfo>[];
 			} = {
 				id: 'stat123',
 				shop: shopId,
@@ -255,7 +255,7 @@ describe('statistics-persistence.service', () => {
 				orders: 5,
 				revenue: 250.5,
 				conversionRate: 0.05,
-				imageBackups: [
+				productInfo: [
 					{
 						id: 'img1',
 						mediaId: 'media123',
@@ -282,7 +282,7 @@ describe('statistics-persistence.service', () => {
 					},
 				},
 				include: {
-					imageBackups: true,
+					productInfo: true,
 				},
 			});
 		});
@@ -350,7 +350,7 @@ describe('statistics-persistence.service', () => {
 					},
 				},
 				include: {
-					imageBackups: true,
+					productInfo: true,
 				},
 				orderBy: {
 					date: 'asc',
@@ -383,7 +383,7 @@ describe('statistics-persistence.service', () => {
 					},
 				},
 				include: {
-					imageBackups: true,
+					productInfo: true,
 				},
 				orderBy: {
 					date: 'asc',

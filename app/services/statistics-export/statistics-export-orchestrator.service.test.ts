@@ -9,7 +9,7 @@ import type { ExportVariantParams } from './statistics-export-orchestrator.servi
 // Mock all dependencies
 vi.mock('~/db.server', () => ({
 	default: {
-		productImageBackup: {
+		productInfo: {
 			findMany: vi.fn(),
 		},
 		statisticsExport: {
@@ -23,7 +23,7 @@ vi.mock('./metrics-calculator.service', () => ({
 }));
 
 vi.mock('./image-backup.service', () => ({
-	backupProductVariantImages: vi.fn(),
+	backupProductImages: vi.fn(),
 }));
 
 vi.mock('./product-fetcher.service', () => ({
@@ -51,7 +51,7 @@ const { exportProductVariantStatistics, exportProductStatistics } = await import
 const prismaModule = await import('~/db.server');
 const prisma = prismaModule.default;
 const { getVariantMetricsForDate } = await import('./metrics-calculator.service');
-const { backupProductVariantImages } = await import('./image-backup.service');
+const { backupProductImages } = await import('./image-backup.service');
 const { getProductVariants, getProductImages } = await import('./product-fetcher.service');
 const { formatStatisticsToCSV, formatStatisticsToJSON } = await import('./export-formatter.service');
 const { uploadStatisticsExport } = await import('./export-storage.service');
@@ -95,27 +95,32 @@ describe('statistics-export-orchestrator.service', () => {
 			]);
 
 			// Mock image backup
-			vi.mocked(backupProductVariantImages).mockResolvedValue([
+			vi.mocked(backupProductImages).mockResolvedValue([
 				{
 					success: true,
 					mediaId: 'gid://shopify/MediaImage/1',
-					r2Key: 'product-images/shop123/prod456/var789/1.jpg',
+					r2Key: 'product-images/shop123/prod456/1.jpg',
 					r2Url: 'https://r2.example.com/image1.jpg',
 				},
 			]);
 
-			// Mock backup records
-			vi.mocked(prisma.productImageBackup.findMany).mockResolvedValue([
+			// Mock backup records (productInfo)
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			vi.mocked((prisma as any).productInfo.findMany).mockResolvedValue([
 				{
 					id: '1',
 					shop: 'shop123',
 					productId: 'prod456',
-					variantId: 'var789',
 					mediaId: 'gid://shopify/MediaImage/1',
 					shopifyUrl: 'https://cdn.shopify.com/image1.jpg',
 					r2Url: 'https://r2.example.com/image1.jpg',
-					r2Key: 'product-images/shop123/prod456/var789/1.jpg',
+					r2Key: 'product-images/shop123/prod456/1.jpg',
 					backedUpAt: new Date('2025-11-18T10:00:00Z'),
+					tags: [],
+					taggedAt: null,
+					taggingError: null,
+					strategicRationale: null,
+					deletedAt: null,
 					createdAt: new Date(),
 					updatedAt: new Date(),
 					shopId: null,
@@ -183,7 +188,7 @@ describe('statistics-export-orchestrator.service', () => {
 			// Verify orchestration flow
 			expect(getVariantMetricsForDate).toHaveBeenCalled();
 			expect(getProductImages).toHaveBeenCalled();
-			expect(backupProductVariantImages).toHaveBeenCalled();
+			expect(backupProductImages).toHaveBeenCalled();
 			expect(uploadStatisticsExport).toHaveBeenCalledTimes(2); // CSV + JSON
 			expect(prisma.statisticsExport.create).toHaveBeenCalled();
 			expect(saveVariantStatistics).toHaveBeenCalledWith(
@@ -192,7 +197,7 @@ describe('statistics-export-orchestrator.service', () => {
 					shopId: 'shop123',
 					productId: 'prod456',
 					variantId: 'var789',
-					imageBackupIds: ['1'],
+					productInfoIds: ['1'],
 				}),
 			);
 		});
@@ -219,7 +224,8 @@ describe('statistics-export-orchestrator.service', () => {
 			});
 
 			vi.mocked(getProductImages).mockResolvedValue([]);
-			vi.mocked(prisma.productImageBackup.findMany).mockResolvedValue([]);
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			vi.mocked((prisma as any).productInfo.findMany).mockResolvedValue([]);
 			vi.mocked(formatStatisticsToCSV).mockReturnValue('csv');
 			vi.mocked(formatStatisticsToJSON).mockReturnValue({});
 
@@ -273,7 +279,8 @@ describe('statistics-export-orchestrator.service', () => {
 				revenue: 0,
 			});
 			vi.mocked(getProductImages).mockResolvedValue([]);
-			vi.mocked(prisma.productImageBackup.findMany).mockResolvedValue([]);
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			vi.mocked((prisma as any).productInfo.findMany).mockResolvedValue([]);
 			vi.mocked(formatStatisticsToCSV).mockReturnValue('csv');
 			vi.mocked(formatStatisticsToJSON).mockReturnValue({});
 			vi.mocked(uploadStatisticsExport).mockResolvedValue({

@@ -12,16 +12,15 @@ import type {
 
 /**
  * Generate R2 key for product image backup
- * Format: product-images/{shopId}/{productId}/{variantId}/{mediaId}.{ext}
+ * Format: product-images/{shopId}/{productId}/{mediaId}.{ext}
  */
 export function generateR2Key(
 	shopId: string,
 	productId: string,
-	variantId: string,
 	mediaId: string,
 	extension: string,
 ): string {
-	return `product-images/${shopId}/${productId}/${variantId}/${mediaId}.${extension}`;
+	return `product-images/${shopId}/${productId}/${mediaId}.${extension}`;
 }
 
 /**
@@ -46,7 +45,7 @@ export async function isImageBackedUp(
 	shopId: string,
 	mediaId: string,
 ): Promise<boolean> {
-	const backup = await prisma.productImageBackup.findUnique({
+	const backup = await prisma.productInfo.findUnique({
 		where: {
 			shop_mediaId: {
 				shop: shopId,
@@ -65,11 +64,11 @@ export async function isImageBackedUp(
 export async function backupImageToR2(
 	params: ImageBackupParams,
 ): Promise<ImageBackupResult> {
-	const { shopId, productId, variantId, mediaId, shopifyUrl } = params;
+	const { shopId, productId, mediaId, shopifyUrl } = params;
 
 	try {
 		// Check if already backed up
-		const existingBackup = await prisma.productImageBackup.findUnique({
+		const existingBackup = await prisma.productInfo.findUnique({
 			where: {
 				shop_mediaId: {
 					shop: shopId,
@@ -89,17 +88,17 @@ export async function backupImageToR2(
 
 		// Extract extension and generate R2 key
 		const extension = extractExtension(shopifyUrl);
-		const r2Key = generateR2Key(shopId, productId, variantId, mediaId, extension);
+		const r2Key = generateR2Key(shopId, productId, mediaId, extension);
 
 		// Upload to R2
-		const keyPrefix = `product-images/${shopId}/${productId}/${variantId}/`;
+		const keyPrefix = `product-images/${shopId}/${productId}/`;
 		const r2Url = await uploadImageFromUrlToR2(shopifyUrl, {
 			keyPrefix,
 			productId,
 		});
 
 		// Create or update backup record (upsert for idempotency)
-		await prisma.productImageBackup.upsert({
+		await prisma.productInfo.upsert({
 			where: {
 				shop_mediaId: {
 					shop: shopId,
@@ -109,7 +108,6 @@ export async function backupImageToR2(
 			create: {
 				shop: shopId,
 				productId,
-				variantId,
 				mediaId,
 				shopifyUrl,
 				r2Url,
@@ -118,7 +116,6 @@ export async function backupImageToR2(
 			},
 			update: {
 				productId,
-				variantId,
 				shopifyUrl,
 				r2Url,
 				r2Key,
@@ -146,13 +143,12 @@ export async function backupImageToR2(
 }
 
 /**
- * Backup multiple images for a product variant
+ * Backup multiple images for a product
  * Processes all images in parallel
  */
-export async function backupProductVariantImages(
+export async function backupProductImages(
 	shopId: string,
 	productId: string,
-	variantId: string,
 	images: Array<{ mediaId: string; shopifyUrl: string }>,
 ): Promise<ImageBackupResult[]> {
 	if (images.length === 0) {
@@ -163,11 +159,22 @@ export async function backupProductVariantImages(
 		backupImageToR2({
 			shopId,
 			productId,
-			variantId,
 			mediaId: image.mediaId,
 			shopifyUrl: image.shopifyUrl,
 		}),
 	);
 
 	return Promise.all(backupPromises);
+}
+
+/**
+ * @deprecated Use backupProductImages instead (variantId removed)
+ */
+export async function backupProductVariantImages(
+	shopId: string,
+	productId: string,
+	_variantId: string,
+	images: Array<{ mediaId: string; shopifyUrl: string }>,
+): Promise<ImageBackupResult[]> {
+	return backupProductImages(shopId, productId, images);
 }
