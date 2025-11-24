@@ -47,7 +47,7 @@ export async function saveVariantStatistics(
 	// Build data object
 	const data: {
 		exportId: string;
-		shop: string;
+		shopId: string;
 		productId: string;
 		variantId: string;
 		date: Date;
@@ -60,7 +60,7 @@ export async function saveVariantStatistics(
 		productInfo?: { connect: { id: string }[] };
 	} = {
 		exportId,
-		shop: shopId,
+		shopId,
 		productId,
 		variantId,
 		date,
@@ -100,8 +100,8 @@ export async function getVariantStatistics(
 > {
 	return prisma.variantDailyStatistics.findUnique({
 		where: {
-			shop_productId_variantId_date: {
-				shop: shopId,
+			shopId_productId_variantId_date: {
+				shopId,
 				productId,
 				variantId,
 				date,
@@ -129,7 +129,7 @@ export async function getProductStatisticsHistory(
 > {
 	return prisma.variantDailyStatistics.findMany({
 		where: {
-			shop: shopId,
+			shopId,
 			productId,
 			...(variantId ? { variantId } : {}),
 			date: {

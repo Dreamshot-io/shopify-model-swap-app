@@ -16,29 +16,23 @@ async function deleteAllShopData(shopDomain: string) {
 	const shopId = credential.id;
 
 	const results = await db.$transaction(async (tx) => {
+		// Models that use `shop` field with shopDomain
 		const abTests = await tx.aBTest.deleteMany({ where: { shop: shopDomain } });
-
 		const metricEvents = await tx.metricEvent.deleteMany({ where: { shop: shopDomain } });
-
 		const generationHistory = await tx.generationHistory.deleteMany({ where: { shop: shopDomain } });
-
 		const aiStudioImages = await tx.aIStudioImage.deleteMany({ where: { shop: shopDomain } });
-
 		const productRules = await tx.productSuggestionRule.deleteMany({ where: { shop: shopDomain } });
-
-		const dailyStats = await tx.variantDailyStatistics.deleteMany({ where: { shop: shopDomain } });
-
-		const statsExports = await tx.statisticsExport.deleteMany({ where: { shop: shopDomain } });
-
-		const productInfo = await tx.productInfo.deleteMany({ where: { shop: shopDomain } });
-
 		const auditLogs = await tx.auditLog.deleteMany({ where: { shop: shopDomain } });
-
 		const sessions = await tx.session.deleteMany({ where: { shop: shopDomain } });
 
-		let shopCredential = { count: 0 };
+		// Models that use `shopId` FK (no `shop` field)
+		const dailyStats = await tx.variantDailyStatistics.deleteMany({ where: { shopId } });
+		const statsExports = await tx.statisticsExport.deleteMany({ where: { shopId } });
+		const productInfo = await tx.productInfo.deleteMany({ where: { shopId } });
+
+		let shopCredentialDeleted = { count: 0 };
 		if (credential.mode === "PUBLIC") {
-			shopCredential = await tx.shopCredential.deleteMany({ where: { id: shopId } });
+			shopCredentialDeleted = await tx.shopCredential.deleteMany({ where: { id: shopId } });
 		}
 
 		return {
@@ -52,7 +46,7 @@ async function deleteAllShopData(shopDomain: string) {
 			productInfo: productInfo.count,
 			auditLogs: auditLogs.count,
 			sessions: sessions.count,
-			shopCredential: shopCredential.count,
+			shopCredential: shopCredentialDeleted.count,
 		};
 	});
 

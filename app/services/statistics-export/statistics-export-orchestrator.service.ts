@@ -68,7 +68,7 @@ async function getImageReferences(
 	// Fetch backup records from database
 	const backupRecords = await prisma.productInfo.findMany({
 		where: {
-			shop: shopId,
+			shopId,
 			productId,
 			deletedAt: null,
 		},
@@ -165,13 +165,13 @@ export async function exportProductVariantStatistics(
 		const mediaIds = images.map((img) => img.mediaId);
 		const productInfoRecords = await prisma.productInfo.findMany({
 			where: {
-				shop: shopId,
+				shopId,
 				mediaId: { in: mediaIds },
 				deletedAt: null,
 			},
 			select: { id: true },
 		});
-		const productInfoIds = productInfoRecords.map((record) => record.id);
+		const productInfoIds = productInfoRecords.map((record: { id: string }) => record.id);
 
 		// 8. Save queryable statistics to VariantDailyStatistics
 		await saveVariantStatistics({

@@ -296,7 +296,7 @@ async function syncShopProducts(
 		// Get existing ProductInfo records
 		const existingRecords = await prisma.productInfo.findMany({
 			where: {
-				shop: shopId,
+				shopId,
 				deletedAt: null,
 			},
 		});
@@ -377,13 +377,13 @@ async function syncShopProducts(
 
 						await prisma.productInfo.upsert({
 							where: {
-								shop_mediaId: {
-									shop: shopId,
+								shopId_mediaId: {
+									shopId,
 									mediaId,
 								},
 							},
 							create: {
-								shop: shopId,
+								shopId,
 								productId: info.productId,
 								productTitle: info.productTitle,
 								productHandle: info.productHandle,
@@ -392,7 +392,6 @@ async function syncShopProducts(
 								r2Url,
 								r2Key,
 								backedUpAt: r2Url ? new Date() : null,
-								shopId,
 							},
 							update: {
 								productId: info.productId,
@@ -427,7 +426,7 @@ async function syncShopProducts(
 					try {
 						await prisma.productInfo.updateMany({
 							where: {
-								shop: shopId,
+								shopId,
 								mediaId,
 								deletedAt: null,
 							},

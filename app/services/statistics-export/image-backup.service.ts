@@ -47,8 +47,8 @@ export async function isImageBackedUp(
 ): Promise<boolean> {
 	const backup = await prisma.productInfo.findUnique({
 		where: {
-			shop_mediaId: {
-				shop: shopId,
+			shopId_mediaId: {
+				shopId,
 				mediaId,
 			},
 		},
@@ -70,8 +70,8 @@ export async function backupImageToR2(
 		// Check if already backed up
 		const existingBackup = await prisma.productInfo.findUnique({
 			where: {
-				shop_mediaId: {
-					shop: shopId,
+				shopId_mediaId: {
+					shopId,
 					mediaId,
 				},
 			},
@@ -100,13 +100,13 @@ export async function backupImageToR2(
 		// Create or update backup record (upsert for idempotency)
 		await prisma.productInfo.upsert({
 			where: {
-				shop_mediaId: {
-					shop: shopId,
+				shopId_mediaId: {
+					shopId,
 					mediaId,
 				},
 			},
 			create: {
-				shop: shopId,
+				shopId,
 				productId,
 				mediaId,
 				shopifyUrl,
