@@ -46,7 +46,7 @@ SHOPIFY_PUBLIC_API_SECRET=<get_from_partner_dashboard>
 After adding, your environment should have:
 - ✅ `SHOPIFY_PUBLIC_API_KEY` (public app client ID)
 - ✅ `SHOPIFY_PUBLIC_API_SECRET` (public app secret)
-- ✅ `SHOPIFY_APP_URL` (already exists: `https://shopify.dreamshot.io`)
+- ✅ `SHOPIFY_APP_URL` (already exists: `https://abtest.dreamshot.io`)
 - ✅ `SCOPES` (already exists)
 - ✅ `DATABASE_URL` (already exists)
 - ✅ All other existing env vars
@@ -462,7 +462,7 @@ WHERE id NOT IN (
 |----------|----------|-------------|---------|
 | `SHOPIFY_PUBLIC_API_KEY` | Yes | Public app client ID | `abc123...` |
 | `SHOPIFY_PUBLIC_API_SECRET` | Yes | Public app secret | `shpss_xyz...` |
-| `SHOPIFY_APP_URL` | Yes | App URL | `https://shopify.dreamshot.io` |
+| `SHOPIFY_APP_URL` | Yes | App URL | `https://abtest.dreamshot.io` |
 | `SCOPES` | Yes | OAuth scopes | `read_orders,write_files,...` |
 | `DATABASE_URL` | Yes | PostgreSQL connection | `postgresql://...` |
 | `DIRECT_URL` | Yes | Direct DB connection | `postgresql://...` |

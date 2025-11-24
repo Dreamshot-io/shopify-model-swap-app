@@ -47,7 +47,7 @@ async function checkAllPixels() {
 	console.log('1. Visit Shopify Admin → Settings → Customer Events');
 	console.log('2. Find "ab-test-pixel" and click on it');
 	console.log('3. Configure with:');
-	console.log('   - app_url: https://shopify.dreamshot.io');
+	console.log('   - app_url: https://abtest.dreamshot.io');
 	console.log('   - enabled: true');
 	console.log('   - debug: false');
 	console.log('4. Click "Connect" or "Save"\n');

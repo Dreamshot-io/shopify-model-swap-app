@@ -84,7 +84,7 @@ SHOPIFY_PUBLIC_API_KEY=<client_id_from_partner_dashboard>
 SHOPIFY_PUBLIC_API_SECRET=<secret_from_partner_dashboard>
 
 # App URL (Production)
-SHOPIFY_APP_URL=https://shopify.dreamshot.io
+SHOPIFY_APP_URL=https://abtest.dreamshot.io
 
 # Development (use local tunnel domain)
 SHOPIFY_APP_URL=https://shopify-txl.dreamshot.io
@@ -99,7 +99,7 @@ SCOPES=read_orders,write_files,write_products,write_pixels,read_customer_events,
 ```toml
 client_id = "<SHOPIFY_PUBLIC_API_KEY>"
 name = "dreamshot-model-swap"
-application_url = "https://shopify.dreamshot.io"
+application_url = "https://abtest.dreamshot.io"
 embedded = true
 handle = "dreamshot-model-swap"
 ```

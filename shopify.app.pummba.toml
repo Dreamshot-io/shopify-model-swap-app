@@ -20,7 +20,7 @@ client_id = "21acdb3d10eb24f87b02129c68b89328"
 name = "dreamshot-model-swap-pummba"
 
 # Shared backend URL (same for all clients)
-application_url = "https://shopify.dreamshot.io"
+application_url = "https://abtest.dreamshot.io"
 
 embedded = true
 handle = "dreamshot-model-swap-pummba"
@@ -53,13 +53,13 @@ scopes = "write_files,write_products,read_orders"
 
 [auth]
 redirect_urls = [
-  "https://shopify.dreamshot.io/auth/callback",
-  "https://shopify.dreamshot.io/auth/shopify/callback",
-  "https://shopify.dreamshot.io/api/auth/callback"
+  "https://abtest.dreamshot.io/auth/callback",
+  "https://abtest.dreamshot.io/auth/shopify/callback",
+  "https://abtest.dreamshot.io/api/auth/callback"
 ]
 
 [app_proxy]
-url = "https://shopify.dreamshot.io"
+url = "https://abtest.dreamshot.io"
 subpath = "model-swap"
 prefix = "apps"
 

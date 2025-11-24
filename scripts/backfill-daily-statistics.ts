@@ -44,11 +44,50 @@ async function getShopifyAdmin(shopDomain: string) {
 		throw new Error(`No valid session found for shopId: ${credential.id} (${shopDomain})`);
 	}
 
-	// Use session.shop (myshopify domain) for API calls
-	const result = await unauthenticated.admin(session.shop);
+	// Create a simple GraphQL client using the session's access token
+	// This bypasses the unauthenticated.admin lookup which has issues with custom domains
+	const myshopifyDomain = session.shop;
+	const accessToken = session.accessToken;
+	
+	// Convert API version format (January25 -> 2025-01)
+	const versionMap: Record<string, string> = {
+		'January25': '2025-01',
+		'January24': '2024-01',
+		'April24': '2024-04',
+		'July24': '2024-07',
+		'October24': '2024-10',
+	};
+	const rawVersion = credential.apiVersion || 'January25';
+	const apiVersion = versionMap[rawVersion] || '2024-01';
+
+	const graphql = async (query: string, options?: { variables?: Record<string, unknown> }) => {
+		const response = await fetch(
+			`https://${myshopifyDomain}/admin/api/${apiVersion}/graphql.json`,
+			{
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+					'X-Shopify-Access-Token': accessToken,
+				},
+				body: JSON.stringify({
+					query,
+					variables: options?.variables || {},
+				}),
+			},
+		);
+
+		if (!response.ok) {
+			const text = await response.text();
+			throw new Error(`GraphQL request failed: ${response.status} ${text}`);
+		}
+
+		return {
+			json: async () => response.json(),
+		};
+	};
+
 	return {
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		graphql: (result as any).admin.graphql,
+		graphql,
 		session,
 	};
 }

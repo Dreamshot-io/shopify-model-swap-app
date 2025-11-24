@@ -7,7 +7,7 @@
 
 ## Problem
 
-The homepage install form at `https://shopify.dreamshot.io` was not working for new public app installations.
+The homepage install form at `https://abtest.dreamshot.io` was not working for new public app installations.
 
 ### Root Cause
 
@@ -58,7 +58,7 @@ if (!credential) {
 ### Flow for New Public App Installation
 
 ```
-1. User visits https://shopify.dreamshot.io
+1. User visits https://abtest.dreamshot.io
 2. User enters: "my-new-store.myshopify.com"
 3. User clicks "Install App"
 4. Form posts to /auth/login
@@ -73,7 +73,7 @@ if (!credential) {
 ### Flow for Existing Private App
 
 ```
-1. User visits https://shopify.dreamshot.io
+1. User visits https://abtest.dreamshot.io
 2. User enters: "existing-private-shop.myshopify.com"
 3. User clicks "Install App"
 4. Form posts to /auth/login
@@ -86,7 +86,7 @@ if (!credential) {
 ### Flow for Invalid Shop
 
 ```
-1. User visits https://shopify.dreamshot.io
+1. User visits https://abtest.dreamshot.io
 2. User enters: "invalid-shop"
 3. User clicks "Install App"
 4. Form posts to /auth/login
@@ -135,7 +135,7 @@ if (!credential) {
 
 **Test 1: New Public Shop** ✅
 ```
-1. Go to https://shopify.dreamshot.io
+1. Go to https://abtest.dreamshot.io
 2. Enter: "test-public-store.myshopify.com"
 3. Click "Install App"
 4. Expected: Redirects to Shopify OAuth screen
@@ -145,7 +145,7 @@ if (!credential) {
 
 **Test 2: Existing Private Shop** ✅
 ```
-1. Go to https://shopify.dreamshot.io
+1. Go to https://abtest.dreamshot.io
 2. Enter: (any of the 5 existing private shops)
 3. Click "Install App"
 4. Expected: Redirects to Shopify OAuth with private credentials
@@ -154,7 +154,7 @@ if (!credential) {
 
 **Test 3: Invalid Shop Domain** ✅
 ```
-1. Go to https://shopify.dreamshot.io
+1. Go to https://abtest.dreamshot.io
 2. Enter: "invalid-shop"
 3. Click "Install App"
 4. Expected: Error message "Invalid shop domain"
@@ -263,7 +263,7 @@ git push origin fix/shopify-oauth
 
 ### Verification
 1. Wait for Vercel deployment to complete
-2. Visit https://shopify.dreamshot.io
+2. Visit https://abtest.dreamshot.io
 3. Test with new shop domain
 4. Verify OAuth flow starts successfully
 

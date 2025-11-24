@@ -5,7 +5,7 @@
 After creating an A/B test successfully, the page would go blank with the following error in the browser console:
 
 ```
-app-bridge.js:1 Uncaught (in promise) Error: ?shopify-reload must be same-origin (https://app.dev.dreamshot.io !== https://shopify.dreamshot.io)
+app-bridge.js:1 Uncaught (in promise) Error: ?shopify-reload must be same-origin (https://app.dev.dreamshot.io !== https://abtest.dreamshot.io)
 ```
 
 ## Root Cause Analysis
@@ -15,12 +15,12 @@ app-bridge.js:1 Uncaught (in promise) Error: ?shopify-reload must be same-origin
 The application was using `window.location.reload()` after A/B test operations (create, start, stop, delete). This is problematic in Shopify embedded apps because:
 
 1. **Shopify App Bridge Security**: App Bridge enforces strict same-origin policy for reload operations
-2. **URL Origin Mismatch**: The runtime URL (`app.dev.dreamshot.io`) didn't match the configured application URL (`shopify.dreamshot.io`) in `shopify.app.toml`
+2. **URL Origin Mismatch**: The runtime URL (`app.dev.dreamshot.io`) didn't match the configured application URL (`abtest.dreamshot.io`) in `shopify.app.toml`
 3. **Security Validation Failure**: When App Bridge detects a URL mismatch during reload, it blocks the operation and throws an error, resulting in a blank page
 
 ### Secondary Issue: URL Configuration Inconsistency
 
-- Configured URL in `shopify.app.toml`: `https://shopify.dreamshot.io`
+- Configured URL in `shopify.app.toml`: `https://abtest.dreamshot.io`
 - Runtime access URL: `https://app.dev.dreamshot.io`
 - The subtle difference (period vs hyphen) causes App Bridge's same-origin check to fail
 
@@ -110,7 +110,7 @@ if (data?.ok && intent === 'createABTest') {
 
 While the fix resolves the immediate problem, there's still a URL configuration inconsistency:
 
-- `shopify.app.toml` has `shopify.dreamshot.io`
+- `shopify.app.toml` has `abtest.dreamshot.io`
 - Runtime shows `app.dev.dreamshot.io`
 
 This should be investigated separately to ensure consistent configuration, though it's no longer blocking functionality.

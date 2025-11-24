@@ -53,7 +53,7 @@
 **Fix:**
 1. Visit: `/app/connect-pixel`
 2. Click "Update Settings"
-3. Set `app_url` to: `https://shopify.dreamshot.io` (or your app URL)
+3. Set `app_url` to: `https://abtest.dreamshot.io` (or your app URL)
 4. Set `debug` to: `true` (for development)
 
 **OR manually via GraphQL:**
@@ -62,7 +62,7 @@ mutation {
   webPixelUpdate(webPixel: {
     id: "gid://shopify/WebPixel/..."
     settings: {
-      app_url: "https://shopify.dreamshot.io"
+      app_url: "https://abtest.dreamshot.io"
       debug: "true"
       enabled: "true"
     }
@@ -140,7 +140,7 @@ bun run scripts/check-abtestevents.ts
 **Fix:**
 ```bash
 # Visit connect page
-open https://shopify.dreamshot.io/app/connect-pixel
+open https://abtest.dreamshot.io/app/connect-pixel
 
 # Or check auto-connect
 # Should run on app load (app/routes/app._index.tsx:10-44)
@@ -181,13 +181,13 @@ open https://shopify.dreamshot.io/app/connect-pixel
 
 **In development:**
 - Pixel runs on storefront (e.g., `genlabs-dev-store.myshopify.com`)
-- Must call app backend (e.g., `shopify.dreamshot.io`)
+- Must call app backend (e.g., `abtest.dreamshot.io`)
 - Requires `app_url` setting
 
 **Check:**
 - Is `app_url` pointing to correct environment?
 - Dev: `http://localhost:3000` (if using tunnel)
-- Prod: `https://shopify.dreamshot.io`
+- Prod: `https://abtest.dreamshot.io`
 
 ## Quick Test Script
 
@@ -238,7 +238,7 @@ bun run scripts/check-abtestevents.ts
 2. **Verify CORS** headers are set
 3. **Test API directly:**
    ```bash
-   curl "https://shopify.dreamshot.io/api/rotation-state?productId=gid://shopify/Product/123"
+   curl "https://abtest.dreamshot.io/api/rotation-state?productId=gid://shopify/Product/123"
    ```
 4. **Check pixel settings** in Shopify Admin
 5. **Clear browser cache** and try incognito window

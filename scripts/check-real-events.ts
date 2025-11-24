@@ -55,7 +55,7 @@ async function checkRealEvents() {
     console.log('3. If not there: The pixel wasn\'t deployed properly');
     console.log('4. If there but "Disconnected": Click to connect it');
     console.log('5. Configure with:');
-    console.log('   - App URL: https://shopify.dreamshot.io');
+    console.log('   - App URL: https://abtest.dreamshot.io');
     console.log('   - Enable A/B Testing: true');
     console.log('   - Debug Mode: true');
     console.log();

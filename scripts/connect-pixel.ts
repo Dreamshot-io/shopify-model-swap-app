@@ -32,7 +32,7 @@ Since the pixel appears as "dreamshot-model-swap" (Disconnected):
    ┌────────────────────────────────┐
    │ Configure Settings             │
    │ App URL: [__________________]  │
-   │         ↑ Enter: https://shopify.dreamshot.io
+   │         ↑ Enter: https://abtest.dreamshot.io
    │ [Save and Connect]             │
    └────────────────────────────────┘
 

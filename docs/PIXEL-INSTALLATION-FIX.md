@@ -41,7 +41,7 @@ If the above doesn't work, you can manually install via GraphQL:
 mutation {
   webPixelCreate(webPixel: {
     settings: {
-      app_url: "https://shopify.dreamshot.io",
+      app_url: "https://abtest.dreamshot.io",
       enabled: "true",
       debug: "true"
     }

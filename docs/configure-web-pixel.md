@@ -7,7 +7,7 @@
 3. **Click "Connect" or "Settings"**
 4. **Configure these settings**:
    ```
-   app_url: https://shopify.dreamshot.io
+   app_url: https://abtest.dreamshot.io
    debug: true
    ```
 

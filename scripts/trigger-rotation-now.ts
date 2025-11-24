@@ -59,7 +59,7 @@ async function triggerRotation(testIdArg?: string) {
     console.log('   Test is now due for rotation!');
 
     // Try to call the rotation endpoint
-    const appUrl = process.env.SHOPIFY_APP_URL || 'https://shopify.dreamshot.io';
+    const appUrl = process.env.SHOPIFY_APP_URL || 'https://abtest.dreamshot.io';
     const rotationUrl = `${appUrl}/api/rotation`;
     console.log(`\n📡 Calling Rotation Endpoint...`);
     console.log(`   URL: ${rotationUrl}`);
