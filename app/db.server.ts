@@ -154,7 +154,8 @@ const prisma = prismaBase.$extends({
 
 // In development, preserve the client across HMR; in production, cache for warm lambdas
 if (process.env.NODE_ENV !== "production") {
-  globalThis.prisma = prisma;
+  // Cast needed because $extends() returns a different type than base PrismaClient
+  globalThis.prisma = prisma as unknown as PrismaClient;
 }
 
 export default prisma;
