@@ -26,6 +26,7 @@ interface ShopifyMedia {
 interface ShopifyProduct {
 	id: string;
 	title: string;
+	handle: string;
 	status: string;
 	media: {
 		nodes: ShopifyMedia[];
@@ -161,6 +162,7 @@ async function fetchAllProducts(
 							node {
 								id
 								title
+								handle
 								status
 								media(first: 50) {
 									nodes {
@@ -235,7 +237,7 @@ async function syncShopProducts(shopId: string, shopDomain: string): Promise<Syn
 
 		// Collect all media IDs from Shopify
 		const shopifyMediaIds = new Set<string>();
-		const mediaMap = new Map<string, { productId: string; shopifyUrl: string; altText: string | null }>();
+		const mediaMap = new Map<string, { productId: string; productTitle: string; productHandle: string; shopifyUrl: string; altText: string | null }>();
 
 		for (const product of products) {
 			for (const media of product.media.nodes) {
@@ -243,6 +245,8 @@ async function syncShopProducts(shopId: string, shopDomain: string): Promise<Syn
 					shopifyMediaIds.add(media.id);
 					mediaMap.set(media.id, {
 						productId: product.id,
+						productTitle: product.title,
+						productHandle: product.handle,
 						shopifyUrl: media.image.url,
 						altText: media.image.altText,
 					});
@@ -292,6 +296,8 @@ async function syncShopProducts(shopId: string, shopDomain: string): Promise<Syn
 							data: {
 								shopifyUrl: info.shopifyUrl,
 								productId: info.productId,
+								productTitle: info.productTitle,
+								productHandle: info.productHandle,
 								r2Url,
 								r2Key,
 								backedUpAt: needsBackup ? new Date() : existing.backedUpAt,
@@ -330,6 +336,8 @@ async function syncShopProducts(shopId: string, shopDomain: string): Promise<Syn
 						create: {
 							shop: shopId,
 							productId: info.productId,
+							productTitle: info.productTitle,
+							productHandle: info.productHandle,
 							mediaId,
 							shopifyUrl: info.shopifyUrl,
 							r2Url,
@@ -339,6 +347,8 @@ async function syncShopProducts(shopId: string, shopDomain: string): Promise<Syn
 						},
 						update: {
 							productId: info.productId,
+							productTitle: info.productTitle,
+							productHandle: info.productHandle,
 							shopifyUrl: info.shopifyUrl,
 							r2Url,
 							r2Key,

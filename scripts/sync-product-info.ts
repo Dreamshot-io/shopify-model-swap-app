@@ -56,6 +56,7 @@ interface ShopifyMedia {
 interface ShopifyProduct {
 	id: string;
 	title: string;
+	handle: string;
 	status: string;
 	media: {
 		nodes: ShopifyMedia[];
@@ -182,7 +183,7 @@ async function fetchAllProducts(
 	let cursor: string | null = null;
 
 	while (hasNextPage) {
-		const response = await graphql(
+		const response: { json: () => Promise<unknown> } = await graphql(
 			`#graphql
 				query GetProductsWithMedia($first: Int!, $after: String) {
 					products(first: $first, after: $after, sortKey: UPDATED_AT, reverse: true) {
@@ -194,6 +195,7 @@ async function fetchAllProducts(
 							node {
 								id
 								title
+								handle
 								status
 								media(first: 50) {
 									nodes {
@@ -214,7 +216,14 @@ async function fetchAllProducts(
 			{ variables: { first: 50, after: cursor } },
 		);
 
-		const data = await response.json();
+		const data = (await response.json()) as {
+			data?: {
+				products?: {
+					pageInfo?: { hasNextPage: boolean; endCursor: string };
+					edges?: Array<{ node: ShopifyProduct }>;
+				};
+			};
+		};
 		const pageInfo = data.data?.products?.pageInfo;
 		const edges = data.data?.products?.edges || [];
 
@@ -264,7 +273,7 @@ async function syncShopProducts(
 
 		// Collect all media IDs from Shopify
 		const shopifyMediaIds = new Set<string>();
-		const mediaMap = new Map<string, { productId: string; shopifyUrl: string; altText: string | null }>();
+		const mediaMap = new Map<string, { productId: string; productTitle: string; productHandle: string; shopifyUrl: string; altText: string | null }>();
 
 		for (const product of products) {
 			for (const media of product.media.nodes) {
@@ -272,6 +281,8 @@ async function syncShopProducts(
 					shopifyMediaIds.add(media.id);
 					mediaMap.set(media.id, {
 						productId: product.id,
+						productTitle: product.title,
+						productHandle: product.handle,
 						shopifyUrl: media.image.url,
 						altText: media.image.altText,
 					});
@@ -329,6 +340,8 @@ async function syncShopProducts(
 								data: {
 									shopifyUrl: info.shopifyUrl,
 									productId: info.productId,
+									productTitle: info.productTitle,
+									productHandle: info.productHandle,
 									r2Url,
 									r2Key,
 									backedUpAt: needsBackup ? new Date() : existing.backedUpAt,
@@ -372,6 +385,8 @@ async function syncShopProducts(
 							create: {
 								shop: shopId,
 								productId: info.productId,
+								productTitle: info.productTitle,
+								productHandle: info.productHandle,
 								mediaId,
 								shopifyUrl: info.shopifyUrl,
 								r2Url,
@@ -381,6 +396,8 @@ async function syncShopProducts(
 							},
 							update: {
 								productId: info.productId,
+								productTitle: info.productTitle,
+								productHandle: info.productHandle,
 								shopifyUrl: info.shopifyUrl,
 								r2Url,
 								r2Key,
