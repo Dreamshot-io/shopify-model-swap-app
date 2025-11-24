@@ -47,6 +47,7 @@ enum ShopCredentialMode {
 model ShopCredential {
   id           String               @id @default(cuid())
   shopDomain   String               @unique
+  shopName     String?              // Store name from Shopify (denormalized for dashboard)
   apiKey       String
   apiSecret    String
   appHandle    String
@@ -364,6 +365,10 @@ model ProductInfo {
   productId String
   mediaId   String? // Shopify media ID (e.g., gid://shopify/MediaImage/123) - nullable for product-level entries
 
+  // Denormalized product info (for dashboard display)
+  productTitle  String? // Product title from Shopify
+  productHandle String? // Product handle/slug from Shopify
+
   // Image URLs
   shopifyUrl String? // Shopify CDN URL - nullable until fetched
   r2Url      String? // R2 permanent URL (null if not yet backed up)
@@ -404,6 +409,11 @@ model StatisticsExport {
   variantId String
   date      DateTime // UTC date of the export (YYYY-MM-DD)
 
+  // Denormalized names (for dashboard display)
+  shopName     String? // Store name
+  productTitle String? // Product title
+  variantTitle String? // Variant title (e.g., "Red / Large")
+
   // R2 storage references
   csvR2Key  String // statistic-exports/{shopId}/{productId}/{variantId}/YYYYMMDD.csv
   jsonR2Key String // statistic-exports/{shopId}/{productId}/{variantId}/YYYYMMDD.json
@@ -440,6 +450,11 @@ model VariantDailyStatistics {
   productId String
   variantId String
   date      DateTime // UTC date of statistics (YYYY-MM-DD)
+
+  // Denormalized names (for dashboard display)
+  shopName     String? // Store name
+  productTitle String? // Product title
+  variantTitle String? // Variant title (e.g., "Red / Large")
 
   // Raw metrics
   impressions Int     @default(0)
