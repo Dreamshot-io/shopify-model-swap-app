@@ -374,7 +374,6 @@ model AIStudioImage {
 // Product info tracking - stores product media metadata and R2 backups
 model ProductInfo {
   id        String  @id @default(cuid())
-  shop      String
   productId String
   mediaId   String? // Shopify media ID (e.g., gid://shopify/MediaImage/123) - nullable for product-level entries
 
@@ -404,20 +403,18 @@ model ProductInfo {
   updatedAt DateTime @updatedAt
 
   // Relations
-  shopId         String?
-  shopCredential ShopCredential? @relation(fields: [shopId], references: [id], onDelete: SetNull)
+  shopId          String
+  shopCredential  ShopCredential @relation(fields: [shopId], references: [id], onDelete: Cascade)
   dailyStatistics VariantDailyStatistics[]
 
-  @@unique([shop, mediaId])
-  @@index([shop, productId])
-  @@index([shopId])
+  @@unique([shopId, mediaId])
+  @@index([shopId, productId])
   @@index([deletedAt])
 }
 
 // Daily statistics export records
 model StatisticsExport {
   id        String @id @default(cuid())
-  shop      String
   productId String
   variantId String
   date      DateTime // UTC date of the export (YYYY-MM-DD)
@@ -442,24 +439,21 @@ model StatisticsExport {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
-  shopId         String?
-  shopCredential ShopCredential? @relation(fields: [shopId], references: [id], onDelete: SetNull)
-
   // Relations
-  statistics VariantDailyStatistics?
+  shopId         String
+  shopCredential ShopCredential @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  statistics     VariantDailyStatistics?
 
-  @@unique([shop, productId, variantId, date])
-  @@index([shop, date])
-  @@index([shop, productId])
+  @@unique([shopId, productId, variantId, date])
+  @@index([shopId, date])
+  @@index([shopId, productId])
   @@index([date])
-  @@index([shopId])
 }
 
 // Variant daily statistics - queryable metrics data
 model VariantDailyStatistics {
   id        String   @id @default(cuid())
   exportId  String   @unique
-  shop      String
   productId String
   variantId String
   date      DateTime // UTC date of statistics (YYYY-MM-DD)
@@ -484,17 +478,16 @@ model VariantDailyStatistics {
   updatedAt DateTime @updatedAt
 
   // Relations
+  shopId         String
+  shopCredential ShopCredential       @relation(fields: [shopId], references: [id], onDelete: Cascade)
   export         StatisticsExport     @relation(fields: [exportId], references: [id], onDelete: Cascade)
   productInfo    ProductInfo[] // Product media info for this variant on this date
-  shopId         String?
-  shopCredential ShopCredential?      @relation(fields: [shopId], references: [id], onDelete: SetNull)
 
-  @@unique([shop, productId, variantId, date])
-  @@index([shop, date])
+  @@unique([shopId, productId, variantId, date])
+  @@index([shopId, date])
   @@index([productId, date])
   @@index([variantId, date])
   @@index([date])
-  @@index([shopId])
   @@index([impressions])
   @@index([revenue])
 }
