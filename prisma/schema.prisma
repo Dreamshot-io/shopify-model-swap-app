@@ -46,9 +46,9 @@ enum ShopCredentialMode {
 
 model ShopCredential {
   id           String               @id @default(cuid())
-  shopDomain   String               @unique
+  shopDomain   String
   shopName     String?              // Store name from Shopify (denormalized for dashboard)
-  apiKey       String
+  apiKey       String               @unique
   apiSecret    String
   appHandle    String
   appUrl       String
@@ -74,6 +74,8 @@ model ShopCredential {
   productInfo           ProductInfo[]
   variantDailyStatistics VariantDailyStatistics[]
 
+  @@unique([shopDomain, apiKey])
+  @@index([shopDomain])
   @@index([status])
   @@index([mode])
 }
