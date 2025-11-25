@@ -5,49 +5,28 @@
  */
 
 import prisma from '../app/db.server';
-import { unauthenticated } from '../app/shopify.server';
-
-const EXTENSION_UID = 'ecaa6226-8e43-2519-e06f-e0ea40d84876e26a2ae3';
+import { findShopCredential } from '../app/services/shops.server';
+import { getShopifyContextByShopDomain } from '../app/shopify.server';
 
 type GraphQLFunction = (query: string, options?: { variables?: Record<string, unknown> }) => Promise<Response>;
-
-interface PixelEdge {
-	node: {
-		id: string;
-		extensionId?: string;
-		settings?: Record<string, unknown>;
-	};
-}
 
 async function checkPixelStatus(graphql: GraphQLFunction) {
 	const response = await graphql(`
 		query {
-			webPixels(first: 10) {
-				edges {
-					node {
-						id
-						settings
-						extensionId
-					}
-				}
+			webPixel {
+				id
+				settings
 			}
 		}
 	`);
 
 	const data = await response.json();
-	const pixels = (data.data?.webPixels?.edges || []) as PixelEdge[];
-
-	// Find our pixel
-	const ourPixel = pixels.find(
-		(edge) =>
-			edge.node.extensionId?.includes(EXTENSION_UID) || edge.node.id,
-	);
+	const pixel = data.data?.webPixel;
 
 	return {
-		exists: !!ourPixel,
-		pixelId: ourPixel?.node?.id || null,
-		settings: ourPixel?.node?.settings || null,
-		allPixels: pixels.length,
+		exists: !!pixel,
+		pixelId: pixel?.id || null,
+		settings: pixel?.settings || null,
 	};
 }
 
@@ -89,9 +68,7 @@ async function createPixel(appUrl: string, graphql: GraphQLFunction) {
 			success: false,
 			error: error.message,
 			code: error.code,
-			alreadyExists:
-				error.code === 'PIXEL_ALREADY_EXISTS' ||
-				error.message.includes('already exists'),
+			alreadyExists: error.code === 'PIXEL_ALREADY_EXISTS' || error.message.includes('already exists'),
 		};
 	}
 
@@ -141,10 +118,25 @@ async function activatePixelForShop(shopDomain: string, shopId: string) {
 			return { success: false, error: 'No session' };
 		}
 
-		// Get admin client
-		const result = await unauthenticated.admin(session.shop);
+		// Get admin client using shopId lookup (works with custom domains)
+		const shopCredential = await findShopCredential({ shopId: shopId });
+		if (!shopCredential) {
+			console.log('  ❌ Could not find shop credential by ID');
+			return { success: false, error: 'Credential lookup failed' };
+		}
+
+		const { app } = await getShopifyContextByShopDomain(shopCredential.shopDomain);
+		const adminResult = await app.unauthenticated.admin(session.shop);
 		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		const graphql = (result as any).admin.graphql;
+		const graphql = (adminResult as any).admin.graphql;
+
+		// Check required scopes
+		const hasPixelScopes = shopCredential.scopes.includes('read_customer_events');
+
+		if (!hasPixelScopes) {
+			console.log('  ⚠️  Missing read_customer_events scope - shop needs to re-authorize');
+			return { success: false, error: 'Missing read_customer_events scope' };
+		}
 
 		// Check if pixel already exists
 		console.log('  📍 Checking pixel status...');
@@ -152,11 +144,8 @@ async function activatePixelForShop(shopDomain: string, shopId: string) {
 
 		if (status.exists) {
 			console.log(`  ✅ Pixel already active (ID: ${status.pixelId})`);
-			console.log(`     Total pixels: ${status.allPixels}`);
 			return { success: true, alreadyExists: true, pixelId: status.pixelId };
 		}
-
-		console.log(`  📍 Total pixels found: ${status.allPixels}`);
 		console.log('  🔌 Creating pixel...');
 
 		// Create pixel
@@ -223,9 +212,9 @@ async function activateAllPixels() {
 	console.log('\n' + '='.repeat(60));
 	console.log('\n📊 Summary:\n');
 
-	const successful = results.filter((r) => r.success);
-	const failed = results.filter((r) => !r.success);
-	const alreadyExisted = results.filter((r) => r.alreadyExists);
+	const successful = results.filter(r => r.success);
+	const failed = results.filter(r => !r.success);
+	const alreadyExisted = results.filter(r => r.alreadyExists);
 
 	console.log(`✅ Successful: ${successful.length}`);
 	console.log(`⚠️  Already existed: ${alreadyExisted.length}`);
@@ -233,7 +222,7 @@ async function activateAllPixels() {
 
 	if (failed.length > 0) {
 		console.log('\n❌ Failed shops:');
-		failed.forEach((r) => {
+		failed.forEach(r => {
 			console.log(`   - ${r.shopDomain}: ${r.error}`);
 		});
 	}
@@ -246,7 +235,7 @@ activateAllPixels()
 		console.log('\n✅ Done');
 		process.exit(0);
 	})
-	.catch((error) => {
+	.catch(error => {
 		console.error('\n❌ Fatal error:', error);
 		process.exit(1);
 	});
