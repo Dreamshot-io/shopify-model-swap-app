@@ -53,7 +53,22 @@ function normalizeVariantId(variantId: string | null | undefined): string | null
 }
 
 export const action = async ({ request }: ActionFunctionArgs) => {
-	const { topic, shop, payload } = await authenticate.webhook(request);
+	let topic: string;
+	let shop: string;
+	let payload: Record<string, unknown>;
+
+	// Dev bypass for testing - skip HMAC validation
+	if (process.env.NODE_ENV !== 'production' && request.headers.get('X-Shopify-Hmac-Sha256') === 'test') {
+		topic = request.headers.get('X-Shopify-Topic') || 'orders/paid';
+		shop = request.headers.get('X-Shopify-Shop-Domain') || '';
+		payload = await request.json();
+		console.log('[orders-paid] DEV MODE: Bypassing HMAC validation');
+	} else {
+		const auth = await authenticate.webhook(request);
+		topic = auth.topic;
+		shop = auth.shop;
+		payload = auth.payload as Record<string, unknown>;
+	}
 
 	if (!payload || typeof payload !== 'object') {
 		console.warn('[orders-paid] Missing payload', { topic, shop });
