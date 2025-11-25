@@ -286,6 +286,7 @@ const extractShopDomain = (request: Request) => {
 
 const resolveCredentialFromRequest = async (request: Request) => {
 	const clientId = extractClientId(request);
+	const shop = extractShopDomain(request);
 	
 	// Attempt 1: Find by clientId in database
 	if (clientId) {
@@ -296,16 +297,21 @@ const resolveCredentialFromRequest = async (request: Request) => {
 
 		// If clientId matches public app and no DB record exists, create virtual credential
 		if (isPublicAppConfigured() && clientId === PUBLIC_APP_CONFIG.apiKey) {
-			const shop = extractShopDomain(request);
 			if (!shop) {
 				throw new Response("Shop domain required for public app installation", { status: 400 });
 			}
 			return createPublicCredential(shop);
 		}
+		
+		// clientId provided but doesn't match any credential or public app
+		console.error(`[shopify.server] Credential mismatch - clientId: ${clientId}, shop: ${shop}`);
+		throw new Response(
+			`App credentials mismatch. The app was opened with client_id "${clientId}" but no matching credential was found. Please contact support.`,
+			{ status: 401 }
+		);
 	}
 
 	// Attempt 2: Find by shopDomain in database
-	const shop = extractShopDomain(request);
 	if (shop) {
 		const credential = await findShopCredential({ shopDomain: shop });
 		if (credential) {
@@ -317,10 +323,14 @@ const resolveCredentialFromRequest = async (request: Request) => {
 			return createPublicCredential(shop);
 		}
 
-		throw new Response("Shop credential not found", { status: 404 });
+		console.error(`[shopify.server] Shop not found in database: ${shop}`);
+		throw new Response(
+			`Shop "${shop}" is not registered with this app. Please contact support to set up your account.`,
+			{ status: 404 }
+		);
 	}
 
-	throw new Response("Unable to resolve shop context", { status: 401 });
+	throw new Response("Unable to determine shop context from request. Please try accessing the app from Shopify Admin.", { status: 401 });
 };
 
 const extractShopInput = async (request: Request) => {
@@ -452,7 +462,18 @@ async function persistPublicInstallation(shopDomain: string, sessionData: any) {
 
 export const authenticate = {
 	admin: async (request: Request) => {
+		const url = new URL(request.url);
+		console.log('[shopify.server] authenticate.admin called:', {
+			url: url.pathname + url.search,
+			shop: url.searchParams.get('shop'),
+			host: url.searchParams.get('host'),
+			hasSessionToken: !!request.headers.get('Authorization'),
+			method: request.method,
+		});
+		
 		const { app, credential } = await resolveAppForRequest(request);
+		console.log('[shopify.server] Resolved credential:', credential.shopDomain, credential.apiKey.slice(0, 8) + '...');
+		
 		const context = await app.authenticate.admin(request);
 		
 		// If virtual public credential, persist to database
