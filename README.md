@@ -154,8 +154,7 @@ node scripts/seed-shop-credential.mjs \
 - 🏗️ **[Architecture Guide](./docs/deployment/public-private-app-architecture.md)** - Technical implementation details
 
 ### Development
-- **[AGENTS.md](./AGENTS.md)** - Quick reference for agentic coding tools
-- **[CLAUDE.md](./CLAUDE.md)** - Comprehensive development guide
+- **[CLAUDE.md](./CLAUDE.md)** - AI agent instructions (commands, code style, architecture). Used by Claude Code, OpenCode, Cursor, and other AI coding tools to understand project conventions.
 - **[STATISTICS-EXPORT.md](./STATISTICS-EXPORT.md)** - Daily statistics export setup and usage
 
 ## Resources
