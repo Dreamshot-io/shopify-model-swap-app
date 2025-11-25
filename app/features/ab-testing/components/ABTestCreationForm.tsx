@@ -38,6 +38,7 @@ interface ProductImage {
 interface ABTestCreationFormProps {
   productId: string;
   productTitle: string;
+  shop: string;
   onSuccess?: () => void;
   onCancel?: () => void;
 }
@@ -45,6 +46,7 @@ interface ABTestCreationFormProps {
 export function ABTestCreationForm({
   productId,
   productTitle,
+  shop,
   onSuccess,
   onCancel,
 }: ABTestCreationFormProps) {
@@ -162,6 +164,11 @@ export function ABTestCreationForm({
 
   // Handle success response
   useEffect(() => {
+    console.log('[ABTestCreationForm] Fetcher state changed:', {
+      state: fetcher.state,
+      data: fetcher.data,
+    });
+    
     const data = fetcher.data as
       | { success?: boolean; error?: string }
       | undefined;
@@ -169,7 +176,7 @@ export function ABTestCreationForm({
       onSuccess();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fetcher.data]);
+  }, [fetcher.data, fetcher.state]);
 
   const toggleGalleryImage = useCallback((image: ProductImage) => {
     setSelectedGalleryImages((prev) => {
@@ -259,13 +266,26 @@ export function ABTestCreationForm({
     const hasTestImages = formData.has("testImages");
     const hasVariantTests = formData.has("variantTests");
 
+    console.log('[ABTestCreationForm] Submitting:', {
+      name: formData.get('name'),
+      productId: formData.get('productId'),
+      hasTestImages,
+      hasVariantTests,
+      shop,
+    });
+
     if (!hasTestImages && !hasVariantTests) {
       // This shouldn't happen if form validation is working, but add safety check
       console.error("Cannot submit test: no valid images or variant heroes selected");
       return;
     }
 
-    fetcher.submit(formData, { method: "post" });
+    console.log('[ABTestCreationForm] Calling fetcher.submit with POST to:', `/app/ab-tests?productId=${encodeURIComponent(productId)}&shop=${encodeURIComponent(shop)}`);
+    
+    fetcher.submit(formData, { 
+      method: "post",
+      action: `/app/ab-tests?productId=${encodeURIComponent(productId)}&shop=${encodeURIComponent(shop)}`,
+    });
   };
 
   const isFormValid = () => {

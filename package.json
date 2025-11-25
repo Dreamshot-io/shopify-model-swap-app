@@ -2,7 +2,7 @@
 	"name": "dreamshot-model-swap",
 	"private": true,
 	"scripts": {
-		"build": "npx prisma generate && npx prisma migrate deploy && remix vite:build",
+		"build": "bun run --env-file=.env prisma generate && bun run --env-file=.env prisma migrate deploy && remix vite:build",
 		"dev": "./scripts/dev.sh",
 		"dev:stable": "./scripts/dev-stable.sh",
 		"update-domain": "./scripts/update-domain.sh",
@@ -29,11 +29,14 @@
 		"postinstall": "prisma generate",
 		"vercel-build": "npx prisma generate && remix vite:build",
 		"env:init": "bash ./scripts/init-env.sh",
-		"migrate:dev": "if [ -z \"$DATABASE_URL\" ]; then echo \"DATABASE_URL not set. Skipping migrate dev.\"; else npx prisma migrate dev; fi",
-		"migrate:deploy": "if [ -z \"$DATABASE_URL\" ]; then echo \"DATABASE_URL not set. Skipping migrate deploy.\"; else npx prisma migrate deploy; fi",
+		"migrate:dev": "bun run --env-file=.env prisma migrate dev",
+		"migrate:deploy": "bun run --env-file=.env prisma migrate deploy",
 		"db:seed": "bash -lc 'if [ -z \"$DATABASE_URL\" ]; then echo \"DATABASE_URL not set. Skipping seed.\"; else ts-node --transpile-only prisma/seed.ts || node --loader ts-node/esm prisma/seed.ts || node build/prisma/seed.js; fi'",
 		"migrate:ai-studio": "bun run app/scripts/migrate-ai-studio-metafields.server.ts",
-		"migrate:ai-studio:cleanup": "bun run app/scripts/migrate-ai-studio-metafields.server.ts --cleanup"
+		"migrate:ai-studio:cleanup": "bun run app/scripts/migrate-ai-studio-metafields.server.ts --cleanup",
+		"backfill:statistics": "bun run --env-file=.env scripts/backfill-daily-statistics.ts",
+		"link:sessions": "bun run --env-file=.env scripts/link-sessions-to-credentials.ts",
+		"activate:pixels": "bun run --env-file=.env scripts/activate-pixel-all-shops.ts"
 	},
 	"type": "module",
 	"dependencies": {
@@ -60,8 +63,8 @@
 		"framer-motion": "^12.23.24",
 		"isbot": "^5.1.0",
 		"prisma": "^6.2.1",
-		"react": "^18.2.0",
-		"react-dom": "^18.2.0",
+		"react": "18.3.1",
+		"react-dom": "18.3.1",
 		"replicate": "^1.0.3",
 		"vite-tsconfig-paths": "^5.0.1"
 	},
@@ -96,14 +99,18 @@
 		"@graphql-codegen/client-preset": "4.7.0",
 		"@graphql-codegen/typescript-operations": "4.5.0",
 		"minimatch": "9.0.5",
-		"vite": "^6.2.2"
+		"vite": "^6.2.2",
+		"react": "18.3.1",
+		"react-dom": "18.3.1"
 	},
 	"overrides": {
 		"@graphql-tools/url-loader": "8.0.16",
 		"@graphql-codegen/client-preset": "4.7.0",
 		"@graphql-codegen/typescript-operations": "4.5.0",
 		"minimatch": "9.0.5",
-		"vite": "^6.2.2"
+		"vite": "^6.2.2",
+		"react": "18.3.1",
+		"react-dom": "18.3.1"
 	},
 	"author": "javierjrueda"
 }

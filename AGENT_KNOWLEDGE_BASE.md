@@ -65,7 +65,7 @@ bun run scripts/test-rotation-state.ts <productId>
 bun run scripts/trigger-rotation-now.ts
 
 # 3. Check logs
-curl https://shopify.dreamshot.io/api/rotation-state?productId=<id>
+curl https://abtest.dreamshot.io/api/rotation-state?productId=<id>
 ```
 
 ### Task: Cron job failing
@@ -74,7 +74,7 @@ curl https://shopify.dreamshot.io/api/rotation-state?productId=<id>
 bun run scripts/check-sessions.ts
 
 # 2. Test endpoint
-curl -X POST https://shopify.dreamshot.io/api/rotation
+curl -X POST https://abtest.dreamshot.io/api/rotation
 
 # 3. Check error logs
 Look for "[Cron Admin] GraphQL request failed" in logs
@@ -129,9 +129,9 @@ LIMIT 1;
 **Cause**: Session expired or missing
 **Fix**: User needs to reinstall app or login
 
-### Error: "Failed to transfer R2 image to Shopify"
-**Cause**: Image upload issue
-**Fix**: Check R2 credentials and permissions
+### Error: "Failed to upload image to Shopify"
+**Cause**: Image upload issue during Save to Library or Test Creation
+**Fix**: Check Shopify API permissions and staged upload configuration
 
 ### Error: "Unknown field rotationIntervalHours"
 **Cause**: Using wrong field name
@@ -188,6 +188,27 @@ bun run scripts/test-cron-simple.ts
 
 ## Architecture Decisions
 
+### Image Library Storage (AI Studio)
+
+All images are stored in Shopify's CDN - we never store external URLs (AI provider, R2, etc.) in our database.
+
+**Flow:**
+```
+1. Manual Upload → Shopify Staged Upload → DB (url: cdn.shopify.com, mediaId: gid://...)
+2. AI Generation → Returns fal.ai URL (preview only, NOT saved)
+3. Save to Library → Fetch from fal.ai → Upload to Shopify → DB (url: cdn.shopify.com, mediaId: gid://...)
+4. A/B Test Creation → Uses mediaIds from library → Assigns to product during rotation
+```
+
+**Key Tables:**
+- `AIStudioImage`: Library images with `url`, `mediaId`, `state` (LIBRARY/PUBLISHED)
+- `ABTest.testMediaIds[]`: Array of Shopify mediaIds for test case
+
+**Key Services:**
+- `AIStudioMediaService`: Manages library storage (always Shopify URLs)
+- `MediaGalleryService`: Handles Shopify media operations
+- `file-upload.server.ts`: Staged upload to Shopify
+
 ### Why Script Tags over Web Pixels?
 - No manual connection required
 - Works immediately after installation
@@ -209,13 +230,14 @@ bun run scripts/test-cron-simple.ts
 ### Shopify APIs Used
 - GraphQL Admin API (product updates)
 - Script Tags API (tracking injection)
-- Staged Uploads (image uploads)
+- Staged Uploads (image uploads to Shopify CDN)
+- Files API (media management)
 - Web Pixels (attempted, not working)
 
 ### External Services
-- Cloudflare R2 (image storage)
 - Vercel (hosting & cron)
 - PostgreSQL (database)
+- AI Providers (fal.ai for image generation - temporary URLs only)
 
 ## Performance Considerations
 
@@ -233,19 +255,17 @@ bun run scripts/test-cron-simple.ts
 
 ## Known Limitations
 
-1. Single shop deployment only
-2. No purchase event tracking yet
-3. Web Pixel can't be connected
-4. Manual theme modifications not supported
-5. Variant-level testing incomplete
+1. No purchase event tracking yet
+2. Web Pixel can't be connected
+3. Manual theme modifications not supported
+4. Variant-level testing incomplete
 
 ## Future Improvements
 
-1. Multi-shop support
-2. Purchase webhook integration
-3. Advanced analytics dashboard
-4. Variant-specific testing
-5. Automated winner selection
+1. Purchase webhook integration
+2. Advanced analytics dashboard
+3. Variant-specific testing
+4. Automated winner selection
 
 ---
 
@@ -270,5 +290,5 @@ When working on this system:
 
 ---
 
-*Last Updated: November 8, 2024*
-*System Status: Operational with minor limitations*
+*Last Updated: November 21, 2025*
+*System Status: Operational - Multi-tenant with Shopify-native image storage*

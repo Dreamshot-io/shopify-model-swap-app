@@ -2,11 +2,16 @@
 module.exports = {
 	root: true,
 	extends: ['@remix-run/eslint-config', '@remix-run/eslint-config/node', 'prettier'],
+	parserOptions: {
+		project: './tsconfig.json',
+	},
 	globals: {
 		shopify: 'readonly',
 	},
 	rules: {
 		'@typescript-eslint/no-explicit-any': 'error',
+		'@typescript-eslint/no-floating-promises': 'error',
+		'@typescript-eslint/await-thenable': 'error',
 		'no-restricted-syntax': [
 			'error',
 			{

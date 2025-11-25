@@ -40,6 +40,7 @@ export {
 	generateR2Key,
 	backupImageToR2,
 	isImageBackedUp,
+	backupProductImages,
 	backupProductVariantImages,
 } from './image-backup.service';
 

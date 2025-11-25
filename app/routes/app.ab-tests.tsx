@@ -228,9 +228,12 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
-  const { session, admin } = await authenticate.admin(request);
+  console.log('[ab-tests action] Starting action handler');
+  const { session, admin, shopId } = await authenticate.admin(request);
+  console.log('[ab-tests action] Authenticated:', session.shop, 'shopId:', shopId);
   const formData = await request.formData();
   const intent = formData.get("intent");
+  console.log('[ab-tests action] Intent:', intent);
 
   try {
     switch (intent) {
@@ -243,6 +246,13 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         if (!name || !productId) {
           return json(
             { success: false, error: "Missing required fields" },
+            { status: 400 },
+          );
+        }
+        
+        if (!shopId) {
+          return json(
+            { success: false, error: "Unable to resolve shop credentials" },
             { status: 400 },
           );
         }
@@ -679,6 +689,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             currentCase: "BASE",
             rotationHours: 0.5, // Default 30 minutes
             createdBy: session.id,
+            shopId,
           },
         });
 
@@ -1574,6 +1585,7 @@ export default function ABTests() {
                 <ABTestCreationForm
                   productId={data.productId}
                   productTitle={data.product.title}
+                  shop={data.shop}
                   onSuccess={() => {
                     setShowCreateForm(false);
                     navigate(`/app/ab-tests?productId=${data.productId}`);

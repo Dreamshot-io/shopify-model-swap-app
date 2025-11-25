@@ -4,23 +4,17 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import {
-	generateR2Key,
-	backupImageToR2,
-	isImageBackedUp,
-	backupProductVariantImages,
-} from './image-backup.service';
 import type { ImageBackupParams } from '~/features/statistics-export/types';
 
 // Mock Prisma client
-const mockPrismaCreate = vi.fn();
+const mockPrismaUpsert = vi.fn();
 const mockPrismaFindUnique = vi.fn();
 const mockPrismaFindMany = vi.fn();
 
 vi.mock('~/db.server', () => ({
 	default: {
-		productImageBackup: {
-			create: (...args: unknown[]) => mockPrismaCreate(...args),
+		productInfo: {
+			upsert: (...args: unknown[]) => mockPrismaUpsert(...args),
 			findUnique: (...args: unknown[]) => mockPrismaFindUnique(...args),
 			findMany: (...args: unknown[]) => mockPrismaFindMany(...args),
 		},
@@ -34,37 +28,44 @@ vi.mock('~/services/storage.server', () => ({
 		mockUploadImageFromUrlToR2(...args),
 }));
 
+// Import after mocks using dynamic import
+const {
+	generateR2Key,
+	backupImageToR2,
+	isImageBackedUp,
+	backupProductImages,
+	backupProductVariantImages,
+} = await import('./image-backup.service');
+
 describe('image-backup.service', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 	});
 
 	describe('generateR2Key', () => {
-		it('should generate correct R2 key format', () => {
+		it('should generate correct R2 key format without variantId', () => {
 			// Arrange
 			const shopId = 'shop123';
 			const productId = 'prod456';
-			const variantId = 'var789';
 			const mediaId = 'media001';
 			const extension = 'jpg';
 
 			// Act
-			const key = generateR2Key(shopId, productId, variantId, mediaId, extension);
+			const key = generateR2Key(shopId, productId, mediaId, extension);
 
 			// Assert
-			expect(key).toBe('product-images/shop123/prod456/var789/media001.jpg');
+			expect(key).toBe('product-images/shop123/prod456/media001.jpg');
 		});
 
 		it('should handle different extensions', () => {
 			// Arrange
 			const shopId = 'shop1';
 			const productId = 'prod1';
-			const variantId = 'var1';
 			const mediaId = 'media1';
 
 			// Act
-			const pngKey = generateR2Key(shopId, productId, variantId, mediaId, 'png');
-			const webpKey = generateR2Key(shopId, productId, variantId, mediaId, 'webp');
+			const pngKey = generateR2Key(shopId, productId, mediaId, 'png');
+			const webpKey = generateR2Key(shopId, productId, mediaId, 'webp');
 
 			// Assert
 			expect(pngKey).toContain('.png');
@@ -75,18 +76,16 @@ describe('image-backup.service', () => {
 			// Arrange
 			const shopId = 'myshop';
 			const productId = 'product1';
-			const variantId = 'variant1';
 			const mediaId = 'media1';
 			const extension = 'jpg';
 
 			// Act
-			const key = generateR2Key(shopId, productId, variantId, mediaId, extension);
+			const key = generateR2Key(shopId, productId, mediaId, extension);
 
 			// Assert
 			expect(key.startsWith('product-images/')).toBe(true);
 			expect(key).toContain('/myshop/');
 			expect(key).toContain('/product1/');
-			expect(key).toContain('/variant1/');
 		});
 	});
 
@@ -110,8 +109,8 @@ describe('image-backup.service', () => {
 			expect(result).toBe(true);
 			expect(mockPrismaFindUnique).toHaveBeenCalledWith({
 				where: {
-					shop_mediaId: {
-						shop: shopId,
+					shopId_mediaId: {
+						shopId,
 						mediaId,
 					},
 				},
@@ -157,7 +156,6 @@ describe('image-backup.service', () => {
 			const params: ImageBackupParams = {
 				shopId: 'shop123',
 				productId: 'prod456',
-				variantId: 'var789',
 				mediaId: 'media001',
 				shopifyUrl: 'https://cdn.shopify.com/image.jpg',
 			};
@@ -166,7 +164,7 @@ describe('image-backup.service', () => {
 				shop: params.shopId,
 				mediaId: params.mediaId,
 				r2Url: 'https://r2.example.com/existing.jpg',
-				r2Key: 'product-images/shop123/prod456/var789/media001.jpg',
+				r2Key: 'product-images/shop123/prod456/media001.jpg',
 				backedUpAt: new Date(),
 			});
 
@@ -184,7 +182,6 @@ describe('image-backup.service', () => {
 			const params: ImageBackupParams = {
 				shopId: 'shop123',
 				productId: 'prod456',
-				variantId: 'var789',
 				mediaId: 'media001',
 				shopifyUrl: 'https://cdn.shopify.com/image.jpg',
 			};
@@ -192,15 +189,14 @@ describe('image-backup.service', () => {
 
 			mockPrismaFindUnique.mockResolvedValue(null);
 			mockUploadImageFromUrlToR2.mockResolvedValue(expectedR2Url);
-			mockPrismaCreate.mockResolvedValue({
+			mockPrismaUpsert.mockResolvedValue({
 				id: '1',
 				shop: params.shopId,
 				productId: params.productId,
-				variantId: params.variantId,
 				mediaId: params.mediaId,
 				shopifyUrl: params.shopifyUrl,
 				r2Url: expectedR2Url,
-				r2Key: 'product-images/shop123/prod456/var789/media001.jpg',
+				r2Key: 'product-images/shop123/prod456/media001.jpg',
 				backedUpAt: new Date(),
 			});
 
@@ -216,7 +212,7 @@ describe('image-backup.service', () => {
 					keyPrefix: expect.stringContaining('product-images/shop123/prod456'),
 				}),
 			);
-			expect(mockPrismaCreate).toHaveBeenCalled();
+			expect(mockPrismaUpsert).toHaveBeenCalled();
 		});
 
 		it('should return error if upload fails', async () => {
@@ -224,7 +220,6 @@ describe('image-backup.service', () => {
 			const params: ImageBackupParams = {
 				shopId: 'shop123',
 				productId: 'prod456',
-				variantId: 'var789',
 				mediaId: 'media001',
 				shopifyUrl: 'https://cdn.shopify.com/image.jpg',
 			};
@@ -243,12 +238,11 @@ describe('image-backup.service', () => {
 		});
 	});
 
-	describe('backupProductVariantImages', () => {
+	describe('backupProductImages', () => {
 		it('should backup multiple images in batch', async () => {
 			// Arrange
 			const shopId = 'shop123';
 			const productId = 'prod456';
-			const variantId = 'var789';
 			const images = [
 				{ mediaId: 'media1', shopifyUrl: 'https://cdn.shopify.com/1.jpg' },
 				{ mediaId: 'media2', shopifyUrl: 'https://cdn.shopify.com/2.jpg' },
@@ -258,15 +252,10 @@ describe('image-backup.service', () => {
 			mockUploadImageFromUrlToR2
 				.mockResolvedValueOnce('https://r2.example.com/1.jpg')
 				.mockResolvedValueOnce('https://r2.example.com/2.jpg');
-			mockPrismaCreate.mockResolvedValue({});
+			mockPrismaUpsert.mockResolvedValue({});
 
 			// Act
-			const results = await backupProductVariantImages(
-				shopId,
-				productId,
-				variantId,
-				images,
-			);
+			const results = await backupProductImages(shopId, productId, images);
 
 			// Assert
 			expect(results).toHaveLength(2);
@@ -279,7 +268,6 @@ describe('image-backup.service', () => {
 			// Arrange
 			const shopId = 'shop123';
 			const productId = 'prod456';
-			const variantId = 'var789';
 			const images = [
 				{ mediaId: 'media1', shopifyUrl: 'https://cdn.shopify.com/1.jpg' },
 				{ mediaId: 'media2', shopifyUrl: 'https://cdn.shopify.com/2.jpg' },
@@ -289,15 +277,10 @@ describe('image-backup.service', () => {
 			mockUploadImageFromUrlToR2
 				.mockRejectedValueOnce(new Error('Failed'))
 				.mockResolvedValueOnce('https://r2.example.com/2.jpg');
-			mockPrismaCreate.mockResolvedValue({});
+			mockPrismaUpsert.mockResolvedValue({});
 
 			// Act
-			const results = await backupProductVariantImages(
-				shopId,
-				productId,
-				variantId,
-				images,
-			);
+			const results = await backupProductImages(shopId, productId, images);
 
 			// Assert
 			expect(results).toHaveLength(2);
@@ -309,8 +292,29 @@ describe('image-backup.service', () => {
 			// Arrange
 			const shopId = 'shop123';
 			const productId = 'prod456';
-			const variantId = 'var789';
 			const images: Array<{ mediaId: string; shopifyUrl: string }> = [];
+
+			// Act
+			const results = await backupProductImages(shopId, productId, images);
+
+			// Assert
+			expect(results).toHaveLength(0);
+		});
+	});
+
+	describe('backupProductVariantImages (deprecated)', () => {
+		it('should still work for backward compatibility', async () => {
+			// Arrange
+			const shopId = 'shop123';
+			const productId = 'prod456';
+			const variantId = 'var789';
+			const images = [
+				{ mediaId: 'media1', shopifyUrl: 'https://cdn.shopify.com/1.jpg' },
+			];
+
+			mockPrismaFindUnique.mockResolvedValue(null);
+			mockUploadImageFromUrlToR2.mockResolvedValue('https://r2.example.com/1.jpg');
+			mockPrismaUpsert.mockResolvedValue({});
 
 			// Act
 			const results = await backupProductVariantImages(
@@ -321,7 +325,8 @@ describe('image-backup.service', () => {
 			);
 
 			// Assert
-			expect(results).toHaveLength(0);
+			expect(results).toHaveLength(1);
+			expect(results[0].success).toBe(true);
 		});
 	});
 });

@@ -3,7 +3,6 @@ import type { AdminApiContext } from '@shopify/shopify-app-remix/server';
 import db, { lookupShopId } from '../../../db.server';
 import { generateAIImage } from '../../../services/ai-providers.server';
 import type { AspectRatio } from '../../../services/ai-providers';
-import { AIStudioMediaService } from '../../../services/ai-studio-media.server';
 import type { GenerateImageResponse, ActionErrorResponse } from '../types';
 
 export async function handleGenerate(formData: FormData, shop: string, admin?: AdminApiContext) {
@@ -73,36 +72,12 @@ export async function handleGenerate(formData: FormData, shop: string, admin?: A
 			console.warn(`[HANDLER:${requestId}] Failed to log generation event:`, loggingError);
 		}
 
-		// Save to library instead of auto-publishing
-		if (admin && productId) {
-			try {
-				console.log(`[HANDLER:${requestId}] Saving to library...`);
-
-				const aiStudioMediaService = new AIStudioMediaService(admin, db);
-
-				const savedImage = await aiStudioMediaService.saveToLibrary({
-					shop,
-					shopId,
-					productId,
-					url: result.imageUrl,
-					source: "AI_GENERATED",
-					prompt,
-					sourceImageUrl,
-					aiProvider: 'fal', // or detect from the provider used
-				});
-
-				console.log(
-					`[HANDLER:${requestId}] ✓ Saved to library:`,
-					savedImage.id
-				);
-
-				// Add library image info to the response
-				result.libraryImageId = savedImage.id;
-			} catch (saveError) {
-				console.warn(`[HANDLER:${requestId}] Failed to save to library:`, saveError);
-				// Don't fail the generation if saving to library fails
-			}
-		}
+		// Note: We don't auto-save to library here anymore.
+		// The AI provider URL is returned to the client for preview.
+		// When user clicks "Save to Library", handleSaveToLibrary will:
+		// 1. Upload the image to Shopify
+		// 2. Save the Shopify URL + mediaId to database
+		// This ensures we never store AI provider URLs in our database.
 
 		const successResponse: GenerateImageResponse = {
 			ok: true,

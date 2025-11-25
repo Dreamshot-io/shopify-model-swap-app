@@ -41,7 +41,7 @@ if (host === "localhost") {
 
 export default defineConfig({
   server: {
-    allowedHosts: [host, "shopify.dreamshot.io", "shopify-txl.dreamshot.io"],
+    allowedHosts: [host, "abtest.dreamshot.io", "shopify-txl.dreamshot.io"],
     cors: {
       preflightContinue: true,
     },
@@ -73,5 +73,8 @@ export default defineConfig({
   },
   optimizeDeps: {
     include: ["@shopify/app-bridge-react", "@shopify/polaris"],
+  },
+  resolve: {
+    dedupe: ["react", "react-dom", "@remix-run/react"],
   },
 }) satisfies UserConfig;

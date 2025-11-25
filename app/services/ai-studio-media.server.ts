@@ -4,9 +4,11 @@
  */
 
 import type { AdminApiContext } from "@shopify/shopify-app-remix/server";
-import { PrismaClient } from "@prisma/client";
 import db, { lookupShopId } from "../db.server";
 import { MediaGalleryService } from "./media-gallery.server";
+
+// Use the Prisma generated type directly
+import type { AIStudioImage as PrismaAIStudioImage, PrismaClient } from "@prisma/client";
 
 export type ImageState = "LIBRARY" | "PUBLISHED";
 export type ImageSource = "AI_GENERATED" | "MANUAL_UPLOAD" | "GALLERY_IMPORT";
@@ -16,15 +18,13 @@ export interface AIStudioImageInput {
   shopId?: string;
   productId: string;
   url: string;
+  mediaId?: string; // Shopify media GID from upload
   source: ImageSource;
   prompt?: string;
   sourceImageUrl?: string;
   aiProvider?: string;
   variantIds?: string[];
 }
-
-// Use the Prisma generated type directly
-import type { AIStudioImage as PrismaAIStudioImage } from "@prisma/client";
 export type AIStudioImage = PrismaAIStudioImage;
 
 export class AIStudioMediaService {
@@ -81,6 +81,7 @@ export class AIStudioMediaService {
         shopId,
         productId: input.productId,
         url: input.url,
+        mediaId: input.mediaId || null, // Shopify media GID if uploaded
         state: "LIBRARY" as ImageState, // Always starts in library
         source: input.source as ImageSource,
         prompt: input.prompt || null,

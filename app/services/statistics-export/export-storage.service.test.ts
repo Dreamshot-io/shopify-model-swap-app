@@ -3,14 +3,7 @@
  * Following AAA (Arrange-Act-Assert) methodology
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-
-// Mock environment variables FIRST
-vi.stubEnv('S3_ENDPOINT', 'https://test.r2.cloudflarestorage.com');
-vi.stubEnv('S3_ACCESS_KEY', 'test-access-key');
-vi.stubEnv('S3_SECRET_KEY', 'test-secret-key');
-vi.stubEnv('S3_REGION', 'auto');
-vi.stubEnv('S3_BUCKET', 'test-bucket');
+import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest';
 
 // Mock S3 client
 const mockS3Send = vi.fn();
@@ -21,6 +14,15 @@ vi.mock('@aws-sdk/client-s3', () => ({
 	})),
 	PutObjectCommand: vi.fn().mockImplementation((params) => params),
 }));
+
+// Set environment variables BEFORE import
+beforeAll(() => {
+	process.env.S3_ENDPOINT = 'https://test.r2.cloudflarestorage.com';
+	process.env.S3_ACCESS_KEY = 'test-access-key';
+	process.env.S3_SECRET_KEY = 'test-secret-key';
+	process.env.S3_REGION = 'auto';
+	process.env.S3_BUCKET = 'test-bucket';
+});
 
 // Import service AFTER mocks
 const { generateStatisticsR2Key, uploadStatisticsExport } = await import(

@@ -1,4 +1,8 @@
 import React from 'react';
+import type {
+  DragEndEvent,
+  DragStartEvent
+} from '@dnd-kit/core';
 import {
   DndContext,
   closestCenter,
@@ -6,8 +10,6 @@ import {
   PointerSensor,
   useSensor,
   useSensors,
-  DragEndEvent,
-  DragStartEvent,
   DragOverlay,
 } from '@dnd-kit/core';
 import {

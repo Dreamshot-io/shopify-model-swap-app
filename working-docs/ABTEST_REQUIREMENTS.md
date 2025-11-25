@@ -200,7 +200,7 @@ bun run scripts/monitor-events.ts
 bun run scripts/trigger-rotation-now.ts
 
 # Test rotation endpoint
-curl -X POST https://shopify.dreamshot.io/api/rotation
+curl -X POST https://abtest.dreamshot.io/api/rotation
 ```
 
 ---
@@ -248,7 +248,7 @@ curl -X POST https://shopify.dreamshot.io/api/rotation
 
 ### Required Environment Variables
 ```env
-SHOPIFY_APP_URL="https://shopify.dreamshot.io"
+SHOPIFY_APP_URL="https://abtest.dreamshot.io"
 SHOPIFY_API_KEY=<your-api-key>
 SHOPIFY_API_SECRET=<your-api-secret>
 DATABASE_URL=<postgresql-connection-string>

@@ -4,7 +4,7 @@
  */
 
 import prisma from '~/db.server';
-import type { VariantDailyStatistics, ProductImageBackup } from '@prisma/client';
+import type { VariantDailyStatistics, ProductInfo } from '@prisma/client';
 
 /**
  * Parameters for saving variant statistics
@@ -22,7 +22,7 @@ export interface SaveVariantStatisticsParams {
 		orders: number;
 		revenue: number;
 	};
-	imageBackupIds?: string[];
+	productInfoIds?: string[];
 }
 
 /**
@@ -39,7 +39,7 @@ function calculateConversionRate(orders: number, impressions: number): number {
 export async function saveVariantStatistics(
 	params: SaveVariantStatisticsParams,
 ): Promise<VariantDailyStatistics> {
-	const { exportId, shopId, productId, variantId, date, metrics, imageBackupIds } = params;
+	const { exportId, shopId, productId, variantId, date, metrics, productInfoIds } = params;
 
 	// Calculate derived metrics
 	const conversionRate = calculateConversionRate(metrics.orders, metrics.impressions);
@@ -47,7 +47,7 @@ export async function saveVariantStatistics(
 	// Build data object
 	const data: {
 		exportId: string;
-		shop: string;
+		shopId: string;
 		productId: string;
 		variantId: string;
 		date: Date;
@@ -57,10 +57,10 @@ export async function saveVariantStatistics(
 		orders: number;
 		revenue: number;
 		conversionRate: number;
-		imageBackups?: { connect: { id: string }[] };
+		productInfo?: { connect: { id: string }[] };
 	} = {
 		exportId,
-		shop: shopId,
+		shopId,
 		productId,
 		variantId,
 		date,
@@ -72,10 +72,10 @@ export async function saveVariantStatistics(
 		conversionRate,
 	};
 
-	// Add image backups if provided
-	if (imageBackupIds && imageBackupIds.length > 0) {
-		data.imageBackups = {
-			connect: imageBackupIds.map((id) => ({ id })),
+	// Add product info if provided
+	if (productInfoIds && productInfoIds.length > 0) {
+		data.productInfo = {
+			connect: productInfoIds.map((id) => ({ id })),
 		};
 	}
 
@@ -94,21 +94,21 @@ export async function getVariantStatistics(
 	date: Date,
 ): Promise<
 	| (VariantDailyStatistics & {
-			imageBackups: ProductImageBackup[];
+			productInfo: ProductInfo[];
 	  })
 	| null
 > {
 	return prisma.variantDailyStatistics.findUnique({
 		where: {
-			shop_productId_variantId_date: {
-				shop: shopId,
+			shopId_productId_variantId_date: {
+				shopId,
 				productId,
 				variantId,
 				date,
 			},
 		},
 		include: {
-			imageBackups: true,
+			productInfo: true,
 		},
 	});
 }
@@ -124,12 +124,12 @@ export async function getProductStatisticsHistory(
 	variantId?: string,
 ): Promise<
 	(VariantDailyStatistics & {
-		imageBackups: ProductImageBackup[];
+		productInfo: ProductInfo[];
 	})[]
 > {
 	return prisma.variantDailyStatistics.findMany({
 		where: {
-			shop: shopId,
+			shopId,
 			productId,
 			...(variantId ? { variantId } : {}),
 			date: {
@@ -138,7 +138,7 @@ export async function getProductStatisticsHistory(
 			},
 		},
 		include: {
-			imageBackups: true,
+			productInfo: true,
 		},
 		orderBy: {
 			date: 'asc',

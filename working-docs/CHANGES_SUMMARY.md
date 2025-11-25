@@ -40,9 +40,9 @@ Web pixel was using relative URLs that resolved to storefront domain instead of 
 
 ## Key URLs
 
-- Debug endpoint: `https://shopify.dreamshot.io/api/debug-events`
-- Rotation state: `https://shopify.dreamshot.io/api/rotation-state`
-- Track events: `https://shopify.dreamshot.io/track`
+- Debug endpoint: `https://abtest.dreamshot.io/api/debug-events`
+- Rotation state: `https://abtest.dreamshot.io/api/rotation-state`
+- Track events: `https://abtest.dreamshot.io/track`
 
 ## Documentation
 

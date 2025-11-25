@@ -2,7 +2,8 @@
  * Helper functions for audit logging that don't fit into specific AuditService methods
  */
 
-import db, { lookupShopId } from "../db.server";
+import type db from "../db.server";
+import { lookupShopId } from "../db.server";
 
 export interface CreateAuditLogParams {
   testId?: string;

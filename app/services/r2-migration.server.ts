@@ -4,8 +4,8 @@
  */
 
 import type { AdminApiContext } from "@shopify/shopify-app-remix/server";
-import { PrismaClient } from "@prisma/client";
-import { MediaGalleryService, type UploadMediaInput } from "./media-gallery.server";
+import type { PrismaClient } from "@prisma/client";
+import { MediaGalleryService } from "./media-gallery.server";
 import { MediaRegistryService, type MediaRecord } from "./media-registry.server";
 import { uploadR2ImageToShopify } from "./shopify-image-upload.server";
 import { createAuditLog } from "../models/audit.server";

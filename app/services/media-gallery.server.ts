@@ -310,21 +310,15 @@ export class MediaGalleryService {
           altText: media.altText,
         });
       } else {
-        // Try to find by querying Shopify's files API
-        // For now, we'll check if URL contains Shopify CDN pattern
-        // If it's a Shopify CDN URL, assume it exists in library
-        if (url.includes('cdn.shopify.com') || url.includes('shopifycdn.com')) {
-          // Media exists in Shopify library but not assigned to product
-          // We'll need to assign it, but for validation we'll accept it
-          // The actual mediaId will be resolved when assigning
-          found.push({
-            url,
-            mediaId: '', // Will be resolved when assigning
-            altText: undefined,
-          });
-        } else {
-          missing.push(url);
-        }
+        // Image not in product gallery - accept it for upload during test creation
+        // External URLs (R2, AI provider CDN, etc.) will be uploaded to Shopify
+        // Shopify CDN URLs may already exist in the media library
+        // In either case, mediaId will be resolved when creating the test
+        found.push({
+          url,
+          mediaId: '', // Will be resolved/created when assigning
+          altText: undefined,
+        });
       }
     }
 

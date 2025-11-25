@@ -15,11 +15,13 @@ type ShopCredential = {
 	redirectUrls: string[];
 	metadata: any;
 	status: ShopCredentialStatus;
+	mode: ShopCredentialMode;
 	createdAt: Date;
 	updatedAt: Date;
 };
 
 type ShopCredentialStatus = 'ACTIVE' | 'DISABLED';
+type ShopCredentialMode = 'PUBLIC' | 'PRIVATE';
 
 type ShopLookupInput = { shopDomain: string } | { shopId: string } | { clientId: string };
 
@@ -134,6 +136,7 @@ export async function createShopCredential(data: {
 	customDomain?: string | null;
 	redirectUrls?: string[];
 	metadata?: Record<string, unknown>;
+	mode?: ShopCredentialMode;
 }) {
 	const encryptedData = encryptCredentialData({
 		shopDomain: data.shopDomain.toLowerCase(),
@@ -147,6 +150,7 @@ export async function createShopCredential(data: {
 		customDomain: data.customDomain ?? null,
 		redirectUrls: data.redirectUrls ?? [],
 		metadata: data.metadata ?? {},
+		mode: data.mode ?? 'PUBLIC',
 	});
 
 	const credential = (await prisma['shopCredential'].create({
@@ -172,6 +176,7 @@ export async function updateShopCredential(
 			| 'redirectUrls'
 			| 'metadata'
 			| 'status'
+			| 'mode'
 		>
 	>,
 ) {

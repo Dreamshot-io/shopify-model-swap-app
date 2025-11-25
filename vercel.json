@@ -9,6 +9,10 @@
 		{
 			"path": "/api/statistics-export/daily",
 			"schedule": "0 0 * * *"
+		},
+		{
+			"path": "/api/sync-product-info",
+			"schedule": "0 2 * * *"
 		}
 	]
 }

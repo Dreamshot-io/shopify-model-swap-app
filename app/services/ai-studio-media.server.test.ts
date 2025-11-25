@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, vi, type Mock } from 'vitest';
 import { AIStudioMediaService } from './ai-studio-media.server';
 import * as dbModule from '../db.server';
 
@@ -38,6 +38,7 @@ const mockPrisma = {
 	},
 };
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const mockAdmin = {} as any;
 
 describe('AIStudioMediaService - Multitenant Query Filtering', () => {
@@ -45,6 +46,7 @@ describe('AIStudioMediaService - Multitenant Query Filtering', () => {
 
 	beforeEach(() => {
 		vi.clearAllMocks();
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
 		service = new AIStudioMediaService(mockAdmin, mockPrisma as any);
 	});
 
@@ -59,9 +61,9 @@ describe('AIStudioMediaService - Multitenant Query Filtering', () => {
 				url: 'https://example.com/image.jpg',
 				source: 'AI_GENERATED' as const,
 			};
-			vi.mocked(dbModule.lookupShopId).mockResolvedValue(shopId);
-			vi.mocked(mockPrisma.aIStudioImage.findFirst).mockResolvedValue(null);
-			vi.mocked(mockPrisma.aIStudioImage.create).mockResolvedValue({
+			(dbModule.lookupShopId as Mock).mockResolvedValue(shopId);
+			(mockPrisma.aIStudioImage.findFirst as Mock).mockResolvedValue(null);
+			(mockPrisma.aIStudioImage.create as Mock).mockResolvedValue({
 				id: 'image-123',
 				...input,
 				shopId,
@@ -71,7 +73,7 @@ describe('AIStudioMediaService - Multitenant Query Filtering', () => {
 			await service.saveToLibrary(input);
 
 			// Assert
-			expect(mockPrisma.aIStudioImage.findFirst).toHaveBeenCalledWith({
+			expect(mockPrisma.aIStudioImage.findFirst as Mock).toHaveBeenCalledWith({
 				where: {
 					shopId,
 					productId: input.productId,
@@ -90,9 +92,9 @@ describe('AIStudioMediaService - Multitenant Query Filtering', () => {
 				url: 'https://example.com/image2.jpg',
 				source: 'MANUAL_UPLOAD' as const,
 			};
-			vi.mocked(dbModule.lookupShopId).mockResolvedValue(shopId);
-			vi.mocked(mockPrisma.aIStudioImage.findFirst).mockResolvedValue(null);
-			vi.mocked(mockPrisma.aIStudioImage.create).mockResolvedValue({
+			(dbModule.lookupShopId as Mock).mockResolvedValue(shopId);
+			(mockPrisma.aIStudioImage.findFirst as Mock).mockResolvedValue(null);
+			(mockPrisma.aIStudioImage.create as Mock).mockResolvedValue({
 				id: 'image-456',
 				...input,
 				shopId,
@@ -102,7 +104,7 @@ describe('AIStudioMediaService - Multitenant Query Filtering', () => {
 			await service.saveToLibrary(input);
 
 			// Assert
-			expect(mockPrisma.aIStudioImage.create).toHaveBeenCalledWith({
+			expect(mockPrisma.aIStudioImage.create as Mock).toHaveBeenCalledWith({
 				data: expect.objectContaining({
 					shop,
 					shopId,
@@ -123,8 +125,8 @@ describe('AIStudioMediaService - Multitenant Query Filtering', () => {
 				url: 'https://example.com/image3.jpg',
 				source: 'GALLERY_IMPORT' as const,
 			};
-			vi.mocked(mockPrisma.aIStudioImage.findFirst).mockResolvedValue(null);
-			vi.mocked(mockPrisma.aIStudioImage.create).mockResolvedValue({
+			(mockPrisma.aIStudioImage.findFirst as Mock).mockResolvedValue(null);
+			(mockPrisma.aIStudioImage.create as Mock).mockResolvedValue({
 				id: 'image-789',
 				...input,
 			});
@@ -134,7 +136,7 @@ describe('AIStudioMediaService - Multitenant Query Filtering', () => {
 
 			// Assert
 			expect(dbModule.lookupShopId).not.toHaveBeenCalled();
-			expect(mockPrisma.aIStudioImage.findFirst).toHaveBeenCalledWith({
+			expect(mockPrisma.aIStudioImage.findFirst as Mock).toHaveBeenCalledWith({
 				where: {
 					shopId,
 					productId: input.productId,
@@ -152,7 +154,7 @@ describe('AIStudioMediaService - Multitenant Query Filtering', () => {
 				url: 'https://example.com/image.jpg',
 				source: 'AI_GENERATED' as const,
 			};
-			vi.mocked(dbModule.lookupShopId).mockResolvedValue(null);
+			(dbModule.lookupShopId as Mock).mockResolvedValue(null);
 
 			// Act & Assert
 			await expect(service.saveToLibrary(input)).rejects.toThrow(
@@ -167,14 +169,14 @@ describe('AIStudioMediaService - Multitenant Query Filtering', () => {
 			const shop = 'test-shop.myshopify.com';
 			const shopId = 'shop-id-123';
 			const productId = 'product-123';
-			vi.mocked(dbModule.lookupShopId).mockResolvedValue(shopId);
-			vi.mocked(mockPrisma.aIStudioImage.findMany).mockResolvedValue([]);
+			(dbModule.lookupShopId as Mock).mockResolvedValue(shopId);
+			(mockPrisma.aIStudioImage.findMany as Mock).mockResolvedValue([]);
 
 			// Act
 			await service.getLibraryImages(shop, productId);
 
 			// Assert
-			expect(mockPrisma.aIStudioImage.findMany).toHaveBeenCalledWith({
+			expect(mockPrisma.aIStudioImage.findMany as Mock).toHaveBeenCalledWith({
 				where: {
 					shopId,
 					productId,
@@ -189,14 +191,14 @@ describe('AIStudioMediaService - Multitenant Query Filtering', () => {
 			const shop = 'test-shop.myshopify.com';
 			const shopId = 'shop-id-provided';
 			const productId = 'product-456';
-			vi.mocked(mockPrisma.aIStudioImage.findMany).mockResolvedValue([]);
+			(mockPrisma.aIStudioImage.findMany as Mock).mockResolvedValue([]);
 
 			// Act
 			await service.getLibraryImages(shop, productId, undefined, shopId);
 
 			// Assert
 			expect(dbModule.lookupShopId).not.toHaveBeenCalled();
-			expect(mockPrisma.aIStudioImage.findMany).toHaveBeenCalledWith({
+			expect(mockPrisma.aIStudioImage.findMany as Mock).toHaveBeenCalledWith({
 				where: {
 					shopId,
 					productId,
@@ -213,14 +215,14 @@ describe('AIStudioMediaService - Multitenant Query Filtering', () => {
 			const shop = 'test-shop.myshopify.com';
 			const shopId = 'shop-id-123';
 			const productId = 'product-123';
-			vi.mocked(dbModule.lookupShopId).mockResolvedValue(shopId);
-			vi.mocked(mockPrisma.aIStudioImage.findMany).mockResolvedValue([]);
+			(dbModule.lookupShopId as Mock).mockResolvedValue(shopId);
+			(mockPrisma.aIStudioImage.findMany as Mock).mockResolvedValue([]);
 
 			// Act
 			await service.getPublishedImages(shop, productId);
 
 			// Assert
-			expect(mockPrisma.aIStudioImage.findMany).toHaveBeenCalledWith({
+			expect(mockPrisma.aIStudioImage.findMany as Mock).toHaveBeenCalledWith({
 				where: {
 					shopId,
 					productId,
@@ -234,7 +236,7 @@ describe('AIStudioMediaService - Multitenant Query Filtering', () => {
 			// Arrange
 			const shop = 'nonexistent-shop.myshopify.com';
 			const productId = 'product-123';
-			vi.mocked(dbModule.lookupShopId).mockResolvedValue(null);
+			(dbModule.lookupShopId as Mock).mockResolvedValue(null);
 
 			// Act & Assert
 			await expect(service.getPublishedImages(shop, productId)).rejects.toThrow(
@@ -250,14 +252,14 @@ describe('AIStudioMediaService - Multitenant Query Filtering', () => {
 			const shopId = 'shop-id-123';
 			const productId = 'product-123';
 			const url = 'https://example.com/image.jpg';
-			vi.mocked(dbModule.lookupShopId).mockResolvedValue(shopId);
-			vi.mocked(mockPrisma.aIStudioImage.count).mockResolvedValue(1);
+			(dbModule.lookupShopId as Mock).mockResolvedValue(shopId);
+			(mockPrisma.aIStudioImage.count as Mock).mockResolvedValue(1);
 
 			// Act
 			const result = await service.imageExists(shop, productId, url);
 
 			// Assert
-			expect(mockPrisma.aIStudioImage.count).toHaveBeenCalledWith({
+			expect(mockPrisma.aIStudioImage.count as Mock).toHaveBeenCalledWith({
 				where: {
 					shopId,
 					productId,
@@ -273,8 +275,8 @@ describe('AIStudioMediaService - Multitenant Query Filtering', () => {
 			const shopId = 'shop-id-123';
 			const productId = 'product-123';
 			const url = 'https://example.com/image.jpg';
-			vi.mocked(dbModule.lookupShopId).mockResolvedValue(shopId);
-			vi.mocked(mockPrisma.aIStudioImage.count).mockResolvedValue(0);
+			(dbModule.lookupShopId as Mock).mockResolvedValue(shopId);
+			(mockPrisma.aIStudioImage.count as Mock).mockResolvedValue(0);
 
 			// Act
 			const result = await service.imageExists(shop, productId, url);
@@ -295,8 +297,8 @@ describe('AIStudioMediaService - Multitenant Query Filtering', () => {
 				state: 'LIBRARY' as const,
 				mediaId: null,
 			};
-			vi.mocked(mockPrisma.aIStudioImage.findUnique).mockResolvedValue(image as any);
-			vi.mocked(mockPrisma.aIStudioImage.delete).mockResolvedValue(image as any);
+			(mockPrisma.aIStudioImage.findUnique).mockResolvedValue(image as unknown);
+			(mockPrisma.aIStudioImage.delete as Mock).mockResolvedValue(image as unknown);
 
 			// Act
 			await service.deleteImage(imageId, shopId);
@@ -305,7 +307,7 @@ describe('AIStudioMediaService - Multitenant Query Filtering', () => {
 			expect(mockPrisma.aIStudioImage.findUnique).toHaveBeenCalledWith({
 				where: { id: imageId },
 			});
-			expect(mockPrisma.aIStudioImage.delete).toHaveBeenCalledWith({
+			expect(mockPrisma.aIStudioImage.delete as Mock).toHaveBeenCalledWith({
 				where: { id: imageId },
 			});
 		});
@@ -321,7 +323,7 @@ describe('AIStudioMediaService - Multitenant Query Filtering', () => {
 				state: 'LIBRARY' as const,
 				mediaId: null,
 			};
-			vi.mocked(mockPrisma.aIStudioImage.findUnique).mockResolvedValue(image as any);
+			(mockPrisma.aIStudioImage.findUnique).mockResolvedValue(image as unknown);
 
 			// Act & Assert
 			await expect(service.deleteImage(imageId, wrongShopId)).rejects.toThrow(
@@ -339,18 +341,18 @@ describe('AIStudioMediaService - Multitenant Query Filtering', () => {
 			const shopId2 = 'shop-id-2';
 			const productId = 'product-123';
 
-			vi.mocked(dbModule.lookupShopId)
+			(dbModule.lookupShopId as Mock)
 				.mockResolvedValueOnce(shopId1)
 				.mockResolvedValueOnce(shopId2);
-			vi.mocked(mockPrisma.aIStudioImage.findMany).mockResolvedValue([]);
+			(mockPrisma.aIStudioImage.findMany as Mock).mockResolvedValue([]);
 
 			// Act
 			await service.getLibraryImages(shop1, productId);
 			await service.getLibraryImages(shop2, productId);
 
 			// Assert
-			expect(mockPrisma.aIStudioImage.findMany).toHaveBeenCalledTimes(2);
-			expect(mockPrisma.aIStudioImage.findMany).toHaveBeenNthCalledWith(1, {
+			expect(mockPrisma.aIStudioImage.findMany as Mock).toHaveBeenCalledTimes(2);
+			expect(mockPrisma.aIStudioImage.findMany as Mock).toHaveBeenNthCalledWith(1, {
 				where: {
 					shopId: shopId1,
 					productId,
@@ -358,7 +360,7 @@ describe('AIStudioMediaService - Multitenant Query Filtering', () => {
 				},
 				orderBy: { createdAt: 'desc' },
 			});
-			expect(mockPrisma.aIStudioImage.findMany).toHaveBeenNthCalledWith(2, {
+			expect(mockPrisma.aIStudioImage.findMany as Mock).toHaveBeenNthCalledWith(2, {
 				where: {
 					shopId: shopId2,
 					productId,

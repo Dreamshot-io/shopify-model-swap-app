@@ -27,13 +27,13 @@ Because you have `access_scopes` configured in `shopify.app.toml`, Shopify handl
 Shopify redirects the merchant to your app's URL with an embedded token:
 
 ```
-https://shopify.dreamshot.io/?shop={shop}&host={base64_host}&session={session_token}
+https://abtest.dreamshot.io/?shop={shop}&host={base64_host}&session={session_token}
 ```
 
 OR (for traditional OAuth callback):
 
 ```
-https://shopify.dreamshot.io/auth/callback?code={code}&shop={shop}&host={host}&state={state}
+https://abtest.dreamshot.io/auth/callback?code={code}&shop={shop}&host={host}&state={state}
 ```
 
 ### 4. Token Exchange / Session Creation
@@ -66,7 +66,7 @@ Session {
 After successful authentication, the merchant is redirected to:
 
 ```
-https://shopify.dreamshot.io/app
+https://abtest.dreamshot.io/app
 ```
 
 Which loads `app/routes/app._index.tsx` (your dashboard).
@@ -125,7 +125,7 @@ If you see this, session was created successfully.
 Visit:
 
 ```
-https://shopify.dreamshot.io/debug/sessions
+https://abtest.dreamshot.io/debug/sessions
 ```
 
 This will show all sessions in the database. Look for the new shop.
@@ -179,12 +179,12 @@ If you see 404 before these logs, the route isn't being reached.
 
 ```
 [auth.$] OAuth callback called
-[auth.$] Full URL: https://shopify.dreamshot.io/auth/callback?code=...&shop=test-shop.myshopify.com&...
+[auth.$] Full URL: https://abtest.dreamshot.io/auth/callback?code=...&shop=test-shop.myshopify.com&...
 [auth.$] Shop param: test-shop.myshopify.com
 [auth.$] Authentication successful
 [auth.$] Session shop: test-shop.myshopify.com
 [auth.$] Session ID: offline_test-shop.myshopify.com
-[app.tsx] Loader called, URL: https://shopify.dreamshot.io/app?shop=test-shop.myshopify.com&...
+[app.tsx] Loader called, URL: https://abtest.dreamshot.io/app?shop=test-shop.myshopify.com&...
 [app.tsx] SHOPIFY_API_KEY exists: true
 [app.tsx] Authentication successful
 [app.tsx] Billing check passed
@@ -247,8 +247,8 @@ If you see 404 before these logs, the route isn't being reached.
 
 After deployment:
 
-1. **Status check**: https://shopify.dreamshot.io/status
-2. **Session debug**: https://shopify.dreamshot.io/debug/sessions
+1. **Status check**: https://abtest.dreamshot.io/status
+2. **Session debug**: https://abtest.dreamshot.io/debug/sessions
 3. **Vercel logs**: Vercel Dashboard → Runtime Logs
 
 ## Security Note

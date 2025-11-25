@@ -67,7 +67,6 @@ export interface StatisticsExportData {
 export interface ImageBackupParams {
 	shopId: string;
 	productId: string;
-	variantId: string;
 	mediaId: string;
 	shopifyUrl: string;
 }

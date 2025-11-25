@@ -7,7 +7,7 @@ import type { AdminApiContext } from '@shopify/shopify-app-remix/server';
 import prisma from '~/db.server';
 import type { VariantStatistics, ImageReference } from '~/features/statistics-export/types';
 import { getVariantMetricsForDate } from './metrics-calculator.service';
-import { backupProductVariantImages } from './image-backup.service';
+import { backupProductImages } from './image-backup.service';
 import { getProductVariants, getProductImages } from './product-fetcher.service';
 import { formatStatisticsToCSV, formatStatisticsToJSON } from './export-formatter.service';
 import { uploadStatisticsExport } from './export-storage.service';
@@ -48,7 +48,6 @@ async function getImageReferences(
 	admin: AdminApiContext['graphql'],
 	shopId: string,
 	productId: string,
-	variantId: string,
 	shopifyProductId: string,
 ): Promise<ImageReference[]> {
 	// Fetch images from Shopify
@@ -64,14 +63,14 @@ async function getImageReferences(
 		shopifyUrl: img.url,
 	}));
 
-	await backupProductVariantImages(shopId, productId, variantId, imagesToBackup);
+	await backupProductImages(shopId, productId, imagesToBackup);
 
 	// Fetch backup records from database
-	const backupRecords = await prisma.productImageBackup.findMany({
+	const backupRecords = await prisma.productInfo.findMany({
 		where: {
-			shop: shopId,
+			shopId,
 			productId,
-			variantId,
+			deletedAt: null,
 		},
 	});
 
@@ -115,7 +114,6 @@ export async function exportProductVariantStatistics(
 			admin,
 			shopId,
 			productId,
-			variantId,
 			shopifyProductId,
 		);
 
@@ -163,16 +161,17 @@ export async function exportProductVariantStatistics(
 			},
 		});
 
-		// 7. Get ProductImageBackup IDs for linking
+		// 7. Get ProductInfo IDs for linking
 		const mediaIds = images.map((img) => img.mediaId);
-		const imageBackups = await prisma.productImageBackup.findMany({
+		const productInfoRecords = await prisma.productInfo.findMany({
 			where: {
-				shop: shopId,
+				shopId,
 				mediaId: { in: mediaIds },
+				deletedAt: null,
 			},
 			select: { id: true },
 		});
-		const imageBackupIds = imageBackups.map((backup) => backup.id);
+		const productInfoIds = productInfoRecords.map((record: { id: string }) => record.id);
 
 		// 8. Save queryable statistics to VariantDailyStatistics
 		await saveVariantStatistics({
@@ -181,8 +180,14 @@ export async function exportProductVariantStatistics(
 			productId,
 			variantId,
 			date,
-			metrics,
-			imageBackupIds,
+			metrics: {
+				impressions: metrics.impressions,
+				addToCarts: metrics.addToCarts,
+				ctr: metrics.ctr,
+				orders: metrics.orders,
+				revenue: Number(metrics.revenue),
+			},
+			productInfoIds,
 		});
 
 		return {

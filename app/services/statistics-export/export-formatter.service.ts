@@ -78,6 +78,34 @@ export function formatStatisticsToCSV(
 	return [header, ...rows].join('\n');
 }
 
+export interface FormattedStatisticsJSON {
+	exportDate: string;
+	shopId: string;
+	shopDomain: string;
+	product: {
+		productId: string;
+		shopifyProductId: string;
+	};
+	variant: {
+		variantId: string;
+		shopifyVariantId: string;
+		metrics: {
+			impressions: number;
+			addToCarts: number;
+			ctr: number;
+			orders: number;
+			revenue: number | string; // Can be Decimal.toNumber() or number
+		};
+		images: Array<{
+			mediaId: string;
+			shopifyUrl: string;
+			r2Url: string | null;
+			r2Key: string | null;
+			backedUpAt: string | null;
+		}>;
+	};
+}
+
 /**
  * Format variant statistics to JSON structure
  * One variant per file
@@ -85,7 +113,7 @@ export function formatStatisticsToCSV(
 export function formatStatisticsToJSON(
 	stats: VariantStatistics,
 	shopDomain: string,
-): object {
+): FormattedStatisticsJSON {
 	return {
 		exportDate: stats.date,
 		shopId: stats.shopId,
@@ -102,7 +130,9 @@ export function formatStatisticsToJSON(
 				addToCarts: stats.metrics.addToCarts,
 				ctr: stats.metrics.ctr,
 				orders: stats.metrics.orders,
-				revenue: stats.metrics.revenue,
+				revenue: typeof stats.metrics.revenue === 'number' 
+					? stats.metrics.revenue 
+					: Number(stats.metrics.revenue),
 			},
 			images: stats.images.map((img) => ({
 				mediaId: img.mediaId,
