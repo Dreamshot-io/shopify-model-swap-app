@@ -84,7 +84,7 @@ Skip Guards (safety):
 New Items:
 
 - [x] Create initial Postgres baseline migration and archive old SQLite migrations
-- [x] Add Docker Compose local Postgres and docs (`prd/DEV-DB-POSTGRES.md`)
+- [x] Add Docker Compose local Postgres and docs (`docs/infrastructure/config/dev-db-postgres.md`)
 - [x] Add safe local migration scripts that no-op if `DATABASE_URL` missing
 - [ ] Choose pooling strategy (e.g., Neon pgbouncer or Prisma Accelerate) and update `DATABASE_URL`
 - [ ] Add seed script and sample data; document `bun run db:seed`

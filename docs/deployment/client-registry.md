@@ -45,4 +45,4 @@ Example:
 
 - [Multi-Client Onboarding](./multi-client-onboarding.md)
 - [Multi-Client Troubleshooting](./multi-client-troubleshooting.md)
-- [PRD: Multi-Client Configuration](../prd/PRD-Multi-Client-Shopify-App-Configuration.md)
+- [PRD: Multi-Client Configuration](../prd/prd-multi-client-shopify-app-configuration.md)

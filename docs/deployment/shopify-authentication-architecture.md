@@ -1,6 +1,6 @@
 # Shopify Authentication Architecture
 
-> **Note**: For complete statistics export system documentation, see [statistics-export-system.md](./statistics-export-system.md)
+> **Note**: For complete statistics export system documentation, see [statistics-export-system.md](../infrastructure/statistics-export-system.md)
 
 ## Overview
 

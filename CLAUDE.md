@@ -35,7 +35,7 @@ This is a Shopify app built with Remix that provides AI-powered model swapping f
   - Integration points
 - Key docs to check for updates:
   - `AGENT_KNOWLEDGE_BASE.md` - System overview and patterns
-  - `docs/UPLOAD_TESTING_GUIDE.md` - Upload/storage flows
+  - `docs/ai-studio/upload-testing-guide.md` - Upload/storage flows
   - `prd/shopify-media-gallery-image-management.md` - Image management architecture
   - Feature-specific docs in `docs/` folder
 

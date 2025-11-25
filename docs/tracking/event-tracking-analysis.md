@@ -592,7 +592,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 **If NO logs appear:**
 - Pixel not connected → Visit `/app/connect-pixel` to connect
 - Pixel not configured → Missing `app_url` setting
-- See `docs/tracking-troubleshooting.md` for full diagnosis
+- See `docs/tracking/tracking-troubleshooting-guide.md` for full diagnosis
 
 **If logs appear but no events:**
 - Check `app_url` setting (must be absolute URL)

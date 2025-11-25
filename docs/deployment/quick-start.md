@@ -251,8 +251,8 @@ Use existing credential (mode=PRIVATE)
 
 ## Documentation
 
-📖 **Full Guide:** `docs/PUBLIC-PRIVATE-APP-ARCHITECTURE.md`  
-📝 **Deployment Details:** `docs/DEPLOYMENT-GUIDE.md`  
+📖 **Full Guide:** `docs/deployment/public-private-app-architecture.md`  
+📝 **Deployment Details:** `docs/deployment/deployment-guide.md`  
 🔧 **Code Changes:** See implementation files
 
 ---

@@ -135,6 +135,6 @@ shopify app deploy
 
 For issues not covered here, refer to:
 
-- [PRD: Multi-Client Configuration](../prd/PRD-Multi-Client-Shopify-App-Configuration.md)
+- [PRD: Multi-Client Configuration](../prd/prd-multi-client-shopify-app-configuration.md)
 - Shopify Partner Support
 - Internal team Slack channel

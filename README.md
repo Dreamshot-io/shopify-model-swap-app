@@ -55,9 +55,9 @@ Required variables in `.env`:
 
 - `SHOPIFY_APP_URL` - Shared Remix host used for OAuth callbacks and script tags
 - `DATABASE_URL` - PostgreSQL connection string
-  - Local: `postgresql://postgres:postgres@localhost:5432/dreamshot?schema=public` (see `prd/DEV-DB-POSTGRES.md`)
+  - Local: `postgresql://postgres:postgres@localhost:5432/dreamshot?schema=public` (see `docs/infrastructure/config/dev-db-postgres.md`)
   - Hosted: May require `?sslmode=require`
-- `DIRECT_URL` - (Optional) Only needed when using connection pooling on Vercel (see `prd/VERCEL-ENV.md`)
+- `DIRECT_URL` - (Optional) Only needed when using connection pooling on Vercel (see `docs/infrastructure/vercel-env.md`)
 - `FAL_KEY` - fal.ai API key
 - `S3_*` - Storage credentials when using R2/S3 (see `.env` template)
 - `CRON_SECRET` - Automatically provided by Vercel for cron job authentication
@@ -142,16 +142,16 @@ node scripts/seed-shop-credential.mjs \
 ```
 
 **Documentation:**
-- 📖 **[Quick Start Guide](./docs/QUICK-START.md)** - Deploy in 5 minutes
-- 📝 **[Deployment Guide](./docs/DEPLOYMENT-GUIDE.md)** - Complete deployment process
-- 🏗️ **[Architecture Guide](./docs/PUBLIC-PRIVATE-APP-ARCHITECTURE.md)** - Technical details
+- 📖 **[Quick Start Guide](./docs/deployment/quick-start.md)** - Deploy in 5 minutes
+- 📝 **[Deployment Guide](./docs/deployment/deployment-guide.md)** - Complete deployment process
+- 🏗️ **[Architecture Guide](./docs/deployment/public-private-app-architecture.md)** - Technical details
 
 ## Documentation
 
 ### Getting Started
-- 📖 **[Quick Start](./docs/QUICK-START.md)** - Deploy public + private architecture in 5 minutes
-- 📝 **[Deployment Guide](./docs/DEPLOYMENT-GUIDE.md)** - Complete deployment process with verification steps
-- 🏗️ **[Architecture Guide](./docs/PUBLIC-PRIVATE-APP-ARCHITECTURE.md)** - Technical implementation details
+- 📖 **[Quick Start](./docs/deployment/quick-start.md)** - Deploy public + private architecture in 5 minutes
+- 📝 **[Deployment Guide](./docs/deployment/deployment-guide.md)** - Complete deployment process with verification steps
+- 🏗️ **[Architecture Guide](./docs/deployment/public-private-app-architecture.md)** - Technical implementation details
 
 ### Development
 - **[AGENTS.md](./AGENTS.md)** - Quick reference for agentic coding tools

@@ -82,4 +82,4 @@ See `docs/multi-client-troubleshooting.md` for common issues.
 
 - [Multi-Client Troubleshooting](./multi-client-troubleshooting.md)
 - [Client Registry](./client-registry.md)
-- [PRD: Multi-Client Configuration](../prd/PRD-Multi-Client-Shopify-App-Configuration.md)
+- [PRD: Multi-Client Configuration](../prd/prd-multi-client-shopify-app-configuration.md)

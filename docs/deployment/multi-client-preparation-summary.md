@@ -114,6 +114,6 @@ To verify preparation is safe:
 
 ## Related Documentation
 
-- [PRD: Multi-Client Configuration](../prd/PRD-Multi-Client-Shopify-App-Configuration.md)
+- [PRD: Multi-Client Configuration](../prd/prd-multi-client-shopify-app-configuration.md)
 - [Multi-Client Onboarding Guide](./multi-client-onboarding.md)
 - [Multi-Client Troubleshooting](./multi-client-troubleshooting.md)
