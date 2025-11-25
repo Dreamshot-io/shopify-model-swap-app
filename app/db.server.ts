@@ -1,5 +1,5 @@
-import { PrismaClient } from "@prisma/client";
-import { encrypt, decrypt, isEncrypted } from "./services/encryption.server";
+import { PrismaClient } from '@prisma/client';
+import { encrypt, decrypt, isEncrypted } from './services/encryption.server';
 
 // Encrypt apiSecret on write operations
 function encryptApiSecret(data: unknown) {
@@ -16,7 +16,7 @@ function encryptApiSecret(data: unknown) {
 // Create extended Prisma client with encryption middleware
 function createExtendedPrismaClient() {
 	const base = new PrismaClient({
-		log: process.env.NODE_ENV === "development" ? ["error", "warn"] : ["error"],
+		log: process.env.NODE_ENV === 'development' ? ['error', 'warn'] : ['error'],
 	});
 
 	return base.$extends({
@@ -63,7 +63,7 @@ function createExtendedPrismaClient() {
 				},
 			},
 		},
-	});
+	}) as unknown as PrismaClient;
 }
 
 // Export the type for use in other files
@@ -124,7 +124,7 @@ export async function lookupShopId(shop: string) {
 const prisma = globalThis.prisma ?? createExtendedPrismaClient();
 
 // In development, preserve the client across HMR; in production, cache for warm lambdas
-if (process.env.NODE_ENV !== "production") {
+if (process.env.NODE_ENV !== 'production') {
 	globalThis.prisma = prisma;
 }
 
