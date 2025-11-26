@@ -99,11 +99,12 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 				: null;
 
 			if (lineItemProductId) {
-				// Look for any test (active or not) for this product
+				// Look for ACTIVE test for this product (only assign events to active tests)
 				const matchingTest = await db.aBTest.findFirst({
 					where: {
 						productId: lineItemProductId,
 						shop,
+						status: 'ACTIVE',
 					},
 					orderBy: { createdAt: 'desc' },
 					select: {
@@ -121,20 +122,20 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 						productId: matchingTest.productId,
 						sessionId: undefined,
 					};
-					console.log('[orders-paid] Found test for product', {
+					console.log('[orders-paid] Found active test for product', {
 						testId: matchingTest.id,
 						status: matchingTest.status,
 						productId: lineItemProductId,
 					});
 				} else {
-					// No test exists - still record the purchase without test association
+					// No active test - still record the purchase without test association
 					meta = {
 						testId: '', // Will be set to null below
 						variant: 'BASE',
 						productId: lineItemProductId,
 						sessionId: undefined,
 					};
-					console.log('[orders-paid] No test found, recording purchase without test', {
+					console.log('[orders-paid] No active test found, recording purchase without test', {
 						productId: lineItemProductId,
 						orderId,
 					});
@@ -175,7 +176,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 			return acc;
 		}, 0);
 
-		// Look up test if we have a testId (any status)
+		// Look up test if we have a testId (already filtered to ACTIVE in earlier lookup)
 		let test = null;
 		if (meta.testId) {
 			test = await db.aBTest.findFirst({
