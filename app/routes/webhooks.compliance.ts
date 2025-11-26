@@ -3,7 +3,7 @@ import { authenticate } from "../shopify.server";
 import db from "../db.server";
 
 async function deleteAllShopData(shopDomain: string) {
-	const credential = await db.shopCredential.findUnique({
+	const credential = await db.shopCredential.findFirst({
 		where: { shopDomain },
 		select: { id: true, mode: true },
 	});
