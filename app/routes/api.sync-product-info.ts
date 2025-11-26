@@ -77,7 +77,7 @@ function validateCronRequest(request: Request): boolean {
  * Uses direct fetch to handle custom domains correctly
  */
 async function getShopifyGraphQL(shopDomain: string) {
-	const credential = await prisma.shopCredential.findUnique({
+	const credential = await prisma.shopCredential.findFirst({
 		where: { shopDomain },
 	});
 
