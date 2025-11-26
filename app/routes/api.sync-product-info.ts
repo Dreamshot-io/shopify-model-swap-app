@@ -47,7 +47,7 @@ interface SyncResult {
 
 interface ProductInfoRecord {
 	id: string;
-	shop: string;
+	shopId: string;
 	productId: string;
 	mediaId: string | null;
 	shopifyUrl: string | null;
@@ -259,7 +259,7 @@ async function syncShopProducts(shopId: string, shopDomain: string): Promise<Syn
 		// Get existing ProductInfo records
 		const existingRecords = (await prisma.productInfo.findMany({
 			where: {
-				shop: shopId,
+				shopId,
 				deletedAt: null,
 			},
 		})) as ProductInfoRecord[];
@@ -328,13 +328,13 @@ async function syncShopProducts(shopId: string, shopDomain: string): Promise<Syn
 
 					await prisma.productInfo.upsert({
 						where: {
-							shop_mediaId: {
-								shop: shopId,
+							shopId_mediaId: {
+								shopId,
 								mediaId,
 							},
 						},
 						create: {
-							shop: shopId,
+							shopId,
 							productId: info.productId,
 							productTitle: info.productTitle,
 							productHandle: info.productHandle,
@@ -343,7 +343,6 @@ async function syncShopProducts(shopId: string, shopDomain: string): Promise<Syn
 							r2Url,
 							r2Key,
 							backedUpAt: r2Url ? new Date() : null,
-							shopId,
 						},
 						update: {
 							productId: info.productId,
@@ -370,7 +369,7 @@ async function syncShopProducts(shopId: string, shopDomain: string): Promise<Syn
 			try {
 				await prisma.productInfo.updateMany({
 					where: {
-						shop: shopId,
+						shopId,
 						mediaId,
 						deletedAt: null,
 					},
