@@ -27,6 +27,13 @@ async function handleRotationRequest(request: Request) {
   const token = extractBearerToken(authHeader);
   const isAuthorizedBySecret = cronSecret && token === cronSecret;
 
+  console.log('[Rotation] Auth check', {
+    isVercelCron,
+    hasAuthHeader: !!authHeader,
+    hasCronSecret: !!cronSecret,
+    tokenMatch: cronSecret ? token === cronSecret : 'no-secret-configured',
+  });
+
   if (!isVercelCron && !isAuthorizedBySecret) {
     console.log('[Rotation] Unauthorized request rejected');
     return json({ error: 'Unauthorized' }, { status: 401 });
