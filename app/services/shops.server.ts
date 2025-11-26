@@ -95,7 +95,7 @@ export async function findShopCredential(input: ShopLookupInput) {
 		return cached.credential;
 	}
 
-	const credential = (await prisma['shopCredential'].findFirst({
+	let credential = (await prisma['shopCredential'].findFirst({
 		where:
 			'shopDomain' in input
 				? { shopDomain: input.shopDomain.toLowerCase() }
@@ -103,6 +103,13 @@ export async function findShopCredential(input: ShopLookupInput) {
 					? { id: input.shopId }
 					: { apiKey: input.clientId },
 	})) as ShopCredential | null;
+
+	// Fallback: search by customDomain if shopDomain lookup failed
+	if (!credential && 'shopDomain' in input) {
+		credential = (await prisma['shopCredential'].findFirst({
+			where: { customDomain: input.shopDomain.toLowerCase() },
+		})) as ShopCredential | null;
+	}
 
 	if (!credential) {
 		return null;
