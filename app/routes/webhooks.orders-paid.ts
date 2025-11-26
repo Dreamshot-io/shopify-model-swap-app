@@ -57,6 +57,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 	let shop: string;
 	let payload: Record<string, unknown>;
 
+	const shopHeader = request.headers.get('X-Shopify-Shop-Domain');
+	console.log('[orders-paid] Webhook received', { shopHeader });
+
 	// Dev bypass for testing - skip HMAC validation
 	if (process.env.NODE_ENV !== 'production' && request.headers.get('X-Shopify-Hmac-Sha256') === 'test') {
 		topic = request.headers.get('X-Shopify-Topic') || 'orders/paid';
@@ -68,6 +71,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 		topic = auth.topic;
 		shop = auth.shop;
 		payload = auth.payload as Record<string, unknown>;
+		console.log('[orders-paid] Authenticated', { topic, shop });
 	}
 
 	if (!payload || typeof payload !== 'object') {
@@ -87,6 +91,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
 		const lineItems = Array.isArray(order.line_items) ? (order.line_items as Array<Record<string, unknown>>) : [];
 
+		// Try to find matching test if no meta from order attributes
 		if (!meta && lineItems.length > 0) {
 			const firstLineItem = lineItems[0] as Record<string, unknown> | undefined;
 			const lineItemProductId = firstLineItem?.product_id
@@ -94,18 +99,18 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 				: null;
 
 			if (lineItemProductId) {
+				// Look for any test (active or not) for this product
 				const matchingTest = await db.aBTest.findFirst({
 					where: {
 						productId: lineItemProductId,
 						shop,
-						status: {
-							in: ['ACTIVE', 'PAUSED'],
-						},
 					},
+					orderBy: { createdAt: 'desc' },
 					select: {
 						id: true,
 						productId: true,
 						currentCase: true,
+						status: true,
 					},
 				});
 
@@ -116,18 +121,34 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 						productId: matchingTest.productId,
 						sessionId: undefined,
 					};
+					console.log('[orders-paid] Found test for product', {
+						testId: matchingTest.id,
+						status: matchingTest.status,
+						productId: lineItemProductId,
+					});
+				} else {
+					// No test exists - still record the purchase without test association
+					meta = {
+						testId: '', // Will be set to null below
+						variant: 'BASE',
+						productId: lineItemProductId,
+						sessionId: undefined,
+					};
+					console.log('[orders-paid] No test found, recording purchase without test', {
+						productId: lineItemProductId,
+						orderId,
+					});
 				}
 			}
 		}
 
+		// Still no meta and no line items - nothing to track
 		if (!meta) {
-			if (Math.random() < 0.01) {
-				console.log('[orders-paid] No A/B metadata on order (sampled log)', {
-					orderId,
-					shop,
-					lineItemCount: lineItems.length,
-				});
-			}
+			console.log('[orders-paid] No trackable data on order', {
+				orderId,
+				shop,
+				lineItemCount: lineItems.length,
+			});
 			return json({ ok: true });
 		}
 
@@ -154,38 +175,47 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 			return acc;
 		}, 0);
 
-		const test = await db.aBTest.findFirst({
-			where: {
-				id: meta.testId,
-				shop,
-				status: {
-					in: ['ACTIVE', 'PAUSED'],
+		// Look up test if we have a testId (any status)
+		let test = null;
+		if (meta.testId) {
+			test = await db.aBTest.findFirst({
+				where: {
+					id: meta.testId,
+					shop,
 				},
-			},
-			select: {
-				id: true,
-				productId: true,
-			},
-		});
-
-		if (!test) {
-			console.warn('[orders-paid] AB test not found or not active', {
-				testId: meta.testId,
-				shop,
-				orderId,
+				select: {
+					id: true,
+					productId: true,
+					status: true,
+				},
 			});
-			return json({ ok: true });
+
+			if (!test) {
+				console.log('[orders-paid] Test not found, recording without test association', {
+					testId: meta.testId,
+					shop,
+					orderId,
+				});
+			}
 		}
 
 		const sessionId = meta.sessionId || `order:${orderId || 'unknown'}`;
-		const productId = meta.productId || test.productId;
+		const productId = meta.productId || test?.productId || null;
+
+		if (!productId) {
+			console.warn('[orders-paid] No productId available', { orderId, shop });
+			return json({ ok: true });
+		}
+
+		// Use test.id if found, otherwise null (no test association)
+		const testIdForEvent = test?.id || null;
 
 		const duplicate = await db.aBTestEvent.findFirst({
 			where: {
-				testId: meta.testId,
 				sessionId,
 				eventType: 'PURCHASE',
 				productId,
+				...(testIdForEvent ? { testId: testIdForEvent } : {}),
 			},
 			select: {
 				id: true,
@@ -195,7 +225,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 		if (duplicate) {
 			if (Math.random() < 0.05) {
 				console.log('[orders-paid] Purchase already recorded (sampled log)', {
-					testId: meta.testId,
+					testId: testIdForEvent,
 					sessionId,
 					productId,
 				});
@@ -210,10 +240,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
 		await db.aBTestEvent.create({
 			data: {
-				testId: meta.testId,
+				testId: testIdForEvent,
 				sessionId,
 				eventType: 'PURCHASE',
-				activeCase,
+				activeCase: testIdForEvent ? activeCase : null,
 				productId,
 				variantId,
 				revenue: revenue > 0 ? revenue : null,
@@ -223,14 +253,15 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 					orderNumber: order.order_number ? String(order.order_number) : null,
 					lineItemCount: lineItems.length,
 					source: 'webhook',
+					hasTest: !!testIdForEvent,
 				},
 			},
 		});
 
 		console.log('[orders-paid] Purchase event recorded', {
-			testId: meta.testId,
+			testId: testIdForEvent,
 			sessionId,
-			activeCase,
+			activeCase: testIdForEvent ? activeCase : null,
 			productId,
 			revenue,
 			quantity: totalQuantity,
