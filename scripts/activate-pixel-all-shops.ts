@@ -8,6 +8,9 @@ import prisma from '../app/db.server';
 import { findShopCredential } from '../app/services/shops.server';
 import { getShopifyContextByShopDomain } from '../app/shopify.server';
 
+// Always use SHOPIFY_APP_URL from env
+const APP_URL = process.env.SHOPIFY_APP_URL || 'https://abtest.dreamshot.io';
+
 type GraphQLFunction = (query: string, options?: { variables?: Record<string, unknown> }) => Promise<Response>;
 
 async function checkPixelStatus(graphql: GraphQLFunction) {
@@ -148,8 +151,8 @@ async function activatePixelForShop(shopDomain: string, shopId: string) {
 		}
 		console.log('  🔌 Creating pixel...');
 
-		// Create pixel
-		const createResult = await createPixel(credential.appUrl, graphql);
+		// Create pixel using global APP_URL
+		const createResult = await createPixel(APP_URL, graphql);
 
 		if (createResult.success) {
 			console.log(`  ✅ Pixel created successfully!`);

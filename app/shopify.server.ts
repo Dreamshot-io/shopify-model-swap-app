@@ -369,6 +369,9 @@ const sanitizeShopInput = (input: string) => {
 	return normalized;
 };
 
+// Always use SHOPIFY_APP_URL from env - credential.appUrl is deprecated
+const APP_URL = process.env.SHOPIFY_APP_URL || 'https://abtest.dreamshot.io';
+
 const getShopifyAppForCredential = async (credential: ShopCredentialType) => {
 	const cached = appCache.get(credential.id);
 	if (cached) {
@@ -380,7 +383,7 @@ const getShopifyAppForCredential = async (credential: ShopCredentialType) => {
 		apiSecretKey: credential.apiSecret,
 		apiVersion: coerceApiVersion(credential.apiVersion),
 		scopes: credential.scopes,
-		appUrl: credential.appUrl,
+		appUrl: APP_URL,
 		authPathPrefix: "/auth",
 		sessionStorage,
 		distribution: coerceDistribution(credential.distribution),
