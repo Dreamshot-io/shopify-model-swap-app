@@ -98,8 +98,14 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 		// Log raw body for debugging
 		console.log('[Track API] Raw request body:', JSON.stringify(body, null, 2));
 
-		const { testId, sessionId, eventType, activeCase, revenue, quantity, productId, variantId, metadata } =
+		const { testId, sessionId, eventType, activeCase, revenue, quantity, productId, variantId, metadata, shopDomain: bodyShopDomain } =
 			body ?? {};
+
+		// Use shopDomain from body if not already set from auth/headers
+		if (!shopDomain && bodyShopDomain) {
+			shopDomain = bodyShopDomain;
+			console.log('[Track API] Using shopDomain from request body:', shopDomain);
+		}
 
 		// Validate and normalize sessionId
 		let normalizedSessionId: string | null = null;

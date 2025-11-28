@@ -7,7 +7,7 @@ interface TestState {
   variantId?: string | null;
 }
 
-register(({ analytics, browser, settings }) => {
+register(({ analytics, browser, settings, init }) => {
   // Get app URL from settings, fallback to relative paths for development
   const APP_URL = settings.app_url || '';
   const ROTATION_API = `${APP_URL}/api/rotation-state`;
@@ -15,6 +15,9 @@ register(({ analytics, browser, settings }) => {
   const STATE_KEY = 'ab_test_active';
   const SESSION_KEY = 'ab_test_session';
   const IMPRESSION_SYNC_PREFIX = 'ab_test_impression_';
+
+  // Get shop domain from init data (provided by Shopify)
+  const SHOP_DOMAIN = init.data?.shop?.myshopifyDomain || '';
 
   // Debug logging if enabled
   const DEBUG = settings.debug === 'true' || settings.debug === '1';
@@ -331,6 +334,7 @@ register(({ analytics, browser, settings }) => {
         eventType,
         productId,
         variantId: variantId || null,
+        shopDomain: SHOP_DOMAIN || null,
         revenue: options?.revenue,
         quantity: options?.quantity,
         metadata: {
