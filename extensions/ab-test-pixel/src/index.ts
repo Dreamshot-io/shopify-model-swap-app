@@ -18,6 +18,9 @@ register(({ analytics, browser, settings, init }) => {
 
   // Get shop domain from init data (provided by Shopify)
   const SHOP_DOMAIN = init.data?.shop?.myshopifyDomain || '';
+  
+  // Always log shop domain for debugging (temporary)
+  console.log('[A/B Test Pixel] Shop domain:', SHOP_DOMAIN, 'init.data.shop:', init.data?.shop);
 
   // Debug logging if enabled
   const DEBUG = settings.debug === 'true' || settings.debug === '1';
