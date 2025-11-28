@@ -102,18 +102,18 @@ Examples:
 	return { shop, dryRun, forceBackup };
 }
 
-async function getShopifyAdmin(shopDomain: string) {
+async function getShopifyAdmin(shopId: string, shopDomain: string) {
 	const credential = await prisma.shopCredential.findUnique({
-		where: { shopDomain },
+		where: { id: shopId },
 	});
 
 	if (!credential) {
-		throw new Error(`No credential found for shop: ${shopDomain}`);
+		throw new Error(`No credential found for shopId: ${shopId} (${shopDomain})`);
 	}
 
 	const session = await prisma.session.findFirst({
 		where: {
-			shopId: credential.id,
+			shopId: shopId,
 			isOnline: false,
 		},
 		orderBy: {
@@ -266,7 +266,7 @@ async function syncShopProducts(
 
 	try {
 		console.log(`\n📦 Fetching products from Shopify...`);
-		const { graphql } = await getShopifyAdmin(shopDomain);
+		const { graphql } = await getShopifyAdmin(shopId, shopDomain);
 		const products = await fetchAllProducts(graphql);
 		result.productsProcessed = products.length;
 		console.log(`   Found ${products.length} products`);
