@@ -211,6 +211,16 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 		// Use test.id if found, otherwise null (no test association)
 		const testIdForEvent = test?.id || null;
 
+		// Resolve shopId from shop domain
+		let shopId: string | null = null;
+		if (shop) {
+			const shopCredential = await db.shopCredential.findFirst({
+				where: { shopDomain: shop },
+				select: { id: true },
+			});
+			shopId = shopCredential?.id || null;
+		}
+
 		const duplicate = await db.aBTestEvent.findFirst({
 			where: {
 				sessionId,
@@ -247,6 +257,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 				activeCase: testIdForEvent ? activeCase : null,
 				productId,
 				variantId,
+				shopId,
 				revenue: revenue > 0 ? revenue : null,
 				quantity: totalQuantity > 0 ? totalQuantity : null,
 				metadata: {
