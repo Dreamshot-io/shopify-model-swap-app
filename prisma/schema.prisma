@@ -47,7 +47,7 @@ enum ShopCredentialMode {
 model ShopCredential {
   id           String               @id @default(cuid())
   shopDomain   String
-  shopName     String?              // Store name from Shopify (denormalized for dashboard)
+  shopName     String? // Store name from Shopify (denormalized for dashboard)
   apiKey       String               @unique
   apiSecret    String
   appHandle    String
@@ -63,16 +63,17 @@ model ShopCredential {
   createdAt    DateTime             @default(now())
   updatedAt    DateTime             @updatedAt
 
-  sessions              Session[]
-  abTests               ABTest[]
-  auditLogs             AuditLog[]
-  metricEvents          MetricEvent[]
-  productRules          ProductSuggestionRule[]
-  generations           GenerationHistory[]
-  aiStudioImages        AIStudioImage[]
-  statisticsExports     StatisticsExport[]
-  productInfo           ProductInfo[]
+  sessions               Session[]
+  abTests                ABTest[]
+  auditLogs              AuditLog[]
+  metricEvents           MetricEvent[]
+  productRules           ProductSuggestionRule[]
+  generations            GenerationHistory[]
+  aiStudioImages         AIStudioImage[]
+  statisticsExports      StatisticsExport[]
+  productInfo            ProductInfo[]
   variantDailyStatistics VariantDailyStatistics[]
+  abTestEvents           ABTestEvent[]
 
   @@unique([shopDomain, apiKey])
   @@index([shopDomain])
@@ -190,6 +191,10 @@ model ABTestEvent {
   revenue   Decimal? // For PURCHASE events
   quantity  Int? // For ADD_TO_CART and PURCHASE events
 
+  // Shop relation - allows querying events by shop even without test
+  shopId String?
+  shop   ShopCredential? @relation(fields: [shopId], references: [id], onDelete: SetNull)
+
   // Context
   metadata  Json? // JSON with additional context (browser, referrer, etc.)
   createdAt DateTime @default(now())
@@ -200,6 +205,7 @@ model ABTestEvent {
   @@index([testId, sessionId])
   @@index([testId, activeCase])
   @@index([productId, createdAt]) // Index for querying events by product
+  @@index([shopId, createdAt]) // Index for querying events by shop
 }
 
 // Comprehensive audit logging for all system events
@@ -392,8 +398,8 @@ model ProductInfo {
   backedUpAt DateTime? // When image was backed up to R2
 
   // AI tagging metadata (for future use)
-  tags               String[]   @default([])
-  taggedAt           DateTime?  @db.Timestamptz(6)
+  tags               String[]  @default([])
+  taggedAt           DateTime? @db.Timestamptz(6)
   taggingError       String?
   strategicRationale String?
 
@@ -406,7 +412,7 @@ model ProductInfo {
 
   // Relations
   shopId          String
-  shopCredential  ShopCredential @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  shopCredential  ShopCredential           @relation(fields: [shopId], references: [id], onDelete: Cascade)
   dailyStatistics VariantDailyStatistics[]
 
   @@unique([shopId, mediaId])
@@ -416,7 +422,7 @@ model ProductInfo {
 
 // Daily statistics export records
 model StatisticsExport {
-  id        String @id @default(cuid())
+  id        String   @id @default(cuid())
   productId String
   variantId String
   date      DateTime // UTC date of the export (YYYY-MM-DD)
@@ -443,7 +449,7 @@ model StatisticsExport {
 
   // Relations
   shopId         String
-  shopCredential ShopCredential @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  shopCredential ShopCredential          @relation(fields: [shopId], references: [id], onDelete: Cascade)
   statistics     VariantDailyStatistics?
 
   @@unique([shopId, productId, variantId, date])
@@ -469,11 +475,11 @@ model VariantDailyStatistics {
   impressions Int     @default(0)
   addToCarts  Int     @default(0)
   orders      Int     @default(0)
-  revenue     Decimal @db.Decimal(12, 2) @default(0)
+  revenue     Decimal @default(0) @db.Decimal(12, 2)
 
   // Pre-computed metrics (for query performance)
-  ctr            Decimal @db.Decimal(10, 6) @default(0) // addToCarts / impressions
-  conversionRate Decimal @db.Decimal(10, 6) @default(0) // orders / impressions
+  ctr            Decimal @default(0) @db.Decimal(10, 6) // addToCarts / impressions
+  conversionRate Decimal @default(0) @db.Decimal(10, 6) // orders / impressions
 
   // Timestamps
   createdAt DateTime @default(now())
@@ -481,8 +487,8 @@ model VariantDailyStatistics {
 
   // Relations
   shopId         String
-  shopCredential ShopCredential       @relation(fields: [shopId], references: [id], onDelete: Cascade)
-  export         StatisticsExport     @relation(fields: [exportId], references: [id], onDelete: Cascade)
+  shopCredential ShopCredential   @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  export         StatisticsExport @relation(fields: [exportId], references: [id], onDelete: Cascade)
   productInfo    ProductInfo[] // Product media info for this variant on this date
 
   @@unique([shopId, productId, variantId, date])

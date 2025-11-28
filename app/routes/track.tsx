@@ -254,6 +254,19 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 		// Simplified: No deduplication - track every impression
 		// Deduplication can be added back later if needed
 
+		// Resolve shopId from shopDomain
+		let shopId: string | null = null;
+		if (shopDomain) {
+			const shopCredential = await db.shopCredential.findFirst({
+				where: { shopDomain },
+				select: { id: true },
+			});
+			shopId = shopCredential?.id || null;
+			if (shopId) {
+				console.log('[Track API] Resolved shopId:', shopId, 'from domain:', shopDomain);
+			}
+		}
+
 		// Create the event
 		let createdEvent;
 		try {
@@ -274,6 +287,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 				variantId: string | null;
 				revenue: number | null;
 				quantity: number | null;
+				shopId?: string | null;
 				metadata: any;
 			} = {
 				sessionId: normalizedSessionId,
@@ -282,6 +296,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 				variantId: normalizedVariantId,
 				revenue: revenue ? Number.parseFloat(String(revenue)) : null,
 				quantity: quantity ? Number.parseInt(String(quantity), 10) : null,
+				shopId,
 				metadata: metadata || {},
 			};
 
@@ -306,12 +321,14 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 					testId: assignedTestId,
 					activeCase: assignedActiveCase,
 					eventType,
+					shopId,
 				});
 			} else {
 				console.log('[Track API] ✅ Event tracked without test:', {
 					eventId: createdEvent.id,
 					productId,
 					eventType,
+					shopId,
 				});
 			}
 		} catch (dbError) {
