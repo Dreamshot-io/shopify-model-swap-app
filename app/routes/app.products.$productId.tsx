@@ -530,11 +530,6 @@ export default function ProductHub() {
     fetcher.submit(fd, { method: 'post' });
   };
 
-  const handleCreateTest = () => {
-    // Navigate to tests tab - the create form state is handled by TestsTabContent
-    navigate(`/app/products/${encodeURIComponent(data.productId)}?tab=tests`);
-  };
-
   // Render based on current tab
   const renderTabContent = () => {
     switch (data.currentTab) {
@@ -544,7 +539,8 @@ export default function ProductHub() {
             productId={data.productId}
             productStats={data.productStats}
             tests={data.tests}
-            onCreateTest={handleCreateTest}
+            productMedia={data.product.media?.nodes || []}
+            libraryImages={data.libraryItems}
           />
         );
 

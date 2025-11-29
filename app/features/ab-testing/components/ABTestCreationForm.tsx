@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from "react";
-import { useFetcher } from "@remix-run/react";
+import { useFetcher, useNavigate } from "@remix-run/react";
 import {
   BlockStack,
   TextField,
@@ -13,8 +13,9 @@ import {
   Card,
   Popover,
   Icon,
+  Modal,
 } from "@shopify/polaris";
-import { QuestionCircleIcon } from "@shopify/polaris-icons";
+import { QuestionCircleIcon, ImageAddIcon } from "@shopify/polaris-icons";
 import { SortableGalleryGrid } from "../../ai-studio/components/SortableGalleryGrid";
 import { useGalleryReorder } from "../../ai-studio/hooks/useGalleryReorder";
 
@@ -51,6 +52,7 @@ export function ABTestCreationForm({
   onCancel,
 }: ABTestCreationFormProps) {
   const fetcher = useFetcher();
+  const navigate = useNavigate();
 
   const [selectedGalleryImages, setSelectedGalleryImages] = useState<
     ProductImage[]
@@ -61,6 +63,7 @@ export function ABTestCreationForm({
   const [name, setName] = useState("");
   const [loadingData, setLoadingData] = useState(true);
   const [baseCaseTooltipActive, setBaseCaseTooltipActive] = useState(false);
+  const [showAddImagesModal, setShowAddImagesModal] = useState(false);
 
   // Data - images with position tracking
   const [baseGalleryImages, setBaseGalleryImages] = useState<ProductImage[]>(
@@ -333,7 +336,7 @@ export function ABTestCreationForm({
       />
 
       {/* Product Gallery Test Section */}
-      <InlineGrid columns={2} gap="400">
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', alignItems: 'stretch' }}>
         {/* Left: Base Case */}
         <Card>
           <BlockStack gap="400">
@@ -464,9 +467,41 @@ export function ABTestCreationForm({
                   )}
               </>
             )}
+            <Button
+              icon={ImageAddIcon}
+              onClick={() => setShowAddImagesModal(true)}
+              fullWidth
+            >
+              Need more images? Add more images
+            </Button>
           </BlockStack>
         </Card>
-      </InlineGrid>
+      </div>
+
+      {/* Add More Images Confirmation Modal */}
+      <Modal
+        open={showAddImagesModal}
+        onClose={() => setShowAddImagesModal(false)}
+        title="Leave this page?"
+        primaryAction={{
+          content: "Add More Images",
+          onAction: () => {
+            navigate(`/app/products/${encodeURIComponent(productId)}?tab=images`);
+          },
+        }}
+        secondaryActions={[
+          {
+            content: "Cancel",
+            onAction: () => setShowAddImagesModal(false),
+          },
+        ]}
+      >
+        <Modal.Section>
+          <Text as="p">
+            You're about to leave this page. Any unsaved changes to your A/B test will be lost.
+          </Text>
+        </Modal.Section>
+      </Modal>
 
       {/* Variant Hero Images Section */}
       {productVariants.length > 0 && (
