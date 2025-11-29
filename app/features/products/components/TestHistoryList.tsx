@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Card, BlockStack, Text, Badge, InlineStack, DataTable, Button } from '@shopify/polaris';
+import { Card, BlockStack, Text, Badge, InlineStack, DataTable, Button, ButtonGroup } from '@shopify/polaris';
 import { useNavigate } from '@remix-run/react';
 import type { ABTestWithStats } from '../types';
 
@@ -50,7 +50,7 @@ export function TestHistoryList({ tests, onViewTest }: TestHistoryListProps) {
     if (onViewTest) {
       onViewTest(testId);
     } else {
-      navigate(`/app/ab-tests/${testId}`);
+      navigate(`/app/test-details/${testId}`);
     }
   };
 
@@ -114,6 +114,14 @@ export function TestHistoryList({ tests, onViewTest }: TestHistoryListProps) {
       >
         {winner}
       </Text>,
+      // View button
+      <Button
+        key={`view-${test.id}`}
+        size="slim"
+        onClick={() => handleViewTest(test.id)}
+      >
+        View
+      </Button>,
     ];
   });
 
@@ -130,8 +138,8 @@ export function TestHistoryList({ tests, onViewTest }: TestHistoryListProps) {
         </InlineStack>
 
         <DataTable
-          columnContentTypes={['text', 'text', 'numeric', 'numeric', 'text', 'text']}
-          headings={['Test', 'Status', 'Impr', 'CVR', 'Lift', 'Winner']}
+          columnContentTypes={['text', 'text', 'numeric', 'numeric', 'text', 'text', 'text']}
+          headings={['Test', 'Status', 'Impr', 'CVR', 'Lift', 'Winner', '']}
           rows={rows}
           hoverable
         />

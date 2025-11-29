@@ -34,7 +34,7 @@ export function HomeTabContent({
         <TestHistoryList
           tests={tests}
           productId={productId}
-          onViewTest={(testId) => navigate(`/app/ab-tests/${testId}`)}
+          onViewTest={(testId) => navigate(`/app/test-details/${testId}`)}
         />
       )}
     </BlockStack>

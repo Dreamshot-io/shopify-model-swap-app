@@ -16,7 +16,9 @@
       "WebFetch(domain:help.shopify.com)",
       "mcp__supabase__list_projects",
       "Bash(tree:*)",
-      "mcp__serena__think_about_collected_information"
+      "mcp__serena__think_about_collected_information",
+      "Bash(npx tsc:*)",
+      "Bash(bun run build:*)"
     ],
     "deny": [],
     "ask": []

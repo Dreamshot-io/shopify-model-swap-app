@@ -25,10 +25,9 @@ import { handlePublish, handleDeleteFromProduct } from '../features/ai-studio/ha
 import { handlePublishWithVariants } from '../features/ai-studio/handlers/variant-media.server';
 
 // Components
-import { ProductHubTabs, HomeTabContent, CreateTestCard } from '../features/products/components';
+import { ProductHubTabs, HomeTabContent, CreateTestCard, TestsTabContent } from '../features/products/components';
 import { ImageGenerationHub } from '../features/ai-studio/components/ImageGenerationHub';
 import { ImagePreviewModal } from '../features/ai-studio/components/ImagePreviewModal';
-import { ABTestCreationForm } from '../features/ab-testing/components';
 import { useAuthenticatedAppFetch } from '../hooks/useAuthenticatedAppFetch';
 
 // Types
@@ -352,8 +351,7 @@ export default function ProductHub() {
   const [pendingAction, setPendingAction] = useState<null | string>(null);
   const [libraryItemToDelete, setLibraryItemToDelete] = useState<string | null>(null);
 
-  // State for Tests tab
-  const [showCreateForm, setShowCreateForm] = useState(false);
+  // State for Tests tab - no longer needed, handled by TestsTabContent
 
   // Update library items when data changes
   useEffect(() => {
@@ -533,9 +531,8 @@ export default function ProductHub() {
   };
 
   const handleCreateTest = () => {
-    // Navigate to tests tab and show create form
+    // Navigate to tests tab - the create form state is handled by TestsTabContent
     navigate(`/app/products/${encodeURIComponent(data.productId)}?tab=tests`);
-    setShowCreateForm(true);
   };
 
   // Render based on current tab
@@ -641,56 +638,16 @@ export default function ProductHub() {
 
       case 'tests':
         return (
-          <Layout>
-            {/* Show create form or test list based on state */}
-            {showCreateForm ? (
-              <Layout.Section>
-                <ABTestCreationForm
-                  productId={data.productId}
-                  productTitle={data.product.title}
-                  shop={data.shop}
-                  onSuccess={() => {
-                    setShowCreateForm(false);
-                    shopify.toast.show('Test created successfully!');
-                  }}
-                  onCancel={() => setShowCreateForm(false)}
-                />
-              </Layout.Section>
-            ) : !data.activeTest && data.draftTests.length === 0 ? (
-              <Layout.Section>
-                <CreateTestCard onCreateTest={() => setShowCreateForm(true)} />
-              </Layout.Section>
-            ) : (
-              <>
-                {/* Active test and management UI from ab-tests route */}
-                <Layout.Section>
-                  <BlockStack gap="400">
-                    {data.activeTest && (
-                      <Text as="p">Active test management coming soon. View full details in A/B Tests section.</Text>
-                    )}
-                    {data.draftTests.length > 0 && (
-                      <Text as="p">{data.draftTests.length} draft test(s) available.</Text>
-                    )}
-                    <button
-                      onClick={() => setShowCreateForm(true)}
-                      style={{
-                        background: '#008060',
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: '6px',
-                        padding: '10px 20px',
-                        cursor: 'pointer',
-                        fontSize: '14px',
-                        fontWeight: '500',
-                      }}
-                    >
-                      + Create New Test
-                    </button>
-                  </BlockStack>
-                </Layout.Section>
-              </>
-            )}
-          </Layout>
+          <TestsTabContent
+            productId={data.productId}
+            productTitle={data.product.title}
+            shop={data.shop}
+            activeTest={data.activeTest}
+            draftTests={data.draftTests}
+            completedTests={data.completedTests}
+            libraryItems={libraryItems}
+            productMedia={data.product.media?.nodes || []}
+          />
         );
 
       default:
