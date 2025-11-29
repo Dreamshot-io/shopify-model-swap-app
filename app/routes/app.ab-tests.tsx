@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import type { LoaderFunctionArgs, ActionFunctionArgs } from "@remix-run/node";
-import { json } from "@remix-run/node";
+import { json, redirect } from "@remix-run/node";
 import { useLoaderData, useFetcher, useNavigate } from "@remix-run/react";
 import {
   Page,
@@ -39,65 +39,20 @@ import { ABTestCreationForm } from "../features/ab-testing/components";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   try {
-    const { session, admin } = await authenticate.admin(request);
+    // Authenticate first to ensure valid session
+    await authenticate.admin(request);
+
     const url = new URL(request.url);
     const productId = url.searchParams.get("productId");
 
+    // REDIRECT: This route is deprecated - redirect to new Product Hub
     if (!productId) {
-      // STATE 1: Product Selection View
-      const productsResponse = await admin.graphql(
-        `#graphql
-          query GetProducts {
-            products(first: 50, sortKey: UPDATED_AT, reverse: true) {
-              edges {
-                node {
-                  id
-                  title
-                  status
-                  featuredImage {
-                    url
-                    altText
-                  }
-                }
-              }
-            }
-          }
-        `,
-      );
-
-      const productsData = await productsResponse.json();
-      const products =
-        productsData.data?.products?.edges?.map((edge: any) => edge.node) || [];
-
-      // Get test counts per product for badges
-      const shopId = await lookupShopId(session.shop);
-      if (!shopId) {
-        throw new Error(`Unable to resolve shopId for shop: ${session.shop}`);
-      }
-
-      const tests = await db.aBTest.findMany({
-        where: { shopId },
-        select: { productId: true, status: true },
-      });
-
-      const testCounts: Record<string, { count: number; hasActive: boolean }> =
-        {};
-      tests.forEach((test) => {
-        if (!testCounts[test.productId]) {
-          testCounts[test.productId] = { count: 0, hasActive: false };
-        }
-        testCounts[test.productId].count++;
-        if (test.status === "ACTIVE") {
-          testCounts[test.productId].hasActive = true;
-        }
-      });
-
-      return json({
-        view: "productSelection" as const,
-        products,
-        testCounts,
-      });
+      // No product selected → redirect to main dashboard
+      return redirect('/app');
     }
+
+    // Product selected → redirect to Product Hub with tests tab
+    return redirect(`/app/products/${encodeURIComponent(productId)}?tab=tests`);
 
     // STATE 2: Product Test Management View
     const productResponse = await admin.graphql(

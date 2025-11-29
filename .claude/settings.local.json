@@ -13,7 +13,10 @@
       "mcp__shopify-dev-mcp__introspect_graphql_schema",
       "mcp__context7__get-library-docs",
       "mcp__shopify-dev-mcp__fetch_full_docs",
-      "WebFetch(domain:help.shopify.com)"
+      "WebFetch(domain:help.shopify.com)",
+      "mcp__supabase__list_projects",
+      "Bash(tree:*)",
+      "mcp__serena__think_about_collected_information"
     ],
     "deny": [],
     "ask": []

@@ -38,10 +38,8 @@ export default function App() {
       />
       <NavMenu>
         <Link to="/app" rel="home">
-          Home
+          Dashboard
         </Link>
-        <Link to="/app/ab-tests">🧪 A/B Tests</Link>
-        <Link to="/app/ai-studio">🎨 AI Studio</Link>
       </NavMenu>
       <Outlet />
     </AppProvider>

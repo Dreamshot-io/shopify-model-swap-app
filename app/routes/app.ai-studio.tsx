@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { LoaderFunctionArgs, ActionFunctionArgs } from '@remix-run/node';
-import { json } from '@remix-run/node';
+import { json, redirect } from '@remix-run/node';
 import { useLoaderData, useSearchParams, useFetcher, useNavigate } from '@remix-run/react';
 import { Page, Text, BlockStack, Modal } from '@shopify/polaris';
 import { TitleBar, useAppBridge } from '@shopify/app-bridge-react';
@@ -31,44 +31,20 @@ import type {
 } from '../features/ai-studio/types';
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-	const { admin, session } = await authenticate.admin(request);
+	// Authenticate first to ensure valid session
+	await authenticate.admin(request);
 
 	const url = new URL(request.url);
 	const productId = url.searchParams.get('productId');
 
+	// REDIRECT: This route is deprecated - redirect to new Product Hub
 	if (!productId) {
-		// Fetch products for selection
-		const productsResponse = await admin.graphql(
-			`#graphql
-      query GetProducts($first: Int!) {
-        products(first: $first, sortKey: UPDATED_AT, reverse: true) {
-          edges {
-            node {
-              id
-              title
-              handle
-              status
-              featuredImage {
-                url
-                altText
-              }
-              variantsCount {
-                count
-              }
-            }
-          }
-        }
-      }`,
-			{
-				variables: { first: 50 },
-			},
-		);
-
-		const productsJson = await productsResponse.json();
-		const products = productsJson.data?.products?.edges?.map((edge: any) => edge.node) || [];
-
-		return { product: null, products, shop: session.shop };
+		// No product selected → redirect to main dashboard
+		return redirect('/app');
 	}
+
+	// Product selected → redirect to Product Hub with images tab
+	return redirect(`/app/products/${encodeURIComponent(productId)}?tab=images`);
 
 	// Fetch product data
 	const response = await admin.graphql(
