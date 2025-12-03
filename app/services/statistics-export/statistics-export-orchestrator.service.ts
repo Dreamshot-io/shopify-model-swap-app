@@ -25,6 +25,10 @@ export interface ExportVariantParams {
 	variantId: string;
 	shopifyVariantId: string;
 	date: Date;
+	// Optional denormalized names for dashboard display
+	shopName?: string;
+	productTitle?: string;
+	variantTitle?: string;
 }
 
 /**
@@ -103,6 +107,9 @@ export async function exportProductVariantStatistics(
 		variantId,
 		shopifyVariantId,
 		date,
+		shopName,
+		productTitle,
+		variantTitle,
 	} = params;
 
 	try {
@@ -148,16 +155,19 @@ export async function exportProductVariantStatistics(
 		// 6. Save export record to database with statistics
 		const exportRecord = await prisma.statisticsExport.create({
 			data: {
-				shop: shopId,
+				shopId,
 				productId,
 				variantId,
 				date,
+				shopName,
+				productTitle,
+				variantTitle,
 				csvR2Key: csvUpload.r2Key,
 				jsonR2Key: jsonUpload.r2Key,
 				csvUrl: csvUpload.r2Url,
 				jsonUrl: jsonUpload.r2Url,
-				metricsSnapshot: metrics,
-				imagesSnapshot: images,
+				metricsSnapshot: JSON.parse(JSON.stringify(metrics)),
+				imagesSnapshot: JSON.parse(JSON.stringify(images)),
 			},
 		});
 
@@ -218,8 +228,12 @@ export async function exportProductStatistics(
 	productId: string,
 	shopifyProductId: string,
 	date: Date,
+	options?: {
+		shopName?: string;
+		productTitle?: string;
+	},
 ): Promise<ExportVariantResult[]> {
-	// Fetch all variants for this product
+	// Fetch all variants for this product (includes product title)
 	const variants = await getProductVariants(admin, shopifyProductId);
 
 	// Export each variant in parallel
@@ -233,6 +247,9 @@ export async function exportProductStatistics(
 			variantId: variant.id,
 			shopifyVariantId: variant.id,
 			date,
+			shopName: options?.shopName,
+			productTitle: options?.productTitle,
+			variantTitle: variant.title,
 		}),
 	);
 

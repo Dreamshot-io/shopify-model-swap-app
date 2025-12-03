@@ -6,28 +6,36 @@
 
 import type { ActionFunctionArgs, LoaderFunctionArgs } from '@remix-run/node';
 import { json } from '@remix-run/node';
+import type { AdminApiContext } from '@shopify/shopify-app-remix/server';
 import prisma from '~/db.server';
 import { exportProductStatistics } from '~/services/statistics-export';
-import { unauthenticated } from '~/shopify.server';
 
 /**
  * Validate request is from Vercel Cron
- * Vercel automatically adds Authorization header with CRON_SECRET
+ * Vercel sends x-vercel-cron: 1 header for cron jobs
+ * Manual requests can use Authorization: Bearer CRON_SECRET
  */
 function validateCronRequest(request: Request): boolean {
-	const authHeader = request.headers.get('authorization');
-	const cronSecret = process.env.CRON_SECRET;
-
-	if (!cronSecret) {
-		console.warn('[statistics-export] CRON_SECRET not configured');
-		return false;
+	// Check Vercel cron header (Vercel automatically sets this for cron jobs)
+	const vercelCronHeader = request.headers.get('x-vercel-cron');
+	if (vercelCronHeader === '1') {
+		return true;
 	}
 
-	return authHeader === `Bearer ${cronSecret}`;
+	// Check CRON_SECRET bearer token for manual triggers
+	const authHeader = request.headers.get('authorization');
+	const cronSecret = process.env.CRON_SECRET;
+	if (cronSecret && authHeader === `Bearer ${cronSecret}`) {
+		return true;
+	}
+
+	console.warn('[statistics-export] Unauthorized: no valid cron header or secret');
+	return false;
 }
 
 /**
  * Get Shopify admin GraphQL client for a shop
+ * Creates a direct GraphQL client using stored session access token
  */
 async function getShopifyAdmin(shopDomain: string) {
 	const session = await prisma.session.findFirst({
@@ -40,15 +48,40 @@ async function getShopifyAdmin(shopDomain: string) {
 		},
 	});
 
-	if (!session) {
+	if (!session || !session.accessToken) {
 		throw new Error(`No valid session found for shop: ${shopDomain}`);
 	}
 
-	// Create Shopify admin client from session
-	const admin = unauthenticated.admin(shopDomain);
+	// Create GraphQL client directly using the stored access token
+	// Returns { json: () => Promise } to match AdminApiContext['graphql'] interface
+	const graphql = async (query: string, options?: { variables?: Record<string, unknown> }) => {
+		const response = await fetch(
+			`https://${session.shop}/admin/api/2025-01/graphql.json`,
+			{
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+					'X-Shopify-Access-Token': session.accessToken,
+				},
+				body: JSON.stringify({
+					query,
+					variables: options?.variables || {},
+				}),
+			},
+		);
+
+		if (!response.ok) {
+			const text = await response.text();
+			throw new Error(`GraphQL request failed: ${response.status} ${text}`);
+		}
+
+		return {
+			json: async () => response.json(),
+		};
+	};
 
 	return {
-		graphql: admin.graphql,
+		graphql: graphql as unknown as AdminApiContext['graphql'],
 		session,
 	};
 }
@@ -118,6 +151,10 @@ async function exportShopStatistics(
 					product.id, // This should be the internal product ID
 					product.id, // This is the Shopify GID
 					date,
+					{
+						shopName: shopDomain,
+						productTitle: product.title,
+					},
 				);
 
 				// Count successful exports

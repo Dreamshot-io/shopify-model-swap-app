@@ -7,7 +7,6 @@
 
 import prisma from '../app/db.server';
 import { exportProductStatistics } from '../app/services/statistics-export';
-import { unauthenticated } from '../app/shopify.server';
 
 interface BackfillOptions {
 	startDate: Date;
@@ -20,8 +19,8 @@ interface BackfillOptions {
  * Uses shopId FK to find session (handles custom domains correctly)
  */
 async function getShopifyAdmin(shopDomain: string) {
-	// Get shop credential
-	const credential = await prisma.shopCredential.findUnique({
+	// Get shop credential (shopDomain is not unique by itself, use findFirst)
+	const credential = await prisma.shopCredential.findFirst({
 		where: { shopDomain },
 	});
 
@@ -48,7 +47,7 @@ async function getShopifyAdmin(shopDomain: string) {
 	// This bypasses the unauthenticated.admin lookup which has issues with custom domains
 	const myshopifyDomain = session.shop;
 	const accessToken = session.accessToken;
-	
+
 	// Convert API version format (January25 -> 2025-01)
 	const versionMap: Record<string, string> = {
 		'January25': '2025-01',
@@ -113,7 +112,7 @@ async function getAllActiveShops() {
 async function exportExists(shopId: string, date: Date): Promise<boolean> {
 	const existing = await prisma.statisticsExport.findFirst({
 		where: {
-			shop: shopId,
+			shopId,
 			date,
 		},
 	});
@@ -197,6 +196,10 @@ async function exportShopStatisticsForDate(
 					product.id,
 					product.id,
 					date,
+					{
+						shopName: shopDomain,
+						productTitle: product.title,
+					},
 				);
 
 				const successCount = results.filter((r) => r.success).length;
