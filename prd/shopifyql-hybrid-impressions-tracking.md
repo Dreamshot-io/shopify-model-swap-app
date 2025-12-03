@@ -1,5 +1,78 @@
 # ShopifyQL Pure Impressions Tracking - Implementation Plan
 
+## Status: BLOCKED - Beta Access Required
+
+> **Last Updated:** December 2024
+> **Tested Against:** genlabs-dev-store.myshopify.com (custom app)
+
+---
+
+## Executive Summary
+
+This PRD proposed using ShopifyQL to get accurate impression counts for A/B testing. **After testing, the approach is NOT currently feasible** due to API access restrictions.
+
+### Key Findings (December 2024 Testing)
+
+| What We Tested | Result |
+|----------------|--------|
+| API Version `2024-04` | `shopifyqlQuery` field doesn't exist (sunset) |
+| API Version `2025-01` | `shopifyqlQuery` field doesn't exist |
+| API Version `unstable` | ShopifyQL exists but `products` dataset restricted |
+| `sales` table | ✅ Works (but no impression/view data) |
+| `products` table with `view_sessions` | ❌ "Column not found" error |
+
+### Root Cause
+
+1. **ShopifyQL API was sunset** in version `2024-07` for general use
+2. **ShopifyQL for Analytics is in CLOSED BETA** - invitation only
+3. The `products` dataset with session metrics (`view_sessions`, `cart_sessions`) requires beta access
+4. The `sales` dataset works but only has revenue data, not impressions
+
+### What Works vs What Doesn't
+
+| Feature | Shopify Admin UI | GraphQL API (Our App) |
+|---------|------------------|----------------------|
+| ShopifyQL queries | ✅ Works for merchants | ❌ Requires beta |
+| `products` table with `view_sessions` | ✅ Available | ❌ "Column not found" |
+| `sales` table with `total_sales` | ✅ Available | ✅ Works |
+| Hourly granularity | ✅ Available | ✅ Works (sales only) |
+| Product filtering | ✅ Available | ✅ Works (sales only) |
+
+---
+
+## How to Get Access
+
+### Option 1: Apply for ShopifyQL Analytics Beta
+
+1. Submit request via [Next-Gen Dev Platform early access form](https://forms.gle/8TYFJFs6obUk426V9)
+2. Contact Shopify Partner Support through Partner Dashboard
+3. Reach out via [Shopify Dev Community](https://community.shopify.dev)
+
+### Option 2: Request Protected Customer Data Access (Required Either Way)
+
+1. Go to **Partner Dashboard** → **Apps** → Select your app
+2. Click **API access requests**
+3. Request **Protected customer data** (Level 2)
+4. Select ALL fields: name, email, address, phone
+5. Provide justification and submit for review
+
+### Requirements for Full Access
+
+| Requirement | Status |
+|-------------|--------|
+| `read_reports` scope | ✅ Already have |
+| Protected Customer Data Level 2 | ⏳ Need to request |
+| ShopifyQL Analytics Beta invitation | ⏳ Need to apply |
+| API version `unstable` | Required once beta granted |
+
+---
+
+## Original PRD (For Reference When Access Granted)
+
+The sections below describe the intended implementation once ShopifyQL beta access is obtained.
+
+---
+
 ## Overview
 
 Replace undercounted pixel-based impression tracking with ShopifyQL server-side analytics, leveraging the time-based rotation model to attribute impressions accurately to each variant.
@@ -7,26 +80,26 @@ Replace undercounted pixel-based impression tracking with ShopifyQL server-side 
 **Problem:** CTR 6.85%, CVR 9.78% (should be 2-4%) → impressions undercounted by ~60-70%
 **Solution:** ShopifyQL hourly data + RotationEvent timestamps for precise variant attribution
 
-> **API Validation Status:** ✅ Validated via Shopify MCP (December 2024)
+> **API Validation Status:** ❌ BLOCKED - Requires beta access (December 2024)
 
 ---
 
-## Validated API Capabilities
+## Validated API Capabilities (Requires Beta)
 
-The following capabilities have been verified against Shopify's official documentation:
+The following capabilities exist per Shopify documentation but require beta access:
 
 ### ShopifyQL `products` Dataset Metrics
 
-| Metric | Column Name | Type | Available |
-|--------|-------------|------|-----------|
-| Product page views (impressions) | `view_sessions` | number | ✅ |
-| Add-to-cart sessions | `cart_sessions` | number | ✅ |
-| Purchase sessions | `purchase_sessions` | number | ✅ |
-| Revenue (gross) | `gross_sales` | price | ✅ |
-| Revenue (net) | `net_sales` | price | ✅ |
-| Quantity added to cart | `quantity_added_to_cart` | number | ✅ |
-| Quantity purchased | `quantity_purchased` | number | ✅ |
-| Filter by product | `WHERE product_id = X` | filter | ✅ |
+| Metric | Column Name | Type | Documented | Accessible |
+|--------|-------------|------|------------|------------|
+| Product page views (impressions) | `view_sessions` | number | ✅ | ❌ Beta only |
+| Add-to-cart sessions | `cart_sessions` | number | ✅ | ❌ Beta only |
+| Purchase sessions | `purchase_sessions` | number | ✅ | ❌ Beta only |
+| Revenue (gross) | `gross_sales` | price | ✅ | ❌ Beta only |
+| Revenue (net) | `net_sales` | price | ✅ | ❌ Beta only |
+| Quantity added to cart | `quantity_added_to_cart` | number | ✅ | ❌ Beta only |
+| Quantity purchased | `quantity_purchased` | number | ✅ | ❌ Beta only |
+| Filter by product | `WHERE product_id = X` | filter | ✅ | ❌ Beta only |
 
 ### Time Granularity Support
 
@@ -47,7 +120,8 @@ The following capabilities have been verified against Shopify's official documen
 
 - **Scope:** `read_reports`
 - **Protected Customer Data:** Level 2 access required (name, email, address, phone)
-- **API Version:** Must use `2024-04` (ShopifyQL sunset in version `2024-07`)
+- **API Version:** `unstable` (with beta access)
+- **Beta Access:** ShopifyQL for Analytics beta invitation
 
 > ⚠️ **Permission Note:** ShopifyQL requires Level 2 protected customer data access even when querying only aggregate product metrics (like `view_sessions`, `cart_sessions`). This is a blanket API requirement - there's no way to use ShopifyQL with lower permission levels. The app won't access or store any personal customer data, but Shopify requires this access level for the entire ShopifyQL API.
 
@@ -683,36 +757,53 @@ If Shopify adds sub-hourly ShopifyQL granularity in the future, the statistics a
 
 ## API Limitations & Considerations
 
-### ShopifyQL API Sunset Warning
+### ShopifyQL API Access Status (December 2024)
 
-> ⚠️ **Important:** The ShopifyQL API is being sunset as of API version `2024-07`.
+> ⚠️ **Critical:** ShopifyQL for Analytics is in **CLOSED BETA** - invitation only.
 
-**Options:**
-1. Use API version `2024-04` or earlier (recommended for now)
-2. Apply for beta access to the replacement API
-3. Monitor Shopify changelog for migration path announcements
+**Current State:**
+- API versions `2024-04` through `2025-01`: `shopifyqlQuery` field removed (sunset)
+- API version `unstable`: `shopifyqlQuery` exists but `products` dataset requires beta access
+- `sales` table works without beta but lacks impression data
+
+**To Proceed:**
+1. Apply for ShopifyQL Analytics beta access
+2. Request Level 2 Protected Customer Data access
+3. Use API version `unstable` once beta granted
 
 ### Data Access Requirements
 
-| Requirement | Status |
-|-------------|--------|
-| `read_reports` scope | Required |
-| Protected Customer Data Level 2 | Required for full access |
-| API version ≤ 2024-04 | Required (sunset in 2024-07) |
+| Requirement | Status | Notes |
+|-------------|--------|-------|
+| `read_reports` scope | ✅ Have it | Already configured |
+| Protected Customer Data Level 2 | ⏳ Need to request | Required for ShopifyQL |
+| ShopifyQL Beta Access | ⏳ Need to apply | Closed beta, invitation only |
+| API version `unstable` | Required | Only version with ShopifyQL |
 
-### Query Limitations
+### Query Limitations (Once Access Granted)
 
 - **Time granularity:** `hour` is the finest available (no minute/30-min)
 - **Data freshness:** May have 15-60 minute delay from real-time
 - **Historical data:** Typically available for last 90 days
 - **Row separation:** Sales metrics and session metrics may return in separate rows (handle in parsing)
 
-### Fallback Strategy
+### Current Fallback: Web Pixel
 
-If ShopifyQL becomes unavailable or insufficient:
-1. Revert to pixel-based tracking (already implemented)
-2. Consider Shopify Analytics API alternatives
-3. Evaluate third-party analytics integrations
+Until ShopifyQL beta access is granted, continue using the existing pixel-based tracking:
+1. Web Pixel tracks IMPRESSION, ADD_TO_CART, PURCHASE events
+2. Known limitation: ~60-70% undercount of impressions
+3. Still provides relative comparison between variants (both undercounted equally)
+
+---
+
+## Alternative Approaches to Investigate
+
+If ShopifyQL beta access is not granted, consider:
+
+1. **Web Pixel Optimization**: Improve pixel reliability to capture more impressions
+2. **Shopify Analytics API**: Check if there are other analytics endpoints available
+3. **Order-based Attribution**: Use order data (which we have full access to) for conversion tracking
+4. **Third-party Analytics**: Integrate with GA4 or similar for impression tracking
 
 ---
 
@@ -722,3 +813,21 @@ If ShopifyQL returns unexpected data or causes issues:
 1. The service already handles query failures gracefully
 2. Can quickly revert to pixel-based stats by changing the loader
 3. No database schema changes required - fully reversible
+
+---
+
+## Test Script
+
+A test script exists at `scripts/test-shopifyql.ts` to verify ShopifyQL access:
+
+```bash
+# Test against a shop
+bun run scripts/test-shopifyql.ts --shop your-shop.myshopify.com --days 30
+
+# The script tests multiple queries and reports which work
+```
+
+**Current Results (genlabs-dev-store):**
+- `sales` table queries: ✅ Work
+- `products` table queries: ❌ "Column not found" errors
+- Time grouping (hour/day): ✅ Works for `sales` table
