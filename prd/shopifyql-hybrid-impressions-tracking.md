@@ -49,6 +49,8 @@ The following capabilities have been verified against Shopify's official documen
 - **Protected Customer Data:** Level 2 access required (name, email, address, phone)
 - **API Version:** Must use `2024-04` (ShopifyQL sunset in version `2024-07`)
 
+> ⚠️ **Permission Note:** ShopifyQL requires Level 2 protected customer data access even when querying only aggregate product metrics (like `view_sessions`, `cart_sessions`). This is a blanket API requirement - there's no way to use ShopifyQL with lower permission levels. The app won't access or store any personal customer data, but Shopify requires this access level for the entire ShopifyQL API.
+
 ---
 
 ## Why Pure ShopifyQL with 60-Minute Rotation
