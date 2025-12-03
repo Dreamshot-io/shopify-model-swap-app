@@ -67,7 +67,7 @@ async function main() {
 
   // 2. Check API endpoints accessibility
   console.log('2️⃣ Testing API Endpoints...');
-  const appUrl = process.env.SHOPIFY_APP_URL || 'https://shopify-txl.dreamshot.io';
+  const appUrl = process.env.SHOPIFY_APP_URL || 'https://app-dev.dreamshot.io';
   const testProductId = activeTests[0]?.productId;
 
   if (testProductId) {

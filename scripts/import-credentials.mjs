@@ -1,27 +1,27 @@
 #!/usr/bin/env node
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
 // Default app configuration (from shopify.app.toml)
 const DEFAULT_CONFIG = {
-	appUrl: "https://shopify-txl.dreamshot.io",
-	appHandle: "dreamshot-model-swap",
+	appUrl: 'https://app-dev.dreamshot.io',
+	appHandle: 'dreamshot-model-swap',
 	scopes: [
-		"read_orders",
-		"write_files",
-		"write_products",
-		"write_pixels",
-		"read_customer_events",
-		"write_script_tags",
+		'read_orders',
+		'write_files',
+		'write_products',
+		'write_pixels',
+		'read_customer_events',
+		'write_script_tags',
 	],
 	redirectUrls: [
-		"https://shopify-txl.dreamshot.io/auth/callback",
-		"https://shopify-txl.dreamshot.io/auth/shopify/callback",
-		"https://shopify-txl.dreamshot.io/api/auth/callback",
+		'https://app-dev.dreamshot.io/auth/callback',
+		'https://app-dev.dreamshot.io/auth/shopify/callback',
+		'https://app-dev.dreamshot.io/api/auth/callback',
 	],
-	apiVersion: "January25",
-	distribution: "AppStore",
+	apiVersion: 'January25',
+	distribution: 'AppStore',
 };
 
 // Credentials to import - update this array with your credentials
@@ -33,7 +33,7 @@ const CREDENTIALS = [
 async function importCredential({ shopDomain, apiKey, apiSecret, ...overrides }) {
 	const normalizedDomain = shopDomain.toLowerCase().trim();
 
-	if (!normalizedDomain.endsWith(".myshopify.com")) {
+	if (!normalizedDomain.endsWith('.myshopify.com')) {
 		throw new Error(`Invalid shop domain: ${shopDomain}. Must end with .myshopify.com`);
 	}
 
@@ -52,7 +52,7 @@ async function importCredential({ shopDomain, apiKey, apiSecret, ...overrides })
 			redirectUrls: overrides.redirectUrls ?? DEFAULT_CONFIG.redirectUrls,
 			apiVersion: overrides.apiVersion ?? DEFAULT_CONFIG.apiVersion,
 			distribution: overrides.distribution ?? DEFAULT_CONFIG.distribution,
-			status: "ACTIVE",
+			status: 'ACTIVE',
 		},
 		create: {
 			shopDomain: normalizedDomain,
@@ -64,7 +64,7 @@ async function importCredential({ shopDomain, apiKey, apiSecret, ...overrides })
 			redirectUrls: overrides.redirectUrls ?? DEFAULT_CONFIG.redirectUrls,
 			apiVersion: overrides.apiVersion ?? DEFAULT_CONFIG.apiVersion,
 			distribution: overrides.distribution ?? DEFAULT_CONFIG.distribution,
-			status: "ACTIVE",
+			status: 'ACTIVE',
 		},
 	});
 
@@ -77,10 +77,12 @@ async function main() {
 	const args = process.argv.slice(2);
 
 	if (args.length === 0 && CREDENTIALS.length === 0) {
-		console.error("No credentials provided. Either:");
-		console.error("1. Update CREDENTIALS array in this script");
-		console.error("2. Use: node scripts/import-credentials.mjs --shop-domain=shop.myshopify.com --api-key=xxx --api-secret=yyy");
-		console.error("3. Set env vars: SHOPIFY_SHOP_DOMAIN, SHOPIFY_API_KEY, SHOPIFY_API_SECRET");
+		console.error('No credentials provided. Either:');
+		console.error('1. Update CREDENTIALS array in this script');
+		console.error(
+			'2. Use: node scripts/import-credentials.mjs --shop-domain=shop.myshopify.com --api-key=xxx --api-secret=yyy',
+		);
+		console.error('3. Set env vars: SHOPIFY_SHOP_DOMAIN, SHOPIFY_API_KEY, SHOPIFY_API_SECRET');
 		process.exit(1);
 	}
 
@@ -89,16 +91,16 @@ async function main() {
 	// Parse command line arguments
 	if (args.length > 0) {
 		const argMap = new Map();
-		args.forEach((arg) => {
-			const [key, value] = arg.split("=");
+		args.forEach(arg => {
+			const [key, value] = arg.split('=');
 			if (key && value) {
-				argMap.set(key.replace(/^--/, ""), value);
+				argMap.set(key.replace(/^--/, ''), value);
 			}
 		});
 
-		const shopDomain = argMap.get("shop-domain") || process.env.SHOPIFY_SHOP_DOMAIN;
-		const apiKey = argMap.get("api-key") || process.env.SHOPIFY_API_KEY;
-		const apiSecret = argMap.get("api-secret") || process.env.SHOPIFY_API_SECRET;
+		const shopDomain = argMap.get('shop-domain') || process.env.SHOPIFY_SHOP_DOMAIN;
+		const apiKey = argMap.get('api-key') || process.env.SHOPIFY_API_KEY;
+		const apiSecret = argMap.get('api-secret') || process.env.SHOPIFY_API_SECRET;
 
 		if (shopDomain && apiKey && apiSecret) {
 			credentialsToImport.push({ shopDomain, apiKey, apiSecret });
@@ -109,7 +111,7 @@ async function main() {
 	credentialsToImport.push(...CREDENTIALS);
 
 	if (credentialsToImport.length === 0) {
-		console.error("No valid credentials found to import");
+		console.error('No valid credentials found to import');
 		process.exit(1);
 	}
 
@@ -127,8 +129,8 @@ async function main() {
 }
 
 main()
-	.catch((error) => {
-		console.error("Fatal error:", error);
+	.catch(error => {
+		console.error('Fatal error:', error);
 		process.exit(1);
 	})
 	.finally(async () => {

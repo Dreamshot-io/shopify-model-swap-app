@@ -1,7 +1,7 @@
 # Public + Private App Architecture
 
-**Status:** ✅ Implemented and Production Ready  
-**Date:** November 21, 2025  
+**Status:** ✅ Implemented and Production Ready
+**Date:** November 21, 2025
 **Version:** 1.1
 
 ## Overview
@@ -87,7 +87,7 @@ SHOPIFY_PUBLIC_API_SECRET=<secret_from_partner_dashboard>
 SHOPIFY_APP_URL=https://abtest.dreamshot.io
 
 # Development (use local tunnel domain)
-SHOPIFY_APP_URL=https://shopify-txl.dreamshot.io
+SHOPIFY_APP_URL=https://app-dev.dreamshot.io
 
 # Scopes
 SCOPES=read_orders,write_files,write_products,write_pixels,read_customer_events,write_script_tags
@@ -108,7 +108,7 @@ handle = "dreamshot-model-swap"
 ```toml
 client_id = "<SHOPIFY_PUBLIC_API_KEY>"
 name = "dreamshot-ab-test"
-application_url = "https://shopify-txl.dreamshot.io"  # Dev tunnel
+application_url = "https://app-dev.dreamshot.io"  # Dev tunnel
 embedded = true
 ```
 
@@ -175,8 +175,8 @@ Optional future migration:
 3. **Install public app** via App Store
 4. **Update database:**
    ```sql
-   UPDATE "ShopCredential" 
-   SET mode = 'PUBLIC', 
+   UPDATE "ShopCredential"
+   SET mode = 'PUBLIC',
        apiKey = '<SHOPIFY_PUBLIC_API_KEY>',
        apiSecret = '<SHOPIFY_PUBLIC_API_SECRET>'
    WHERE shopDomain = '<client-shop>.myshopify.com';
@@ -247,8 +247,8 @@ Optional future migration:
 
 1. **Installation success rate:**
    ```sql
-   SELECT mode, COUNT(*) 
-   FROM "ShopCredential" 
+   SELECT mode, COUNT(*)
+   FROM "ShopCredential"
    GROUP BY mode;
    ```
 
@@ -290,7 +290,7 @@ Optional future migration:
 **Fix:**
 ```bash
 # 1. Update .env to use PUBLIC app credentials
-SHOPIFY_APP_URL=https://shopify-txl.dreamshot.io  # or production URL
+SHOPIFY_APP_URL=https://app-dev.dreamshot.io  # or production URL
 SHOPIFY_PUBLIC_API_KEY=<your_public_api_key>
 SHOPIFY_PUBLIC_API_SECRET=<your_public_api_secret>
 
@@ -362,13 +362,13 @@ WHERE sc.shopDomain = '<shop>.myshopify.com';
 **Fix:**
 ```sql
 -- Find duplicates
-SELECT shopDomain, COUNT(*) 
-FROM "ShopCredential" 
-GROUP BY shopDomain 
+SELECT shopDomain, COUNT(*)
+FROM "ShopCredential"
+GROUP BY shopDomain
 HAVING COUNT(*) > 1;
 
 -- Remove duplicates (keep oldest)
-DELETE FROM "ShopCredential" 
+DELETE FROM "ShopCredential"
 WHERE id NOT IN (
   SELECT MIN(id) FROM "ShopCredential" GROUP BY shopDomain
 );

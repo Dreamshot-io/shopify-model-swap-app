@@ -7,7 +7,7 @@ const prisma = new PrismaClient();
 
 // Default app configuration (from shopify.app.toml)
 const DEFAULT_CONFIG = {
-	appUrl: 'https://shopify-txl.dreamshot.io',
+	appUrl: 'https://app-dev.dreamshot.io',
 	appHandle: 'dreamshot-model-swap',
 	scopes: [
 		'read_orders',
@@ -18,9 +18,9 @@ const DEFAULT_CONFIG = {
 		'write_script_tags',
 	],
 	redirectUrls: [
-		'https://shopify-txl.dreamshot.io/auth/callback',
-		'https://shopify-txl.dreamshot.io/auth/shopify/callback',
-		'https://shopify-txl.dreamshot.io/api/auth/callback',
+		'https://app-dev.dreamshot.io/auth/callback',
+		'https://app-dev.dreamshot.io/auth/shopify/callback',
+		'https://app-dev.dreamshot.io/api/auth/callback',
 	],
 	apiVersion: 'January25',
 	distribution: 'AppStore',

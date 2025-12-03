@@ -6,9 +6,10 @@
 
 ## Current Clients
 
-| Client Slug | Shop Domain | Partner App ID | Config File             | Status | Deployed   | Notes                                                                    |
-| ----------- | ----------- | -------------- | ----------------------- | ------ | ---------- | ------------------------------------------------------------------------ |
-| pummba      | TBD         | 292388569089   | shopify.app.pummba.toml | active | 2025-10-30 | Config linked, app deployed. Client ID: 21acdb3d10eb24f87b02129c68b89328 |
+| Client Slug | Shop Domain                | Partner App ID | Config File              | Status  | Deployed   | Notes                                                                       |
+| ----------- | -------------------------- | -------------- | ------------------------ | ------- | ---------- | --------------------------------------------------------------------------- |
+| pummba      | TBD                        | 292388569089   | shopify.app.pummba.toml  | active  | 2025-10-30 | Config linked, app deployed. Client ID: 21acdb3d10eb24f87b02129c68b89328    |
+| picsils     | picsil-sport.myshopify.com | -              | shopify.app.picsils.toml | pending | -          | Custom domain: picsilsport.com. Client ID: a021d7d05774b7932b405ea6ae35e641 |
 
 ## Client Configuration Template
 
