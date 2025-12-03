@@ -20,22 +20,36 @@ on:
 jobs:
   deploy-shopify:
     runs-on: ubuntu-latest
-    # Skip if required secrets are not configured
-    if: ${{ secrets.SHOPIFY_CLI_PARTNERS_TOKEN != '' }}
 
     steps:
+      - name: Check secrets configured
+        id: check-secrets
+        env:
+          SHOPIFY_TOKEN: ${{ secrets.SHOPIFY_CLI_PARTNERS_TOKEN }}
+        run: |
+          if [ -z "$SHOPIFY_TOKEN" ]; then
+            echo "::warning::SHOPIFY_CLI_PARTNERS_TOKEN not configured, skipping deployment"
+            echo "configured=false" >> $GITHUB_OUTPUT
+          else
+            echo "configured=true" >> $GITHUB_OUTPUT
+          fi
+
       - name: Checkout
+        if: steps.check-secrets.outputs.configured == 'true'
         uses: actions/checkout@v4
 
       - name: Setup Bun
+        if: steps.check-secrets.outputs.configured == 'true'
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
 
       - name: Install dependencies
+        if: steps.check-secrets.outputs.configured == 'true'
         run: bun install --frozen-lockfile
 
       - name: Deploy to Shopify
+        if: steps.check-secrets.outputs.configured == 'true'
         id: deploy
         env:
           SHOPIFY_CLI_PARTNERS_TOKEN: ${{ secrets.SHOPIFY_CLI_PARTNERS_TOKEN }}
@@ -48,7 +62,7 @@ jobs:
           echo "deployed=true" >> $GITHUB_OUTPUT
 
       - name: Comment on commit (automatic deployment)
-        if: success() && github.event_name == 'push'
+        if: success() && github.event_name == 'push' && steps.check-secrets.outputs.configured == 'true'
         uses: actions/github-script@v7
         with:
           script: |
@@ -60,7 +74,7 @@ jobs:
             })
 
       - name: Create deployment summary (manual deployment)
-        if: success() && github.event_name == 'workflow_dispatch'
+        if: success() && github.event_name == 'workflow_dispatch' && steps.check-secrets.outputs.configured == 'true'
         run: |
           echo "## Shopify Extensions Deployed Successfully" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -71,7 +85,7 @@ jobs:
           echo "**Time:** $(date)" >> $GITHUB_STEP_SUMMARY
 
       - name: Notify on failure
-        if: failure()
+        if: failure() && steps.check-secrets.outputs.configured == 'true'
         uses: actions/github-script@v7
         with:
           script: |
