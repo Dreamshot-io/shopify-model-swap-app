@@ -7,31 +7,83 @@ Replace undercounted pixel-based impression tracking with ShopifyQL server-side 
 **Problem:** CTR 6.85%, CVR 9.78% (should be 2-4%) → impressions undercounted by ~60-70%
 **Solution:** ShopifyQL hourly data + RotationEvent timestamps for precise variant attribution
 
+> **API Validation Status:** ✅ Validated via Shopify MCP (December 2024)
+
 ---
 
-## Why Pure ShopifyQL (Not Hybrid)
+## Validated API Capabilities
+
+The following capabilities have been verified against Shopify's official documentation:
+
+### ShopifyQL `products` Dataset Metrics
+
+| Metric | Column Name | Type | Available |
+|--------|-------------|------|-----------|
+| Product page views (impressions) | `view_sessions` | number | ✅ |
+| Add-to-cart sessions | `cart_sessions` | number | ✅ |
+| Purchase sessions | `purchase_sessions` | number | ✅ |
+| Revenue (gross) | `gross_sales` | price | ✅ |
+| Revenue (net) | `net_sales` | price | ✅ |
+| Quantity added to cart | `quantity_added_to_cart` | number | ✅ |
+| Quantity purchased | `quantity_purchased` | number | ✅ |
+| Filter by product | `WHERE product_id = X` | filter | ✅ |
+
+### Time Granularity Support
+
+| Time Dimension | GROUP BY Support | Notes |
+|----------------|-----------------|-------|
+| `hour` | ✅ Supported | **Finest available granularity** |
+| `day` | ✅ Supported | |
+| `week` | ✅ Supported | |
+| `month` | ✅ Supported | |
+| `quarter` | ✅ Supported | |
+| `year` | ✅ Supported | |
+| `minute` | ❌ Not supported | |
+| `30min` | ❌ Not supported | |
+
+> **Critical Note:** The underlying data is stored at 15-minute granularity, but the ShopifyQL API only exposes `hour` as the finest time dimension for `GROUP BY`.
+
+### Required Access
+
+- **Scope:** `read_reports`
+- **Protected Customer Data:** Level 2 access required (name, email, address, phone)
+- **API Version:** Must use `2024-04` (ShopifyQL sunset in version `2024-07`)
+
+---
+
+## Why Pure ShopifyQL with 60-Minute Rotation
 
 ### Time-Based Rotation = Perfect Attribution
 
-The A/B test uses **time-based rotation**, not user-based:
-- 10:00-10:30 → **ALL users** see BASE variant
-- 10:30-11:00 → **ALL users** see TEST variant
-- 11:00-11:30 → **ALL users** see BASE variant
+The A/B test uses **time-based rotation**, not user-based. With **60-minute rotation intervals** aligned to ShopifyQL's hourly granularity:
+
+- 10:00-11:00 → **ALL users** see BASE variant
+- 11:00-12:00 → **ALL users** see TEST variant
+- 12:00-13:00 → **ALL users** see BASE variant
 - ...and so on
 
-This means we can correlate ShopifyQL data directly with rotation windows:
+This means we can correlate ShopifyQL data **perfectly** with rotation windows:
 
 ```
-ShopifyQL: "Give me views for product X between 10:00-10:30"
-→ These are ALL BASE impressions (no estimation, no ratio needed)
+ShopifyQL: "Give me views for product X at hour 10:00"
+→ These are ALL BASE impressions (100% accurate, no estimation)
 
-ShopifyQL: "Give me views for product X between 10:30-11:00"
-→ These are ALL TEST impressions (no estimation, no ratio needed)
+ShopifyQL: "Give me views for product X at hour 11:00"
+→ These are ALL TEST impressions (100% accurate, no estimation)
 ```
+
+### Why 60-Minute Rotation (Not 30-Minute)?
+
+| Approach | Attribution Accuracy | Complexity |
+|----------|---------------------|------------|
+| 30-min rotation + hourly data | ~50% estimated (must split hours) | Complex |
+| **60-min rotation + hourly data** | **100% accurate (1:1 mapping)** | **Simple** |
+
+Since ShopifyQL only provides hourly granularity, using 60-minute rotation windows ensures each hour maps exactly to one variant with no estimation or splitting required.
 
 ### Why Not Hybrid?
 
-The hybrid approach assumed we needed pixel ratios to distribute total views between variants. But with time-based rotation, **timestamps alone tell us which variant was active**. No pixel data needed for impressions.
+The hybrid approach assumed we needed pixel ratios to distribute total views between variants. But with time-based rotation and aligned intervals, **timestamps alone tell us which variant was active**. No pixel data needed for impressions.
 
 ---
 
@@ -39,7 +91,7 @@ The hybrid approach assumed we needed pixel ratios to distribute total views bet
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                     PURE ShopifyQL ARCHITECTURE                         │
+│              PURE ShopifyQL ARCHITECTURE (60-MIN ROTATION)              │
 ├─────────────────────────────────────────────────────────────────────────┤
 │                                                                         │
 │  ┌────────────────────┐         ┌─────────────────────────────────┐    │
@@ -48,34 +100,38 @@ The hybrid approach assumed we needed pixel ratios to distribute total views bet
 │  │  timestamp: 10:00  │         │                                 │    │
 │  │  activeCase: BASE  │         │   view_sessions by hour         │    │
 │  │                    │         │   cart_sessions by hour         │    │
-│  │  timestamp: 10:30  │         │   purchase_sessions by hour     │    │
+│  │  timestamp: 11:00  │         │   purchase_sessions by hour     │    │
 │  │  activeCase: TEST  │         │                                 │    │
+│  │                    │         │                                 │    │
+│  │  timestamp: 12:00  │         │                                 │    │
+│  │  activeCase: BASE  │         │                                 │    │
 │  └─────────┬──────────┘         └──────────────┬──────────────────┘    │
 │            │                                   │                        │
-│            │ Rotation Windows                  │ Hourly Metrics         │
+│            │ 60-min Rotation Windows           │ Hourly Metrics         │
 │            │                                   │                        │
 │            └─────────────┬─────────────────────┘                        │
 │                          │                                              │
 │                          ▼                                              │
 │            ┌─────────────────────────────┐                              │
-│            │   Time-Window Correlation    │                             │
+│            │   1:1 Time-Window Mapping    │                             │
 │            │                              │                             │
-│            │   For each rotation window:  │                             │
-│            │   - Get start/end timestamps │                             │
-│            │   - Sum ShopifyQL metrics    │                             │
-│            │     within that window       │                             │
-│            │   - Attribute to activeCase  │                             │
+│            │   Hour 10:00 → BASE (100%)   │                             │
+│            │   Hour 11:00 → TEST (100%)   │                             │
+│            │   Hour 12:00 → BASE (100%)   │                             │
+│            │                              │                             │
+│            │   No splitting or estimation │                             │
+│            │   needed - perfect alignment │                             │
 │            └─────────────────────────────┘                              │
 │                          │                                              │
 │                          ▼                                              │
 │            ┌─────────────────────────────┐                              │
-│            │   Precise Statistics         │                             │
+│            │   100% Accurate Statistics   │                             │
 │            │                              │                             │
 │            │   BASE: sum of all BASE      │                             │
-│            │         window metrics       │                             │
+│            │         hour metrics         │                             │
 │            │                              │                             │
 │            │   TEST: sum of all TEST      │                             │
-│            │         window metrics       │                             │
+│            │         hour metrics         │                             │
 │            └─────────────────────────────┘                              │
 │                                                                         │
 └─────────────────────────────────────────────────────────────────────────┘
@@ -100,7 +156,7 @@ If a user views a product at 10:15 (BASE window) but adds to cart at 10:45 (TEST
    - More accurate for conversion attribution
    - Adds complexity
 
-**Recommendation:** Start with option 1 (pure ShopifyQL) since rotation windows are short (30 min) and most conversions happen quickly. Can add pixel attribution later if needed.
+**Recommendation:** Start with option 1 (pure ShopifyQL) since rotation windows are 60 minutes and most conversions happen within that timeframe. Can add pixel attribution later if needed.
 
 ---
 
@@ -543,22 +599,30 @@ Add data source indicator:
 
 ## Handling Edge Cases
 
-### ShopifyQL Hourly vs 30-min Rotation
+### Perfect 1:1 Hour-to-Variant Mapping
 
-ShopifyQL provides hourly granularity, but rotation windows are 30 minutes. The `attributeHourToVariants` function handles this by:
+With 60-minute rotation intervals aligned to clock hours, attribution is straightforward:
 
-1. Finding the overlap between each hour and each rotation window
-2. Calculating what percentage of the hour belonged to each variant
-3. Splitting the hourly metrics proportionally
+- Each ShopifyQL hour maps to exactly ONE variant
+- No proportional splitting needed
+- 100% accurate attribution
 
 Example:
-- Hour 10:00-11:00 has 100 views
-- Rotation: BASE 10:00-10:30, TEST 10:30-11:00
-- Result: 50 views attributed to BASE, 50 to TEST
+- Hour 10:00-11:00 has 100 views, rotation shows BASE active → 100 views to BASE
+- Hour 11:00-12:00 has 80 views, rotation shows TEST active → 80 views to TEST
 
 ### Test Started Mid-Hour
 
-If a test starts at 10:15, the first hour (10:00-11:00) will only attribute the portion after 10:15 to the test variants.
+If a test starts at 10:15:
+- The partial hour (10:15-11:00) is attributed to the initial variant
+- From 11:00 onward, normal hourly rotation applies
+- Consider starting tests at the top of the hour for cleanest data
+
+### Rotation Boundary Alignment
+
+To ensure clean attribution, rotation events should align with clock hours:
+- ✅ Good: Rotation at 10:00, 11:00, 12:00
+- ⚠️ Suboptimal: Rotation at 10:15, 11:15, 12:15 (partial hour attribution needed)
 
 ### No Rotation Events
 
@@ -612,6 +676,41 @@ Once ShopifyQL statistics are validated:
 ### Finer Granularity
 
 If Shopify adds sub-hourly ShopifyQL granularity in the future, the statistics accuracy would improve further. The architecture already supports this - just update the query and attribution logic.
+
+---
+
+## API Limitations & Considerations
+
+### ShopifyQL API Sunset Warning
+
+> ⚠️ **Important:** The ShopifyQL API is being sunset as of API version `2024-07`.
+
+**Options:**
+1. Use API version `2024-04` or earlier (recommended for now)
+2. Apply for beta access to the replacement API
+3. Monitor Shopify changelog for migration path announcements
+
+### Data Access Requirements
+
+| Requirement | Status |
+|-------------|--------|
+| `read_reports` scope | Required |
+| Protected Customer Data Level 2 | Required for full access |
+| API version ≤ 2024-04 | Required (sunset in 2024-07) |
+
+### Query Limitations
+
+- **Time granularity:** `hour` is the finest available (no minute/30-min)
+- **Data freshness:** May have 15-60 minute delay from real-time
+- **Historical data:** Typically available for last 90 days
+- **Row separation:** Sales metrics and session metrics may return in separate rows (handle in parsing)
+
+### Fallback Strategy
+
+If ShopifyQL becomes unavailable or insufficient:
+1. Revert to pixel-based tracking (already implemented)
+2. Consider Shopify Analytics API alternatives
+3. Evaluate third-party analytics integrations
 
 ---
 

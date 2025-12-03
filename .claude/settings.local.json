@@ -18,7 +18,8 @@
       "Bash(tree:*)",
       "mcp__serena__think_about_collected_information",
       "Bash(npx tsc:*)",
-      "Bash(bun run build:*)"
+      "Bash(bun run build:*)",
+      "mcp__serena__think_about_whether_you_are_done"
     ],
     "deny": [],
     "ask": []
