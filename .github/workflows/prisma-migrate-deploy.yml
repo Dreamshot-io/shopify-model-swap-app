@@ -9,9 +9,7 @@ on:
 jobs:
   push-schema:
     runs-on: ubuntu-latest
-    env:
-      DATABASE_URL: ${{ secrets.DATABASE_URL }}
-    if: ${{ env.DATABASE_URL != '' }}
+    if: ${{ secrets.DATABASE_URL != '' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -30,13 +28,11 @@ jobs:
       - name: Push schema to database
         run: npx prisma db push
         env:
-          DATABASE_URL: ${{ env.DATABASE_URL }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
   skip-push:
     runs-on: ubuntu-latest
-    env:
-      DATABASE_URL: ${{ secrets.DATABASE_URL }}
-    if: ${{ env.DATABASE_URL == '' }}
+    if: ${{ secrets.DATABASE_URL == '' }}
     steps:
       - name: Skip schema push
         run: echo "DATABASE_URL not set. Skipping db push."
