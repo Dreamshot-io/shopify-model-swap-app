@@ -1,0 +1,51 @@
+# Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
+
+client_id = "a021d7d05774b7932b405ea6ae35e641"
+name = "dreamshot-ab-test-picsils"
+application_url = "https://abtest.dreamshot.io"
+embedded = true
+
+[build]
+automatically_update_urls_on_dev = false
+
+[webhooks]
+api_version = "2025-07"
+
+  [[webhooks.subscriptions]]
+  topics = [ "orders/paid" ]
+  uri = "/webhooks/orders-paid"
+
+  [[webhooks.subscriptions]]
+  topics = [ "app_subscriptions/update" ]
+  uri = "/webhooks/app/subscriptions_update"
+
+  [[webhooks.subscriptions]]
+  topics = [ "app/scopes_update" ]
+  uri = "/webhooks/app/scopes_update"
+
+  [[webhooks.subscriptions]]
+  topics = [ "app/uninstalled" ]
+  uri = "/webhooks/app/uninstalled"
+
+  [[webhooks.subscriptions]]
+  compliance_topics = [ "customers/data_request", "customers/redact", "shop/redact" ]
+  uri = "/webhooks/compliance"
+
+[access_scopes]
+# Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
+scopes = "read_orders,write_files,write_products,write_pixels,read_customer_events,write_script_tags,read_reports"
+
+[auth]
+redirect_urls = [
+  "https://abtest.dreamshot.io/auth/callback",
+  "https://abtest.dreamshot.io/auth/shopify/callback",
+  "https://abtest.dreamshot.io/api/auth/callback"
+]
+
+[app_proxy]
+url = "https://abtest.dreamshot.io"
+subpath = "model-swap"
+prefix = "apps"
+
+[pos]
+embedded = false
