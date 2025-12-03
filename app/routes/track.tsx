@@ -257,8 +257,42 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 		// Normalize variant ID if provided
 		const normalizedVariantId = normalizeVariantId(variantId ?? null);
 
-		// Simplified: No deduplication - track every impression
-		// Deduplication can be added back later if needed
+		// Extract orderId from metadata for PURCHASE deduplication
+		const orderId = metadata?.orderId ? String(metadata.orderId) : null;
+
+		// Deduplicate PURCHASE events by orderId to prevent pixel + webhook double-counting
+		// Pixel fires checkout_completed immediately, webhook fires orders/paid ~3s later
+		// We want to keep the pixel event and let webhook enrich it with revenue data
+		if (eventType === 'PURCHASE' && orderId) {
+			const existingPurchase = await db.aBTestEvent.findFirst({
+				where: {
+					eventType: 'PURCHASE',
+					metadata: {
+						path: ['orderId'],
+						equals: orderId,
+					},
+				},
+				select: { id: true },
+			});
+
+			if (existingPurchase) {
+				console.log('[Track API] PURCHASE already exists for orderId, skipping duplicate', {
+					orderId,
+					existingEventId: existingPurchase.id,
+					productId,
+				});
+
+				return json(
+					{
+						success: true,
+						message: 'Purchase already tracked for this order',
+						eventId: existingPurchase.id,
+						deduplicated: true,
+					},
+					{ headers: corsHeaders },
+				);
+			}
+		}
 
 		// Resolve shopId from shopDomain
 		let shopId: string | null = null;

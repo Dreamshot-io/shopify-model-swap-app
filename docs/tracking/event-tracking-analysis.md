@@ -180,43 +180,39 @@ model ABTestEvent {
 
 ### 3. PURCHASE Events
 
-**Two Sources** (potential for double-tracking):
+**Two Sources** with **coordinated deduplication**:
+
+#### Purchase Flow (Updated December 2024)
+
+```
+Customer completes checkout
+        ↓
+┌───────────────────────────────────────────────────────────────┐
+│  1. PIXEL (immediate)                                         │
+│     checkout_completed event fires                            │
+│     → Creates PURCHASE event with orderId in metadata         │
+│     → Revenue is NULL (Shopify doesn't provide it to pixel)   │
+│     → Session ID: session_xxxx                                │
+└───────────────────────────────────────────────────────────────┘
+        ↓ (~3 seconds later)
+┌───────────────────────────────────────────────────────────────┐
+│  2. WEBHOOK (delayed)                                         │
+│     orders/paid webhook fires                                 │
+│     → Checks if PURCHASE exists with same orderId             │
+│     → If EXISTS: UPDATE with revenue, quantity, order details │
+│     → If NOT EXISTS: CREATE new event (fallback)              │
+└───────────────────────────────────────────────────────────────┘
+```
 
 #### A. Web Pixel - `checkout_completed`
 
-```90:118:extensions/ab-test-pixel/src/index.ts
-  // Track completed purchases
-  analytics.subscribe('checkout_completed', async event => {
-    const state = getTestState();
-    if (!state) return;
+The pixel tracks purchases immediately when checkout completes:
+- Creates event with `sessionId: session_xxxx`
+- Stores `orderId` in metadata for deduplication
+- **Revenue is always NULL** (Shopify doesn't provide cost data to pixel)
+- Currency is available in metadata
 
-    // Track purchase event for each line item with the test
-    for (const lineItem of event.data?.checkout?.lineItems || []) {
-      const lineProductId = lineItem?.variant?.product?.id;
-
-      if (lineProductId === state.productId) {
-        await trackEvent(state, 'PURCHASE', {
-          variantId: lineItem?.variant?.id,
-          revenue: lineItem?.cost?.totalAmount?.amount
-            ? parseFloat(lineItem.cost.totalAmount.amount)
-            : undefined,
-          quantity: lineItem?.quantity,
-          metadata: {
-            orderId: event.data?.checkout?.order?.id,
-            orderNumber: event.data?.checkout?.orderStatusUrl,
-            currency: event.data?.checkout?.totalPrice?.currencyCode,
-          },
-        });
-      }
-    }
-
-    // Clear state after purchase
-    browser.sessionStorage.removeItem(STATE_KEY);
-    browser.sessionStorage.removeItem(`${IMPRESSION_SYNC_PREFIX}${state.testId}`);
-  });
-```
-
-**Issue**: No duplicate check - can create duplicate PURCHASE events if webhook also fires.
+**Deduplication**: Track endpoint checks for existing PURCHASE with same `orderId` before creating.
 
 #### B. Webhook - `orders/paid`
 
@@ -405,9 +401,18 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 };
 ```
 
-**Deduplication**: **YES** - Checks for existing PURCHASE event with same `testId`, `sessionId`, `productId` before creating.
+**Deduplication Strategy (Updated December 2024)**:
 
-**Issue**: Webhook uses `order:${orderId}` as sessionId, pixel uses actual sessionId. If they differ, both can create events.
+The webhook now uses `orderId` as the primary deduplication key:
+
+1. **Check** if PURCHASE event exists with same `orderId` in metadata
+2. **If EXISTS**: UPDATE the pixel event with revenue, quantity, and order details
+3. **If NOT EXISTS**: CREATE new event as fallback (for orders without pixel tracking)
+
+This ensures:
+- Only ONE purchase event per order
+- Pixel event gets enriched with webhook data (revenue)
+- Orders from non-pixel sources (POS, API, draft orders) still get tracked
 
 ## Statistics Calculation
 
@@ -474,21 +479,21 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
 ## Issues Preventing Recording
 
-### 1. ❌ PURCHASE Event Double-Tracking
+### 1. ✅ PURCHASE Event Double-Tracking (FIXED December 2024)
 
-**Problem**: Both pixel and webhook can create PURCHASE events for same order.
+**Problem**: Both pixel and webhook were creating PURCHASE events for same order.
 
 **Root Cause**:
 - Pixel uses actual `sessionId` from localStorage
 - Webhook uses `order:${orderId}` as sessionId
-- Duplicate check in webhook only matches on `sessionId`, so different sessionIds = both events created
+- Old duplicate check in webhook only matched on `sessionId`
 
-**Impact**: Inflated purchase counts, incorrect statistics
+**Solution Implemented**:
+- Track endpoint: Deduplicates by `orderId` in metadata before creating PURCHASE
+- Webhook: Checks for existing PURCHASE with same `orderId`, UPDATES instead of CREATE
+- Webhook enriches pixel event with revenue data (pixel doesn't receive revenue from Shopify)
 
-**Fix Needed**:
-- Add `orderId` to duplicate check in webhook
-- Add duplicate check in pixel before tracking PURCHASE
-- Or: Use orderId as primary deduplication key for PURCHASE events
+**Result**: One PURCHASE event per order with complete data (session from pixel + revenue from webhook)
 
 ### 2. ⚠️ Missing Test State Recovery
 
@@ -608,13 +613,55 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 | **Statistics Storage** | ❌ Calculated on-demand | No cached totals |
 | **IMPRESSION Deduplication** | ✅ YES | Client + server checks |
 | **ADD_TO_CART Deduplication** | ❌ NO | Intentionally tracks all |
-| **PURCHASE Deduplication** | ⚠️ PARTIAL | Webhook checks, pixel doesn't |
+| **PURCHASE Deduplication** | ✅ YES (Dec 2024) | orderId-based dedup in track endpoint + webhook enrichment |
 | **Performance** | ⚠️ SLOW | Loads 1000 events per page load |
 | **Pixel Connection** | ⚠️ REQUIRES SETUP | Must be connected + configured |
 
+## Purchase Event Flow (Updated December 2024)
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    PURCHASE TRACKING FLOW                        │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  Checkout Complete                                               │
+│        │                                                         │
+│        ▼                                                         │
+│  ┌─────────────────────────────────┐                            │
+│  │ PIXEL: checkout_completed        │                            │
+│  │ - Creates PURCHASE event         │                            │
+│  │ - sessionId: session_xxxx        │                            │
+│  │ - orderId in metadata            │                            │
+│  │ - revenue: NULL (not provided)   │                            │
+│  └─────────────────────────────────┘                            │
+│        │                                                         │
+│        ▼ (~3 seconds)                                           │
+│  ┌─────────────────────────────────┐                            │
+│  │ WEBHOOK: orders/paid             │                            │
+│  │ - Finds event by orderId         │                            │
+│  │ - UPDATES (not creates):         │                            │
+│  │   • revenue                      │                            │
+│  │   • quantity                     │                            │
+│  │   • orderNumber                  │                            │
+│  │   • enrichedByWebhook: true      │                            │
+│  └─────────────────────────────────┘                            │
+│        │                                                         │
+│        ▼                                                         │
+│  ┌─────────────────────────────────┐                            │
+│  │ RESULT: Single complete event    │                            │
+│  │ - Session from pixel             │                            │
+│  │ - Revenue from webhook           │                            │
+│  │ - No duplicates                  │                            │
+│  └─────────────────────────────────┘                            │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Fallback**: If pixel didn't fire (ad blocker, page closed), webhook creates new event with `order:` sessionId.
+
 ## Recommendations
 
-1. **Fix PURCHASE double-tracking**: Use `orderId` in duplicate check, not just `sessionId`
+1. ~~**Fix PURCHASE double-tracking**~~: ✅ DONE - orderId-based deduplication implemented
 2. **Add PURCHASE recovery**: Add test state recovery to pixel PURCHASE handler
 3. **Add statistics caching**: Store aggregated stats in test record, update on event creation
 4. **Improve webhook reliability**: Better fallback logic for missing metadata

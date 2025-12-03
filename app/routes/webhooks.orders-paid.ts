@@ -221,34 +221,71 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 			shopId = shopCredential?.id || null;
 		}
 
-		const duplicate = await db.aBTestEvent.findFirst({
-			where: {
-				sessionId,
-				eventType: 'PURCHASE',
-				productId,
-				...(testIdForEvent ? { testId: testIdForEvent } : {}),
-			},
-			select: {
-				id: true,
-			},
-		});
-
-		if (duplicate) {
-			if (Math.random() < 0.05) {
-				console.log('[orders-paid] Purchase already recorded (sampled log)', {
-					testId: testIdForEvent,
-					sessionId,
-					productId,
-				});
-			}
-			return json({ ok: true });
-		}
-
 		const activeCase = meta.variant === 'B' || meta.variant === 'TEST' ? 'TEST' : 'BASE';
 
 		const firstLineItem = lineItems[0] as Record<string, unknown> | undefined;
 		const variantId = firstLineItem?.variant_id ? normalizeVariantId(String(firstLineItem.variant_id)) : null;
 
+		// Check if pixel already created a PURCHASE event for this orderId
+		// Pixel fires checkout_completed immediately, webhook fires ~3s later
+		// Strategy: UPDATE existing pixel event with revenue data, don't create duplicate
+		const existingPixelPurchase = orderId
+			? await db.aBTestEvent.findFirst({
+					where: {
+						eventType: 'PURCHASE',
+						metadata: {
+							path: ['orderId'],
+							equals: orderId,
+						},
+					},
+					select: {
+						id: true,
+						sessionId: true,
+						revenue: true,
+						metadata: true,
+					},
+				})
+			: null;
+
+		if (existingPixelPurchase) {
+			// Enrich existing pixel event with webhook data (revenue, quantity, order details)
+			const existingMetadata = (existingPixelPurchase.metadata as Record<string, unknown>) || {};
+			const orderNumber = order.order_number ? String(order.order_number) : null;
+
+			await db.aBTestEvent.update({
+				where: { id: existingPixelPurchase.id },
+				data: {
+					revenue: revenue > 0 ? revenue : existingPixelPurchase.revenue,
+					quantity: totalQuantity > 0 ? totalQuantity : null,
+					// Update testId and activeCase if we found an active test and pixel didn't have one
+					...(testIdForEvent && !existingMetadata.testId
+						? { testId: testIdForEvent, activeCase }
+						: {}),
+					metadata: {
+						...existingMetadata,
+						orderNumber: orderNumber ?? (existingMetadata.orderNumber as string | null),
+						lineItemCount: lineItems.length,
+						enrichedByWebhook: true,
+						webhookReceivedAt: new Date().toISOString(),
+					},
+				},
+			});
+
+			console.log('[orders-paid] Enriched existing pixel purchase with webhook data', {
+				eventId: existingPixelPurchase.id,
+				orderId,
+				revenue,
+				quantity: totalQuantity,
+				testId: testIdForEvent,
+			});
+
+			return json({ ok: true });
+		}
+
+		// No pixel event exists - this can happen if:
+		// 1. Pixel didn't fire (ad blocker, page closed before checkout_completed)
+		// 2. Order placed via different channel (POS, draft order, API)
+		// Create a new webhook-sourced event as fallback
 		await db.aBTestEvent.create({
 			data: {
 				testId: testIdForEvent,
@@ -270,7 +307,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 			},
 		});
 
-		console.log('[orders-paid] Purchase event recorded', {
+		console.log('[orders-paid] Created new purchase event (no pixel event found)', {
 			testId: testIdForEvent,
 			sessionId,
 			activeCase: testIdForEvent ? activeCase : null,
