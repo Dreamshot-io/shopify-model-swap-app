@@ -20,6 +20,8 @@ on:
 jobs:
   deploy-shopify:
     runs-on: ubuntu-latest
+    # Skip if required secrets are not configured
+    if: ${{ secrets.SHOPIFY_CLI_PARTNERS_TOKEN != '' }}
 
     steps:
       - name: Checkout
