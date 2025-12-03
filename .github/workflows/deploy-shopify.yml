@@ -25,14 +25,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
         with:
-          node-version: '20.10.0'
-          cache: 'npm'
+          bun-version: latest
 
       - name: Install dependencies
-        run: npm ci
+        run: bun install --frozen-lockfile
 
       - name: Deploy to Shopify
         id: deploy
@@ -42,7 +41,7 @@ jobs:
           COMMIT_URL: ${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}
         run: |
           echo "Deploying Shopify extensions to production..."
-          npx shopify app deploy --force --source-control-url "$COMMIT_URL"
+          bunx shopify app deploy --force --source-control-url "$COMMIT_URL"
           echo "Shopify extensions deployed successfully"
           echo "deployed=true" >> $GITHUB_OUTPUT
 
