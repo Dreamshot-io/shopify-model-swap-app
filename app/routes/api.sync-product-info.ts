@@ -1,7 +1,12 @@
 /**
  * Product info sync API route
- * Called by Vercel Cron to sync all product media from Shopify to ProductInfo table
- * Runs daily at 2am UTC (after statistics export at midnight)
+ * Called by Vercel Cron to sync product media from Shopify to ProductInfo table
+ * 
+ * Runs every 6 minutes and processes ONE shop per invocation (round-robin).
+ * This avoids timeout issues and spreads the load over time.
+ * 
+ * Query params:
+ *   ?shop=<shopDomain> - Force sync a specific shop
  */
 
 import type { LoaderFunctionArgs } from '@remix-run/node';
@@ -13,6 +18,9 @@ export const maxDuration = 300;
 
 // Use raw Prisma client to avoid extension type issues
 const prisma = new PrismaClient();
+
+// Track which shop to sync next (persisted in DB via metadata)
+const SYNC_STATE_KEY = 'product-sync-last-shop-index';
 
 interface ShopifyMedia {
 	id: string;
@@ -393,8 +401,36 @@ async function syncShopProducts(shopId: string, shopDomain: string): Promise<Syn
 }
 
 /**
+ * Get or update the last synced shop index from AuditLog metadata
+ */
+async function getLastSyncedIndex(): Promise<number> {
+	const log = await prisma.auditLog.findFirst({
+		where: { eventType: SYNC_STATE_KEY },
+		orderBy: { timestamp: 'desc' },
+	});
+	return log?.metadata && typeof log.metadata === 'object' && 'index' in log.metadata
+		? (log.metadata as { index: number }).index
+		: -1;
+}
+
+async function saveLastSyncedIndex(index: number, shopDomain: string): Promise<void> {
+	await prisma.auditLog.create({
+		data: {
+			eventType: SYNC_STATE_KEY,
+			entityType: 'SYSTEM',
+			shop: shopDomain,
+			description: `Synced shop ${index}: ${shopDomain}`,
+			metadata: { index, shopDomain, syncedAt: new Date().toISOString() },
+		},
+	});
+}
+
+/**
  * GET /api/sync-product-info
- * Called by Vercel Cron daily at 2am UTC
+ * Called by Vercel Cron every 6 minutes
+ * 
+ * Processes ONE shop per invocation (round-robin) to avoid timeouts.
+ * Use ?shop=<domain> to force sync a specific shop.
  */
 export const loader = async ({ request }: LoaderFunctionArgs) => {
 	// Validate request is from Vercel Cron
@@ -403,61 +439,63 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 		return Response.json({ error: 'Unauthorized' }, { status: 401 });
 	}
 
-	console.log('[sync-product-info] Cron triggered');
+	const url = new URL(request.url);
+	const forceShop = url.searchParams.get('shop');
+
+	console.log('[sync-product-info] Cron triggered', forceShop ? `(forced: ${forceShop})` : '(round-robin)');
 
 	try {
-		// Get all active shops
+		// Get all active shops (sorted for consistent ordering)
 		const shops = await prisma.shopCredential.findMany({
 			where: { status: 'ACTIVE' },
 			select: { id: true, shopDomain: true },
+			orderBy: { shopDomain: 'asc' },
 		});
 
-		console.log(`[sync-product-info] Found ${shops.length} active shops`);
-
-		const results: SyncResult[] = [];
-
-		for (const shop of shops) {
-			console.log(`[sync-product-info] Syncing shop: ${shop.shopDomain}`);
-			const result = await syncShopProducts(shop.id, shop.shopDomain);
-			results.push(result);
-
-			console.log(
-				`[sync-product-info] Shop ${shop.shopDomain}: ${result.productsProcessed} products, ` +
-					`${result.mediaFound} media, ${result.created} created, ${result.updated} updated, ` +
-					`${result.backedUp} backed up, ${result.errors.length} errors`,
-			);
+		if (shops.length === 0) {
+			console.log('[sync-product-info] No active shops found');
+			return Response.json({ success: true, message: 'No active shops' });
 		}
 
-		// Calculate totals
-		const totals = results.reduce(
-			(acc, r) => ({
-				shopsProcessed: acc.shopsProcessed + 1,
-				productsProcessed: acc.productsProcessed + r.productsProcessed,
-				mediaFound: acc.mediaFound + r.mediaFound,
-				created: acc.created + r.created,
-				updated: acc.updated + r.updated,
-				softDeleted: acc.softDeleted + r.softDeleted,
-				backedUp: acc.backedUp + r.backedUp,
-				errors: acc.errors + r.errors.length,
-			}),
-			{
-				shopsProcessed: 0,
-				productsProcessed: 0,
-				mediaFound: 0,
-				created: 0,
-				updated: 0,
-				softDeleted: 0,
-				backedUp: 0,
-				errors: 0,
-			},
-		);
+		// Determine which shop to sync
+		let shopToSync: { id: string; shopDomain: string };
+		let currentIndex: number;
 
-		console.log(`[sync-product-info] Sync completed:`, totals);
+		if (forceShop) {
+			// Force sync specific shop
+			const found = shops.find(s => s.shopDomain === forceShop || s.shopDomain.includes(forceShop));
+			if (!found) {
+				return Response.json({ error: `Shop not found: ${forceShop}` }, { status: 404 });
+			}
+			shopToSync = found;
+			currentIndex = shops.indexOf(found);
+		} else {
+			// Round-robin: get next shop
+			const lastIndex = await getLastSyncedIndex();
+			currentIndex = (lastIndex + 1) % shops.length;
+			shopToSync = shops[currentIndex];
+		}
+
+		console.log(`[sync-product-info] Syncing shop ${currentIndex + 1}/${shops.length}: ${shopToSync.shopDomain}`);
+
+		// Sync the single shop
+		const result = await syncShopProducts(shopToSync.id, shopToSync.shopDomain);
+
+		// Save progress
+		await saveLastSyncedIndex(currentIndex, shopToSync.shopDomain);
+
+		console.log(
+			`[sync-product-info] Shop ${shopToSync.shopDomain}: ${result.productsProcessed} products, ` +
+				`${result.mediaFound} media, ${result.created} created, ${result.updated} updated, ` +
+				`${result.backedUp} backed up, ${result.errors.length} errors`,
+		);
 
 		return Response.json({
 			success: true,
-			totals,
-			results,
+			shopIndex: currentIndex + 1,
+			totalShops: shops.length,
+			nextShop: shops[(currentIndex + 1) % shops.length].shopDomain,
+			result,
 		});
 	} catch (error) {
 		console.error('[sync-product-info] Sync failed:', error);

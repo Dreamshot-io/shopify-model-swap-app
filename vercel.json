@@ -12,7 +12,7 @@
 		},
 		{
 			"path": "/api/sync-product-info",
-			"schedule": "0 2 * * *"
+			"schedule": "*/6 * * * *"
 		}
 	]
 }

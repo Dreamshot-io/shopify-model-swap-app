@@ -4,6 +4,7 @@ import { encrypt, decrypt, isEncrypted } from './encryption.server';
 type ShopCredential = {
 	id: string;
 	shopDomain: string;
+	shopName: string | null;
 	apiKey: string;
 	apiSecret: string;
 	appHandle: string;
@@ -133,6 +134,7 @@ export async function requireShopCredential(input: ShopLookupInput) {
 
 export async function createShopCredential(data: {
 	shopDomain: string;
+	shopName?: string;
 	apiKey: string;
 	apiSecret: string;
 	appHandle: string;
@@ -147,6 +149,7 @@ export async function createShopCredential(data: {
 }) {
 	const encryptedData = encryptCredentialData({
 		shopDomain: data.shopDomain.toLowerCase(),
+		shopName: data.shopName ?? null,
 		apiKey: data.apiKey,
 		apiSecret: data.apiSecret,
 		appHandle: data.appHandle,
