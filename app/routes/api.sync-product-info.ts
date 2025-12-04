@@ -10,6 +10,7 @@
  */
 
 import type { LoaderFunctionArgs } from '@remix-run/node';
+import { json } from '@remix-run/node';
 import { PrismaClient } from '@prisma/client';
 import { uploadImageFromUrlToR2 } from '~/services/storage.server';
 
@@ -70,14 +71,27 @@ interface ProductInfoRecord {
  */
 function validateCronRequest(request: Request): boolean {
 	const authHeader = request.headers.get('authorization');
-	const cronSecret = process.env.CRON_SECRET;
+	const cronSecret = process.env.CRON_SECRET?.replace(/^["']|["']$/g, ''); // Strip quotes if present
 
 	if (!cronSecret) {
 		console.warn('[sync-product-info] CRON_SECRET not configured');
 		return false;
 	}
 
-	return authHeader === `Bearer ${cronSecret}`;
+	const expected = `Bearer ${cronSecret}`;
+	const match = authHeader === expected;
+	
+	if (!match) {
+		console.log('[sync-product-info] Auth mismatch:', {
+			receivedLength: authHeader?.length,
+			expectedLength: expected.length,
+			receivedEnd: authHeader?.slice(-10),
+			expectedEnd: expected.slice(-10),
+			rawEnvSecret: process.env.CRON_SECRET?.slice(0, 5) + '...' + process.env.CRON_SECRET?.slice(-5),
+		});
+	}
+
+	return match;
 }
 
 /**
@@ -436,7 +450,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 	// Validate request is from Vercel Cron
 	if (!validateCronRequest(request)) {
 		console.log('[sync-product-info] Unauthorized request rejected');
-		return Response.json({ error: 'Unauthorized' }, { status: 401 });
+		return json({ error: 'Unauthorized' }, { status: 401 });
 	}
 
 	const url = new URL(request.url);
@@ -454,7 +468,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
 		if (shops.length === 0) {
 			console.log('[sync-product-info] No active shops found');
-			return Response.json({ success: true, message: 'No active shops' });
+			return json({ success: true, message: 'No active shops' });
 		}
 
 		// Determine which shop to sync
@@ -465,7 +479,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 			// Force sync specific shop
 			const found = shops.find(s => s.shopDomain === forceShop || s.shopDomain.includes(forceShop));
 			if (!found) {
-				return Response.json({ error: `Shop not found: ${forceShop}` }, { status: 404 });
+				return json({ error: `Shop not found: ${forceShop}` }, { status: 404 });
 			}
 			shopToSync = found;
 			currentIndex = shops.indexOf(found);
@@ -490,7 +504,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 				`${result.backedUp} backed up, ${result.errors.length} errors`,
 		);
 
-		return Response.json({
+		return json({
 			success: true,
 			shopIndex: currentIndex + 1,
 			totalShops: shops.length,
@@ -499,7 +513,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 		});
 	} catch (error) {
 		console.error('[sync-product-info] Sync failed:', error);
-		return Response.json(
+		return json(
 			{
 				success: false,
 				error: error instanceof Error ? error.message : 'Unknown error',
