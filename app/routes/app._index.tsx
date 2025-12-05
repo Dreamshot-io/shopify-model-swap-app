@@ -232,6 +232,10 @@ export default function Index() {
   );
 
   const handleSelectProduct = (productId: string) => {
+    // Show App Bridge loading indicator
+    if (typeof shopify !== 'undefined') {
+      shopify.loading(true);
+    }
     navigate(`/app/products/${encodeURIComponent(productId)}`);
   };
 
