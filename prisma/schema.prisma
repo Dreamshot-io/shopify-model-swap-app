@@ -48,7 +48,7 @@ model ShopCredential {
   id           String               @id @default(cuid())
   shopDomain   String
   shopName     String? // Store name from Shopify (denormalized for dashboard)
-  apiKey       String               @unique
+  apiKey       String
   apiSecret    String
   appHandle    String
   appUrl       String
@@ -77,6 +77,7 @@ model ShopCredential {
 
   @@unique([shopDomain, apiKey])
   @@index([shopDomain])
+  @@index([apiKey])
   @@index([status])
   @@index([mode])
 }

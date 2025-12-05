@@ -10,9 +10,13 @@ import { PrismaSessionStorage } from "@shopify/shopify-app-session-storage-prism
 import prisma from "./db.server";
 import { findShopCredential, requireShopCredential } from "./services/shops.server";
 
+type ShopCredentialStatus = 'ACTIVE' | 'DISABLED';
+type ShopCredentialMode = 'PUBLIC' | 'PRIVATE';
+
 type ShopCredentialType = {
 	id: string;
 	shopDomain: string;
+	shopName: string | null;
 	apiKey: string;
 	apiSecret: string;
 	appHandle: string;
@@ -23,8 +27,8 @@ type ShopCredentialType = {
 	customDomain: string | null;
 	redirectUrls: string[];
 	metadata: any;
-	status: string;
-	mode?: string;
+	status: ShopCredentialStatus;
+	mode: ShopCredentialMode;
 	createdAt: Date;
 	updatedAt: Date;
 };
@@ -32,14 +36,24 @@ type ShopCredentialType = {
 const sessionStorage = new PrismaSessionStorage(prisma);
 const DEFAULT_API_VERSION = ApiVersion.January25;
 
+// Scopes must match shopify.app.ab-test.toml [access_scopes].scopes
+// TOML is source of truth for Shopify managed installation
+const PUBLIC_APP_SCOPES: string[] = [
+	'read_orders',
+	'write_files', 
+	'write_products',
+	'write_pixels',
+	'read_customer_events',
+];
+
 const PUBLIC_APP_CONFIG = {
 	apiKey: process.env.SHOPIFY_PUBLIC_API_KEY,
 	apiSecret: process.env.SHOPIFY_PUBLIC_API_SECRET,
 	appUrl: process.env.SHOPIFY_APP_URL || 'https://abtest.dreamshot.io',
-	scopes: process.env.SCOPES?.split(',') || [],
+	scopes: PUBLIC_APP_SCOPES,
 	distribution: 'AppStore',
 	appHandle: 'dreamshot-model-swap',
-} as const;
+};
 
 function isPublicAppConfigured() {
 	return !!(PUBLIC_APP_CONFIG.apiKey && PUBLIC_APP_CONFIG.apiSecret);
@@ -58,6 +72,7 @@ function createPublicCredential(shopDomain: string): ShopCredentialType {
 	return {
 		id: `public:${normalized}`,
 		shopDomain: normalized,
+		shopName: null,
 		apiKey: PUBLIC_APP_CONFIG.apiKey!,
 		apiSecret: PUBLIC_APP_CONFIG.apiSecret!,
 		appHandle: PUBLIC_APP_CONFIG.appHandle,
@@ -288,19 +303,27 @@ const resolveCredentialFromRequest = async (request: Request) => {
 	const clientId = extractClientId(request);
 	const shop = extractShopDomain(request);
 	
-	// Attempt 1: Find by clientId in database
+	// For public apps, always prioritize shop domain lookup since all shops share the same clientId
+	if (isPublicAppConfigured() && clientId === PUBLIC_APP_CONFIG.apiKey) {
+		if (!shop) {
+			throw new Response("Shop domain required for public app installation", { status: 400 });
+		}
+		
+		// Look up by shop domain first
+		const credential = await findShopCredential({ shopDomain: shop });
+		if (credential) {
+			return credential;
+		}
+		
+		// No DB record for this shop, create virtual credential for new installation
+		return createPublicCredential(shop);
+	}
+	
+	// For private apps: Find by clientId (each private app has unique apiKey)
 	if (clientId) {
 		const credential = await findShopCredential({ clientId });
 		if (credential) {
 			return credential;
-		}
-
-		// If clientId matches public app and no DB record exists, create virtual credential
-		if (isPublicAppConfigured() && clientId === PUBLIC_APP_CONFIG.apiKey) {
-			if (!shop) {
-				throw new Response("Shop domain required for public app installation", { status: 400 });
-			}
-			return createPublicCredential(shop);
 		}
 		
 		// clientId provided but doesn't match any credential or public app
@@ -311,7 +334,7 @@ const resolveCredentialFromRequest = async (request: Request) => {
 		);
 	}
 
-	// Attempt 2: Find by shopDomain in database
+	// Fallback: Find by shopDomain in database
 	if (shop) {
 		const credential = await findShopCredential({ shopDomain: shop });
 		if (credential) {
