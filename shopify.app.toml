@@ -34,7 +34,7 @@ api_version = "2025-07"
 
 [access_scopes]
 # Learn more at https://app-dev.dev/docs/apps/tools/cli/configuration#access_scopes
-scopes = "read_orders,write_files,write_products,write_pixels,read_customer_events"
+scopes = "read_orders,write_files,write_products,write_pixels,read_customer_events,read_reports"
 
 [auth]
 redirect_urls = [

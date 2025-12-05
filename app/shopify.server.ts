@@ -44,6 +44,7 @@ const PUBLIC_APP_SCOPES: string[] = [
 	'write_products',
 	'write_pixels',
 	'read_customer_events',
+	'read_reports',
 ];
 
 const PUBLIC_APP_CONFIG = {
