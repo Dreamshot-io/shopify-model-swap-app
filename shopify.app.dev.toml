@@ -1,13 +1,13 @@
 # Learn more about configuring your app at https://app-dev.dev/docs/apps/tools/cli/configuration
 
 client_id = "a37f0ea132844ccc3c8e104205da4c41"
-name = "dreamshot-model-swap"
+name = "Dreamshot AB Dev"
 application_url = "https://app-dev.dreamshot.io"
 embedded = true
 handle = "dreamshot-model-swap"
 
 [build]
-automatically_update_urls_on_dev = false
+automatically_update_urls_on_dev = true
 
 [webhooks]
 api_version = "2025-07"
