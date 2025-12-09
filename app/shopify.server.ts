@@ -503,15 +503,30 @@ export const authenticate = {
 			'[shopify.server] Resolved credential:',
 			credential.shopDomain,
 			credential.apiKey.slice(0, 8) + '...',
+			'isVirtual:',
+			credential.id.startsWith('public:'),
 		);
 
-		const context = await app.authenticate.admin(request);
+		let context;
+		try {
+			context = await app.authenticate.admin(request);
+			console.log('[shopify.server] authenticate.admin succeeded, session:', context.session?.id);
+		} catch (authError) {
+			console.error('[shopify.server] authenticate.admin failed:', authError);
+			throw authError;
+		}
 
 		// If virtual public credential, persist to database
 		if (credential.id.startsWith('public:')) {
-			const persisted = await persistPublicInstallation(credential.shopDomain, context.session);
-			await linkSessionToShopId(context.session?.id, persisted.id);
-			return decorateResult(context, persisted);
+			try {
+				const persisted = await persistPublicInstallation(credential.shopDomain, context.session);
+				console.log('[shopify.server] Persisted public installation:', persisted.id);
+				await linkSessionToShopId(context.session?.id, persisted.id);
+				return decorateResult(context, persisted);
+			} catch (persistError) {
+				console.error('[shopify.server] persistPublicInstallation failed:', persistError);
+				throw persistError;
+			}
 		}
 
 		await linkSessionToShopId(context.session?.id, credential.id);
