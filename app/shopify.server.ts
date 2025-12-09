@@ -439,17 +439,33 @@ export const getShopifyContextByShopDomain = async (shopDomain: string) => {
 };
 
 const linkSessionToShopId = async (sessionId: string | undefined, shopId: string) => {
-	if (!sessionId) {
+	if (!sessionId || !shopId || shopId.startsWith('public:')) {
+		// Don't try to link virtual credentials
 		return;
 	}
 
 	try {
+		// Verify the shopId exists before trying to link
+		const credentialExists = await prisma.shopCredential.findUnique({
+			where: { id: shopId },
+			select: { id: true },
+		});
+
+		if (!credentialExists) {
+			console.warn('[shopify.server] Cannot link session - credential not found:', shopId);
+			return;
+		}
+
 		await prisma.session.update({
 			where: { id: sessionId },
 			data: { shopId },
 		});
 	} catch (error) {
-		console.error('[shopify.server] Failed to link session to shopId', error);
+		// Non-fatal: session linking is optional, auth still works
+		console.warn(
+			'[shopify.server] Failed to link session to shopId (non-fatal):',
+			error instanceof Error ? error.message : error,
+		);
 	}
 };
 
