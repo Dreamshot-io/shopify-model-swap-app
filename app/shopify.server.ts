@@ -1,14 +1,9 @@
-import "@shopify/shopify-app-remix/adapters/vercel";
-import {
-	ApiVersion,
-	AppDistribution,
-	LoginErrorType,
-	shopifyApp,
-} from "@shopify/shopify-app-remix/server";
-import { PrismaSessionStorage } from "@shopify/shopify-app-session-storage-prisma";
+import '@shopify/shopify-app-remix/adapters/vercel';
+import { ApiVersion, AppDistribution, LoginErrorType, shopifyApp } from '@shopify/shopify-app-remix/server';
+import { PrismaSessionStorage } from '@shopify/shopify-app-session-storage-prisma';
 
-import prisma from "./db.server";
-import { findShopCredential, requireShopCredential } from "./services/shops.server";
+import prisma from './db.server';
+import { findShopCredential, requireShopCredential } from './services/shops.server';
 
 type ShopCredentialStatus = 'ACTIVE' | 'DISABLED';
 type ShopCredentialMode = 'PUBLIC' | 'PRIVATE';
@@ -40,7 +35,7 @@ const DEFAULT_API_VERSION = ApiVersion.January25;
 // TOML is source of truth for Shopify managed installation
 const PUBLIC_APP_SCOPES: string[] = [
 	'read_orders',
-	'write_files', 
+	'write_files',
 	'write_products',
 	'write_pixels',
 	'read_customer_events',
@@ -117,13 +112,13 @@ const coerceDistribution = (value?: string | null) => {
 };
 
 const decodeBase64Url = (value: string) => {
-	const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
+	const normalized = value.replace(/-/g, '+').replace(/_/g, '/');
 	const padLength = (4 - (normalized.length % 4)) % 4;
-	return Buffer.from(normalized.padEnd(normalized.length + padLength, "="), "base64").toString("utf-8");
+	return Buffer.from(normalized.padEnd(normalized.length + padLength, '='), 'base64').toString('utf-8');
 };
 
 const decodeJwtPayload = (token: string) => {
-	const [, payload] = token.split(".");
+	const [, payload] = token.split('.');
 	if (!payload) {
 		return null;
 	}
@@ -136,13 +131,13 @@ const decodeJwtPayload = (token: string) => {
 };
 
 const getSessionTokenFromRequest = (request: Request) => {
-	const header = request.headers.get("Authorization");
-	if (header?.startsWith("Bearer ")) {
-		return header.slice("Bearer ".length);
+	const header = request.headers.get('Authorization');
+	if (header?.startsWith('Bearer ')) {
+		return header.slice('Bearer '.length);
 	}
 
 	const url = new URL(request.url);
-	return url.searchParams.get("session_token");
+	return url.searchParams.get('session_token');
 };
 
 const extractClientId = (request: Request) => {
@@ -154,13 +149,13 @@ const extractClientId = (request: Request) => {
 		}
 	}
 
-	const headerClientId = request.headers.get("X-Shopify-Client-Id");
+	const headerClientId = request.headers.get('X-Shopify-Client-Id');
 	if (headerClientId) {
 		return headerClientId;
 	}
 
 	const url = new URL(request.url);
-	const queryClientId = url.searchParams.get("client_id");
+	const queryClientId = url.searchParams.get('client_id');
 	if (queryClientId) {
 		return queryClientId;
 	}
@@ -175,7 +170,7 @@ const extractShopFromHostParam = (hostParam: string | null) => {
 
 	try {
 		const decoded = decodeBase64Url(hostParam);
-		const [shop] = decoded.split("/admin");
+		const [shop] = decoded.split('/admin');
 		return normalizeShopDomain(shop);
 	} catch {
 		return null;
@@ -210,12 +205,12 @@ const extractShopFromOrigin = (origin: string | null) => {
 		const originUrl = new URL(origin);
 		const hostname = originUrl.hostname;
 
-		if (hostname.endsWith(".myshopify.com")) {
+		if (hostname.endsWith('.myshopify.com')) {
 			return normalizeShopDomain(hostname);
 		}
 
-		if (hostname.includes("myshopify.com")) {
-			const parts = hostname.split(".");
+		if (hostname.includes('myshopify.com')) {
+			const parts = hostname.split('.');
 			const shopPart = parts[0];
 			return normalizeShopDomain(`${shopPart}.myshopify.com`);
 		}
@@ -252,38 +247,38 @@ export const createShopCookie = (shop: string) => {
 };
 
 const extractShopDomain = (request: Request) => {
-	const headerShop = request.headers.get("X-Shopify-Shop-Domain");
+	const headerShop = request.headers.get('X-Shopify-Shop-Domain');
 	if (headerShop) {
 		return normalizeShopDomain(headerShop);
 	}
 
 	const url = new URL(request.url);
-	const queryShop = url.searchParams.get("shop");
+	const queryShop = url.searchParams.get('shop');
 	if (queryShop) {
 		return normalizeShopDomain(queryShop);
 	}
 
-	const hostShop = extractShopFromHostParam(url.searchParams.get("host"));
+	const hostShop = extractShopFromHostParam(url.searchParams.get('host'));
 	if (hostShop) {
 		return hostShop;
 	}
 
-	const originShop = extractShopFromOrigin(request.headers.get("Origin"));
+	const originShop = extractShopFromOrigin(request.headers.get('Origin'));
 	if (originShop) {
 		return originShop;
 	}
 
-	const referer = request.headers.get("Referer");
+	const referer = request.headers.get('Referer');
 	if (referer) {
 		try {
 			const refererUrl = new URL(referer);
-			const refererShop = refererUrl.searchParams.get("shop");
+			const refererShop = refererUrl.searchParams.get('shop');
 			if (refererShop) {
 				return normalizeShopDomain(refererShop);
 			}
 
 			const refererHostname = refererUrl.hostname;
-			if (refererHostname.endsWith(".myshopify.com")) {
+			if (refererHostname.endsWith('.myshopify.com')) {
 				return normalizeShopDomain(refererHostname);
 			}
 		} catch {
@@ -303,35 +298,35 @@ const extractShopDomain = (request: Request) => {
 const resolveCredentialFromRequest = async (request: Request) => {
 	const clientId = extractClientId(request);
 	const shop = extractShopDomain(request);
-	
+
 	// For public apps, always prioritize shop domain lookup since all shops share the same clientId
 	if (isPublicAppConfigured() && clientId === PUBLIC_APP_CONFIG.apiKey) {
 		if (!shop) {
-			throw new Response("Shop domain required for public app installation", { status: 400 });
+			throw new Response('Shop domain required for public app installation', { status: 400 });
 		}
-		
+
 		// Look up by shop domain first
 		const credential = await findShopCredential({ shopDomain: shop });
 		if (credential) {
 			return credential;
 		}
-		
+
 		// No DB record for this shop, create virtual credential for new installation
 		return createPublicCredential(shop);
 	}
-	
+
 	// For private apps: Find by clientId (each private app has unique apiKey)
 	if (clientId) {
 		const credential = await findShopCredential({ clientId });
 		if (credential) {
 			return credential;
 		}
-		
+
 		// clientId provided but doesn't match any credential or public app
 		console.error(`[shopify.server] Credential mismatch - clientId: ${clientId}, shop: ${shop}`);
 		throw new Response(
 			`App credentials mismatch. The app was opened with client_id "${clientId}" but no matching credential was found. Please contact support.`,
-			{ status: 401 }
+			{ status: 401 },
 		);
 	}
 
@@ -350,25 +345,28 @@ const resolveCredentialFromRequest = async (request: Request) => {
 		console.error(`[shopify.server] Shop not found in database: ${shop}`);
 		throw new Response(
 			`Shop "${shop}" is not registered with this app. Please contact support to set up your account.`,
-			{ status: 404 }
+			{ status: 404 },
 		);
 	}
 
-	throw new Response("Unable to determine shop context from request. Please try accessing the app from Shopify Admin.", { status: 401 });
+	throw new Response(
+		'Unable to determine shop context from request. Please try accessing the app from Shopify Admin.',
+		{ status: 401 },
+	);
 };
 
 const extractShopInput = async (request: Request) => {
 	const url = new URL(request.url);
-	const fromQuery = url.searchParams.get("shop");
+	const fromQuery = url.searchParams.get('shop');
 	if (fromQuery) {
 		return fromQuery;
 	}
 
-	if (request.method === "POST") {
+	if (request.method === 'POST') {
 		const cloned = request.clone();
 		const formData = await cloned.formData();
-		const field = formData.get("shop");
-		if (typeof field === "string") {
+		const field = formData.get('shop');
+		if (typeof field === 'string') {
 			return field;
 		}
 	}
@@ -382,11 +380,11 @@ const sanitizeShopInput = (input: string) => {
 		return null;
 	}
 
-	const withoutProtocol = cleaned.replace(/^https?:\/\//i, "").split("/")[0];
-	const candidate = withoutProtocol.includes(".") ? withoutProtocol : `${withoutProtocol}.myshopify.com`;
+	const withoutProtocol = cleaned.replace(/^https?:\/\//i, '').split('/')[0];
+	const candidate = withoutProtocol.includes('.') ? withoutProtocol : `${withoutProtocol}.myshopify.com`;
 	const normalized = normalizeShopDomain(candidate);
 
-	if (!normalized || !normalized.endsWith(".myshopify.com")) {
+	if (!normalized || !normalized.endsWith('.myshopify.com')) {
 		return null;
 	}
 
@@ -408,11 +406,13 @@ const getShopifyAppForCredential = async (credential: ShopCredentialType) => {
 		apiVersion: coerceApiVersion(credential.apiVersion),
 		scopes: credential.scopes,
 		appUrl: APP_URL,
-		authPathPrefix: "/auth",
+		authPathPrefix: '/auth',
 		sessionStorage,
 		distribution: coerceDistribution(credential.distribution),
+		isEmbeddedApp: true,
 		future: {
 			removeRest: true,
+			unstable_newEmbeddedAuthStrategy: true,
 		},
 		...(credential.customDomain ? { customShopDomains: [credential.customDomain] } : {}),
 	});
@@ -430,7 +430,7 @@ const resolveAppForRequest = async (request: Request) => {
 export const getShopifyContextByShopDomain = async (shopDomain: string) => {
 	const normalized = normalizeShopDomain(shopDomain);
 	if (!normalized) {
-		throw new Error("Invalid shop domain");
+		throw new Error('Invalid shop domain');
 	}
 
 	const credential = await requireShopCredential({ shopDomain: normalized });
@@ -467,9 +467,9 @@ async function persistPublicInstallation(shopDomain: string, sessionData: any) {
 	}
 
 	console.log(`[shopify.server] Registering new public installation: ${shopDomain}`);
-	
+
 	const { createShopCredential } = await import('./services/shops.server');
-	
+
 	return createShopCredential({
 		shopDomain,
 		apiKey: PUBLIC_APP_CONFIG.apiKey!,
@@ -478,7 +478,7 @@ async function persistPublicInstallation(shopDomain: string, sessionData: any) {
 		appUrl: PUBLIC_APP_CONFIG.appUrl,
 		scopes: PUBLIC_APP_CONFIG.scopes,
 		distribution: PUBLIC_APP_CONFIG.distribution,
-		metadata: { 
+		metadata: {
 			mode: 'PUBLIC',
 			installedAt: new Date().toISOString(),
 			installedVia: 'oauth',
@@ -497,19 +497,23 @@ export const authenticate = {
 			hasSessionToken: !!request.headers.get('Authorization'),
 			method: request.method,
 		});
-		
+
 		const { app, credential } = await resolveAppForRequest(request);
-		console.log('[shopify.server] Resolved credential:', credential.shopDomain, credential.apiKey.slice(0, 8) + '...');
-		
+		console.log(
+			'[shopify.server] Resolved credential:',
+			credential.shopDomain,
+			credential.apiKey.slice(0, 8) + '...',
+		);
+
 		const context = await app.authenticate.admin(request);
-		
+
 		// If virtual public credential, persist to database
 		if (credential.id.startsWith('public:')) {
 			const persisted = await persistPublicInstallation(credential.shopDomain, context.session);
 			await linkSessionToShopId(context.session?.id, persisted.id);
 			return decorateResult(context, persisted);
 		}
-		
+
 		await linkSessionToShopId(context.session?.id, credential.id);
 		return decorateResult(context, credential);
 	},
@@ -542,7 +546,7 @@ export const unauthenticated = {
 
 export const login = async (request: Request) => {
 	const url = new URL(request.url);
-	if (request.method === "GET" && !url.searchParams.get("shop")) {
+	if (request.method === 'GET' && !url.searchParams.get('shop')) {
 		return {};
 	}
 
@@ -558,13 +562,13 @@ export const login = async (request: Request) => {
 
 	// Try to find existing credential (private app)
 	let credential = await findShopCredential({ shopDomain: sanitizedShop });
-	
+
 	// If not found, use public app credentials (if configured)
 	if (!credential && isPublicAppConfigured()) {
 		console.log('[shopify.server] No credential found for shop, using public app credentials');
 		credential = createPublicCredential(sanitizedShop);
 	}
-	
+
 	// If still no credential, return error
 	if (!credential) {
 		return { shop: LoginErrorType.InvalidShop };
@@ -576,7 +580,7 @@ export const login = async (request: Request) => {
 
 export const registerWebhooks = async (
 	shopDomain: string,
-	params: Parameters<ShopifyAppInstance["registerWebhooks"]>[0],
+	params: Parameters<ShopifyAppInstance['registerWebhooks']>[0],
 ) => {
 	const credential = await requireShopCredential({ shopDomain });
 	const app = await getShopifyAppForCredential(credential);
@@ -588,7 +592,10 @@ export const addDocumentResponseHeaders = async (request: Request, headers: Head
 		const { app } = await resolveAppForRequest(request);
 		app.addDocumentResponseHeaders(request, headers);
 	} catch (error) {
-		console.warn('[shopify.server] Could not resolve app for document headers:', error instanceof Error ? error.message : error);
+		console.warn(
+			'[shopify.server] Could not resolve app for document headers:',
+			error instanceof Error ? error.message : error,
+		);
 	}
 };
 
