@@ -266,9 +266,10 @@ async function pollFileProcessing(
   `;
 
   const start = Date.now();
+  // Default 50s, max 55s - leaves buffer for function overhead within 60s maxDuration
   const deadlineMs = Math.min(
-    Number(process.env.FILE_UPLOAD_POLL_DEADLINE_MS || 25000),
-    30000,
+    Number(process.env.FILE_UPLOAD_POLL_DEADLINE_MS || 50000),
+    55000,
   );
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {

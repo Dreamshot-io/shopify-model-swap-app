@@ -6,6 +6,8 @@ import { handleGetStagedUpload } from "../features/ai-studio/handlers/library.se
  * Resource route that returns a staged upload target for Shopify direct uploads.
  * Always responds with JSON – never falls back to the document loader.
  */
+export const maxDuration = 30; // 30 seconds should be enough for getting staged URL
+
 export const action = async ({ request }: ActionFunctionArgs) => {
   const requestId = crypto.randomUUID().slice(0, 8);
   console.log(`[APP.API.AI-STUDIO.GET-STAGED:${requestId}] Request received`);

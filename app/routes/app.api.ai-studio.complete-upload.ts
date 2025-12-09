@@ -4,7 +4,11 @@ import { handleCompleteUpload } from "../features/ai-studio/handlers/library.ser
 
 /**
  * Resource route that finalizes a Shopify staged upload and persists it to the library.
+ * 
+ * Extended timeout: File processing in Shopify can take 15-30s for large images.
  */
+export const maxDuration = 60; // 60 seconds for Vercel Pro plan
+
 export const action = async ({ request }: ActionFunctionArgs) => {
   const requestId = crypto.randomUUID().slice(0, 8);
   console.log(`[APP.API.AI-STUDIO.COMPLETE:${requestId}] Request received`);
