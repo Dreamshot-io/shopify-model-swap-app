@@ -13,16 +13,31 @@ import { authenticate, createShopCookie } from '../shopify.server';
 export const links = () => [{ rel: 'stylesheet', href: polarisStyles }];
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-	const { shopCredential, shopDomain } = await authenticate.admin(request);
+	const url = new URL(request.url);
+	console.log('[app.tsx] Loader called:', {
+		path: url.pathname,
+		hasIdToken: url.searchParams.has('id_token'),
+		hasAuthHeader: !!request.headers.get('Authorization'),
+		shop: url.searchParams.get('shop'),
+	});
 
-	// Note: Billing is managed through Shopify Partner Dashboard pricing plans
-	// The app_subscriptions/update webhook handles subscription changes
-	// No programmatic billing checks needed here
+	try {
+		const { shopCredential, shopDomain } = await authenticate.admin(request);
 
-	return json(
-		{ apiKey: shopCredential.apiKey, appUrl: shopCredential.appUrl },
-		{ headers: { 'Set-Cookie': createShopCookie(shopDomain) } },
-	);
+		console.log('[app.tsx] Auth successful for:', shopDomain);
+
+		// Note: Billing is managed through Shopify Partner Dashboard pricing plans
+		// The app_subscriptions/update webhook handles subscription changes
+		// No programmatic billing checks needed here
+
+		return json(
+			{ apiKey: shopCredential.apiKey, appUrl: shopCredential.appUrl },
+			{ headers: { 'Set-Cookie': createShopCookie(shopDomain) } },
+		);
+	} catch (error) {
+		console.error('[app.tsx] Auth error:', error);
+		throw error;
+	}
 };
 
 export default function App() {
