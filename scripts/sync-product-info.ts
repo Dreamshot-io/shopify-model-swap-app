@@ -13,6 +13,7 @@
  *   --shop <domain>     Sync only this shop (e.g., haanbrand.com)
  *   --dry-run           Preview changes without modifying database or R2
  *   --force-backup      Re-backup all images even if r2Url exists
+ *   --skip-backup       Skip R2 backup entirely (metadata only, saves bandwidth)
  *   --help              Show this help message
  *
  * Examples:
@@ -20,6 +21,7 @@
  *   bun run scripts/sync-product-info.ts --shop haanbrand.com
  *   bun run scripts/sync-product-info.ts --dry-run
  *   bun run scripts/sync-product-info.ts --shop haanbrand.com --force-backup
+ *   bun run scripts/sync-product-info.ts --shop haanbrand.com --skip-backup
  */
 
 import prisma from '../app/db.server';
