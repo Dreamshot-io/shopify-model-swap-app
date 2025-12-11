@@ -4,13 +4,13 @@ import { rememberShopId, forgetShopId, lookupShopId } from './db.server';
 
 const mockShopCredential = vi.hoisted(() => {
 	return {
-		findUnique: vi.fn().mockResolvedValue(null),
+		findFirst: vi.fn().mockResolvedValue(null),
 	};
 });
 
 vi.mock('@prisma/client', () => {
 	const mockShopCred = mockShopCredential;
-	
+
 	const mockExtendedPrisma = {
 		shopCredential: mockShopCred,
 		aIStudioImage: {
@@ -26,20 +26,20 @@ vi.mock('@prisma/client', () => {
 			create: vi.fn(),
 		},
 	};
-	
+
 	const baseMock = {
 		shopCredential: mockShopCred,
 		$extends: vi.fn().mockReturnValue(mockExtendedPrisma),
 	};
-	
+
 	return {
 		PrismaClient: vi.fn().mockImplementation(() => baseMock),
 	};
 });
 
 vi.mock('./services/encryption.server', () => ({
-	encrypt: vi.fn((x) => x),
-	decrypt: vi.fn((x) => x),
+	encrypt: vi.fn(x => x),
+	decrypt: vi.fn(x => x),
 	isEncrypted: vi.fn(() => false),
 }));
 
@@ -49,7 +49,7 @@ describe('Test Rotation - db.server tests can run in any order', () => {
 		forgetShopId('shop-a.myshopify.com');
 		forgetShopId('shop-b.myshopify.com');
 		forgetShopId('shop-c.myshopify.com');
-		mockShopCredential.findUnique.mockResolvedValue(null);
+		mockShopCredential.findFirst.mockResolvedValue(null);
 	});
 
 	it('test 1: should work when run first', async () => {
@@ -88,11 +88,7 @@ describe('Test Rotation - db.server tests can run in any order', () => {
 		rememberShopId(shop1, shopId1);
 		rememberShopId(shop2, shopId2);
 
-		const results = await Promise.all([
-			lookupShopId(shop1),
-			lookupShopId(shop2),
-			lookupShopId(shop1),
-		]);
+		const results = await Promise.all([lookupShopId(shop1), lookupShopId(shop2), lookupShopId(shop1)]);
 
 		expect(results[0]).toBe(shopId1);
 		expect(results[1]).toBe(shopId2);

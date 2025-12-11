@@ -107,7 +107,8 @@ export async function lookupShopId(shop: string) {
 		return cached;
 	}
 
-	const credential = await prisma.shopCredential.findUnique({
+	// Use findFirst since shopDomain alone is not unique (only shopDomain+apiKey is)
+	const credential = await prisma.shopCredential.findFirst({
 		where: { shopDomain: normalized },
 		select: { id: true },
 	});

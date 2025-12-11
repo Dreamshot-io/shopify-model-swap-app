@@ -62,7 +62,8 @@ Examples:
 }
 
 async function getShopifyGraphQL(shopDomain: string) {
-	const credential = await prisma.shopCredential.findUnique({
+	// shopDomain alone is not unique (only shopDomain+apiKey is), use findFirst
+	const credential = await prisma.shopCredential.findFirst({
 		where: { shopDomain },
 	});
 
@@ -136,7 +137,7 @@ async function fetchShopName(shopDomain: string): Promise<string | null> {
 	return data.data?.shop?.name || null;
 }
 
-async function backfillShop(shopDomain: string, options: BackfillOptions): Promise<BackfillResult> {
+async function backfillShop(shopId: string, shopDomain: string, options: BackfillOptions): Promise<BackfillResult> {
 	try {
 		const shopName = await fetchShopName(shopDomain);
 
@@ -153,7 +154,7 @@ async function backfillShop(shopDomain: string, options: BackfillOptions): Promi
 			console.log(`   [DRY-RUN] Would update ${shopDomain} → "${shopName}"`);
 		} else {
 			await prisma.shopCredential.update({
-				where: { shopDomain },
+				where: { id: shopId },
 				data: { shopName },
 			});
 			console.log(`   ✓ ${shopDomain} → "${shopName}"`);
@@ -209,7 +210,7 @@ async function main() {
 	}
 
 	// Filter to shops without names (unless forcing all)
-	const shopsToUpdate = shops.filter((s) => !s.shopName);
+	const shopsToUpdate = shops.filter(s => !s.shopName);
 	console.log(`\n📋 Found ${shops.length} active shop(s), ${shopsToUpdate.length} need names\n`);
 
 	if (shopsToUpdate.length === 0) {
@@ -220,7 +221,7 @@ async function main() {
 	const results: BackfillResult[] = [];
 
 	for (const shop of shopsToUpdate) {
-		const result = await backfillShop(shop.shopDomain, options);
+		const result = await backfillShop(shop.id, shop.shopDomain, options);
 		results.push(result);
 	}
 
@@ -229,8 +230,8 @@ async function main() {
 	console.log('📊 SUMMARY');
 	console.log('='.repeat(60));
 
-	const successful = results.filter((r) => r.success);
-	const failed = results.filter((r) => !r.success);
+	const successful = results.filter(r => r.success);
+	const failed = results.filter(r => !r.success);
 
 	console.log(`Total:      ${results.length}`);
 	console.log(`Successful: ${successful.length}`);
@@ -238,7 +239,7 @@ async function main() {
 
 	if (failed.length > 0) {
 		console.log('\nFailed shops:');
-		failed.forEach((r) => console.log(`  - ${r.shop}: ${r.error}`));
+		failed.forEach(r => console.log(`  - ${r.shop}: ${r.error}`));
 	}
 
 	console.log('='.repeat(60));
@@ -252,7 +253,7 @@ async function main() {
 
 main()
 	.then(() => process.exit(0))
-	.catch((error) => {
+	.catch(error => {
 		console.error('\n❌ Fatal error:', error);
 		process.exit(1);
 	});

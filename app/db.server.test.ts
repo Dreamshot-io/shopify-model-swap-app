@@ -4,13 +4,13 @@ import { rememberShopId, forgetShopId, lookupShopId } from './db.server';
 
 const mockShopCredential = vi.hoisted(() => {
 	return {
-		findUnique: vi.fn().mockResolvedValue(null),
+		findFirst: vi.fn().mockResolvedValue(null),
 	};
 });
 
 vi.mock('@prisma/client', () => {
 	const mockShopCred = mockShopCredential;
-	
+
 	const mockExtendedPrisma = {
 		shopCredential: mockShopCred,
 		aIStudioImage: {
@@ -26,20 +26,20 @@ vi.mock('@prisma/client', () => {
 			create: vi.fn(),
 		},
 	};
-	
+
 	const baseMock = {
 		shopCredential: mockShopCred,
 		$extends: vi.fn().mockReturnValue(mockExtendedPrisma),
 	};
-	
+
 	return {
 		PrismaClient: vi.fn().mockImplementation(() => baseMock),
 	};
 });
 
 vi.mock('./services/encryption.server', () => ({
-	encrypt: vi.fn((x) => x),
-	decrypt: vi.fn((x) => x),
+	encrypt: vi.fn(x => x),
+	decrypt: vi.fn(x => x),
 	isEncrypted: vi.fn(() => false),
 }));
 
@@ -54,7 +54,7 @@ describe('db.server - Multitenant shopId resolution', () => {
 		forgetShopId('shop1.myshopify.com');
 		forgetShopId('shop2.myshopify.com');
 		forgetShopId('concurrent-shop.myshopify.com');
-		mockShopCredential.findUnique.mockResolvedValue(null);
+		mockShopCredential.findFirst.mockResolvedValue(null);
 	});
 
 	describe('rememberShopId and forgetShopId', () => {
@@ -109,13 +109,13 @@ describe('db.server - Multitenant shopId resolution', () => {
 			// Arrange
 			const shop = 'new-shop.myshopify.com';
 			const shopId = 'shop-id-from-db';
-			mockShopCredential.findUnique.mockResolvedValue({ id: shopId });
+			mockShopCredential.findFirst.mockResolvedValue({ id: shopId });
 
 			// Act
 			const result = await lookupShopId(shop);
 
 			// Assert
-			expect(mockShopCredential.findUnique).toHaveBeenCalledWith({
+			expect(mockShopCredential.findFirst).toHaveBeenCalledWith({
 				where: { shopDomain: shop },
 				select: { id: true },
 			});
@@ -126,17 +126,17 @@ describe('db.server - Multitenant shopId resolution', () => {
 			// Arrange
 			const shop = 'cache-test.myshopify.com';
 			const shopId = 'shop-id-cached';
-			mockShopCredential.findUnique.mockResolvedValue({ id: shopId });
+			mockShopCredential.findFirst.mockResolvedValue({ id: shopId });
 
 			// Act - first lookup (cache miss)
 			const result1 = await lookupShopId(shop);
 			// Clear mock call count but keep resolved value
-			mockShopCredential.findUnique.mockClear();
+			mockShopCredential.findFirst.mockClear();
 			// Second lookup (should use cache)
 			const result2 = await lookupShopId(shop);
 
 			// Assert
-			expect(mockShopCredential.findUnique).not.toHaveBeenCalled();
+			expect(mockShopCredential.findFirst).not.toHaveBeenCalled();
 			expect(result1).toBe(shopId);
 			expect(result2).toBe(shopId);
 		});
@@ -144,14 +144,14 @@ describe('db.server - Multitenant shopId resolution', () => {
 		it('should return null when shop not found in database', async () => {
 			// Arrange
 			const shop = 'nonexistent-shop.myshopify.com';
-			mockShopCredential.findUnique.mockResolvedValue(null);
+			mockShopCredential.findFirst.mockResolvedValue(null);
 
 			// Act
 			const result = await lookupShopId(shop);
 
 			// Assert
 			expect(result).toBeNull();
-			expect(mockShopCredential.findUnique).toHaveBeenCalledWith({
+			expect(mockShopCredential.findFirst).toHaveBeenCalledWith({
 				where: { shopDomain: shop },
 				select: { id: true },
 			});
@@ -185,14 +185,10 @@ describe('db.server - Multitenant shopId resolution', () => {
 			rememberShopId(shop, shopId);
 
 			// Act - simulate concurrent lookups
-			const results = await Promise.all([
-				lookupShopId(shop),
-				lookupShopId(shop),
-				lookupShopId(shop),
-			]);
+			const results = await Promise.all([lookupShopId(shop), lookupShopId(shop), lookupShopId(shop)]);
 
 			// Assert
-			results.forEach((result) => {
+			results.forEach(result => {
 				expect(result).toBe(shopId);
 			});
 		});
