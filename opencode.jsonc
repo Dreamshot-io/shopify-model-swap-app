@@ -1,32 +1,38 @@
 {
-  "$schema": "https://opencode.ai/config.json",
-  "mcp": {
-    // Shopify development tools
-    "shopify-dev-mcp": {
-      "type": "local",
-      "command": ["npx", "-y", "@shopify/dev-mcp@latest"],
-      "enabled": true
-    },
-    // Supabase MCP - requires SUPABASE_ACCESS_TOKEN env var
-    "supabase": {
-      "type": "local",
-      "command": ["npx", "-y", "@supabase/mcp-server-supabase@latest"],
-      "environment": {
-        "SUPABASE_ACCESS_TOKEN": "{env:SUPABASE_ACCESS_TOKEN}"
-      },
-      "enabled": true
-    },
-    // Context7 - documentation search
-    "context7": {
-      "type": "remote",
-      "url": "https://mcp.context7.com/mcp",
-      "enabled": true
-    },
-    // Chrome DevTools MCP - browser debugging for AI agents
-    "chrome-devtools": {
-      "type": "local",
-      "command": ["npx", "-y", "chrome-devtools-mcp@latest"],
-      "enabled": true
-    }
-  }
+	"$schema": "https://opencode.ai/config.json",
+	"mcp": {
+		// Shopify development tools
+		"shopify-dev-mcp": {
+			"type": "local",
+			"command": ["npx", "-y", "@shopify/dev-mcp@latest"],
+			"enabled": true,
+		},
+		// Supabase MCP - requires SUPABASE_ACCESS_TOKEN env var
+		"supabase": {
+			"type": "local",
+			"command": ["npx", "-y", "@supabase/mcp-server-supabase@latest"],
+			"environment": {
+				"SUPABASE_ACCESS_TOKEN": "{env:SUPABASE_ACCESS_TOKEN}",
+			},
+			"enabled": true,
+		},
+		// Context7 - documentation search
+		"context7": {
+			"type": "remote",
+			"url": "https://mcp.context7.com/mcp",
+			"enabled": true,
+		},
+		// Chrome DevTools MCP - browser debugging for AI agents
+		"chrome-devtools": {
+			"type": "local",
+			"command": ["npx", "-y", "chrome-devtools-mcp@latest"],
+			"enabled": true,
+		},
+		// Sentry MCP - error monitoring
+		"sentry": {
+			"type": "remote",
+			"url": "https://mcp.sentry.dev/mcp/dreamshot-pc/dreamshot-ab-test",
+			"enabled": true,
+		},
+	},
 }

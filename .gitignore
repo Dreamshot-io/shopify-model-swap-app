@@ -29,3 +29,6 @@ database.sqlite
 .env*.local
 scripts/import-credentials-from-comments.mjs
 test-output.log
+
+# Sentry Config File
+.env.sentry-build-plugin
